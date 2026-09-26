@@ -1,0 +1,11 @@
+;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
+;; SPDX-License-Identifier: EPL-2.0
+;;
+;; wmark-tui, the terminal client, as a library:
+;;   wmark/tui {:git/url ... :git/sha ... :deps/root "tui"}
+;; It shares home discovery with the host core (wmark/core), which consumers
+;; declare too. Lanterna is LGPL-3.0: keep it in its own binary.
+;; Must match the :tui alias in ../deps.edn (bb lint).
+{:paths ["src"]
+ :deps  {org.clojure/tools.cli            {:mvn/version "1.4.256"}
+         com.googlecode.lanterna/lanterna {:mvn/version "3.1.3"}}}

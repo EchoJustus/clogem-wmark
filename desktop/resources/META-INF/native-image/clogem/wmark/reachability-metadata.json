@@ -1,0 +1,27 @@
+{
+  "resources": [
+    { "glob": "public/**" },
+    { "glob": "fonts/**" }
+  ],
+  "reflection": [
+    {
+      "type": "clojure.lang.IFn",
+      "methods": [
+        { "name": "invoke", "parameterTypes": ["java.lang.Object", "java.lang.Object"] }
+      ]
+    }
+  ],
+  "foreign": {
+    "downcalls": [
+      { "returnType": "jint",  "parameterTypes": [] },
+      { "returnType": "void*", "parameterTypes": ["void*"] },
+      { "returnType": "void*", "parameterTypes": ["void*", "void*"] },
+      { "returnType": "void*", "parameterTypes": ["void*", "void*", "void*"] },
+      { "returnType": "void*", "parameterTypes": ["void*", "void*", "void*", "void*", "void*"] },
+      { "returnType": "void",  "parameterTypes": ["void*"] }
+    ],
+    "upcalls": [
+      { "returnType": "void", "parameterTypes": ["void*", "void*"] }
+    ]
+  }
+}

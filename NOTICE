@@ -1,0 +1,35 @@
+clogem-wmark
+Copyright (c) 2026 JI JIAPENG and the clogem-wmark contributors
+
+This program and the accompanying materials are made available under the
+terms of the Eclipse Public License 2.0, which is in the LICENSE file and at
+https://www.eclipse.org/legal/epl-2.0/
+
+SPDX-License-Identifier: EPL-2.0
+
+Source code: https://github.com/EchoJustus/clogem-wmark
+
+Binary distributions of this program are accompanied by this NOTICE and the
+LICENSE file (see licenses/ in a release download). The source code for any
+release is available at the repository above, at the release's tag.
+
+Third-party material included in this repository
+-------------------------------------------------
+
+Datastar (https://github.com/starfederation/datastar), version 1.0.4
+  web/resources/public/datastar.js (unmodified) and the SDK wire-format test
+  cases in web/test/datastar-sdk-cases/
+  MIT License, Copyright (c) Star Federation
+  Full text: web/resources/public/datastar.LICENSE.txt
+
+Third-party libraries used at build and run time (not included here)
+--------------------------------------------------------------------
+
+Declared in deps.edn and fetched by the Clojure CLI; each is distributed under
+its own license, which binary releases must reproduce. Generate the list for a
+release from the resolved dependencies (clojure -X:deps list). They include
+Clojure and its contrib libraries (EPL-1.0), malli (EPL-2.0), http-kit
+(Apache-2.0) and, in the separate wmark-tui binary only, Lanterna (LGPL-3.0).
+
+FFmpeg is not part of this program. It runs as a separate executable; a
+download that bundles it must add FFmpeg's own license and source offer.

@@ -1,0 +1,5 @@
+{:secret-bytes "00 01 02 ... 1f (32 bytes, 0..31)",
+ :seeds
+ {"wmark/v1|56f87b09|0|subliminal|(c) Studio" 6472397373737115254,
+  "wmark/v1|56f87b09|1|random|Ünïcödé ✓" -6523486411006256346,
+  "wmark/v1||0|continuous|x" 777498632999924647}}

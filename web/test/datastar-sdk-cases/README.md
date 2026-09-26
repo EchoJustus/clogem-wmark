@@ -1,0 +1,3 @@
+# Datastar SDK test cases (vendored)
+
+Copied unmodified from https://github.com/starfederation/datastar (tag v1.0.4), `sdk/test/get-cases`: every patch-elements, remove-elements, patch-signals and remove-signals case, plus sendTwoEvents. The execute-script cases are left out because wmark never sends scripts. `watermark.web.sse-test` renders each input with `watermark.web.sse` and compares the result with `output.txt` the way the SDK suite does: data lines may appear in any order across fields, but keep their order within a field. MIT License, Copyright (c) Star Federation (see `web/resources/public/datastar.LICENSE.txt`).

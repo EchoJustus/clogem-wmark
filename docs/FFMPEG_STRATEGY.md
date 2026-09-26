@@ -1,0 +1,330 @@
+# FFmpeg strategy
+
+The FFmpeg engine (`watermark.engine.ffmpeg`) is one implementation of the
+engine protocol described in [ENGINE.md](ENGINE.md). It receives a render spec
+in which every setting is already resolved to pixels and frame indices, and
+compiles it into one FFmpeg invocation per input. It never builds command
+strings by hand:
+
+- `engine.ffmpeg.graph` turns data into a filtergraph.
+- `engine.ffmpeg.compile` turns a render request into an argv.
+- FFmpeg reads the graph from a script file.
+
+Everything below was checked against real renders; see "Verification".
+
+## Finding the binaries
+
+The goal is a zero-dependency install: unzip and run, with no FFmpeg on the
+system. The first hit wins:
+
+| # | Where | Example on Windows |
+|---|---|---|
+| 1 | `--ffmpeg PATH` or `WMARK_FFMPEG` (a file or a folder) | `--ffmpeg D:\tools\ffmpeg\bin` |
+| 2 | the working directory | `.\ffmpeg.exe` |
+| 3 | its `bin\` folder | `.\bin\ffmpeg.exe` |
+| 4 | wmark's own folder | `C:\Program Files\wmark\ffmpeg.exe` |
+| 5 | its `bin\` folder | `C:\Program Files\wmark\bin\ffmpeg.exe` |
+| 6 | the system `PATH` | |
+
+- **Why steps 4 and 5.** A double-click starts wmark in its own folder, so
+  steps 2 and 3 find the bundle. A Start-menu shortcut, a Finder launch
+  (working directory `/`) or a terminal opened elsewhere doesn't. Without
+  steps 4 and 5, those launches would skip the bundled FFmpeg and fall back to
+  whatever is on PATH.
+- **ffprobe comes from the same folder** as the ffmpeg that was found, so a
+  bundle is never paired with a different version from PATH. The full search
+  is the fallback, and `doctor` warns when the two came from different
+  folders: a bundle missing its own ffprobe works on a developer's machine
+  and fails on a clean one.
+- **Only usable files count.** A file that exists but isn't executable is
+  recorded as `unusable` and skipped.
+- **Absolute paths only.** wmark always executes the absolute path it
+  resolved, so the operating system's own implicit search never applies.
+- **Everything is explained.** `wmark doctor` and `GET /api/v1/doctor` list
+  every candidate with `found`, `missing` or `unusable`, and where the binary
+  came from.
+
+**Security note: this order enables binary planting.** Looking in the working
+directory first is how planting attacks work: a malicious `ffmpeg.exe` in a
+Downloads folder runs if the user starts wmark from there. Go removed implicit
+current-directory lookups in 1.19 for exactly this reason. The order is kept
+as requested, with these mitigations:
+
+- The source of every binary is reported.
+- A warning appears when FFmpeg came from the working directory while wmark
+  itself is installed elsewhere.
+- `--ffmpeg-search app,app-bin,path` (or `WMARK_FFMPEG_SEARCH`) removes the
+  working-directory steps. Consider making it the default for managed or
+  enterprise deployments.
+- The release bundle keeps FFmpeg in `bin/` beside wmark, which steps 4–5
+  find even under the hardened order.
+
+## Capabilities
+
+On first use the engine runs `ffmpeg -version`, `-filters` and `-encoders`
+and derives what it can render:
+
+- **Required filters:** `split crop drawbox format scale colorchannelmixer
+  setpts overlay perspective fps null`. A test checks this list against every
+  filter the compiler can emit.
+- **Text needs `drawtext`,** which needs libfreetype, and libharfbuzz since
+  FFmpeg 7.0. Minimal builds often lack it. Without it the engine still
+  renders logo-only specs, and refuses text layers up front with
+  `:unsupported` instead of failing mid-render. A 7.0.2 static build tested
+  here lacked it. **Ship a full build next to the binary.**
+- **Codec families** come from the encoders present (see "Encoding").
+
+Problems and warnings appear in `wmark doctor` and in `/api/v1/health`.
+
+## One invocation per input
+
+```
+ffmpeg -hide_banner -nostdin -y -loglevel error -progress pipe:1 -nostats
+       -i INPUT
+       -i LOGO.png                            # a single still frame
+       -/filter_complex graph.txt             # FFmpeg >= 7.0; older: -filter_complex_script
+       -map [vout] -map 0:a? -c:a copy
+       -c:v libx264 -crf 18 -preset medium -pix_fmt yuv420p
+       -fps_mode:v passthrough                # FFmpeg >= 5.1; older: -vsync passthrough
+       -map_metadata -1 -movflags +faststart
+       OUTPUT.part.mp4                        # published atomically on success
+```
+
+- **Graph in a file.** Windows limits a command line to 32,767 characters and
+  quoting there is fragile. `-filter_complex_script` was deprecated in FFmpeg
+  7.0 in favour of the generic file prefix `-/filter_complex`. The engine
+  parses `ffmpeg -version` and picks the right flag. Nightly builds with no
+  release number count as new.
+- **Frames pass through unchanged.** FFmpeg's default constant-rate sync
+  duplicates or drops frames to fill timestamp gaps. With AAC priming, the
+  audio starts a few milliseconds before the video, and FFmpeg repeated frame 0
+  to cover the gap. Every later frame then sat one position late against the
+  watermark schedule, which breaks frame-exact evidence. The conformance
+  harness caught this; `passthrough` fixes it.
+- **Progress and logs.** Progress is read from stdout. stderr goes to a log
+  file, not a pipe, so FFmpeg can never block on a full pipe buffer.
+- **Scratch files.** The graph and text files live in a per-render scratch
+  folder. It is deleted after success or cancellation and kept after a failure,
+  for support.
+- **Publishing.** Output names and publishing belong to the job pipeline:
+  it commits the `.part` file after success and discards it otherwise.
+
+## Graph layout
+
+```
+[0:v]fps=<fps>[base];                                      variable-frame-rate input only
+[1:v]format=rgba,scale=<w>:<h>,colorchannelmixer=aa=<opacity>,setpts=PTS-STARTPTS[still1];
+[base]split[main1][tick1];
+[tick1]crop=<card canvas>,format=rgba,drawbox=...:color=black@0:t=fill:replace=1[canvas1];
+[canvas1][still1]overlay=<pad>:eof_action=repeat[card1];
+[card1]format=yuva444p,perspective=<8 corner expressions>:sense=destination:eval=frame[img1];
+[main1][img1]overlay=x=<X - pad>:y=<Y - pad>[v1];
+[v1]drawtext=...,drawtext=...[vout]                        one drawtext per text layer
+```
+
+A static logo skips the card: `[base][still1]overlay=x=X:y=Y:eof_action=repeat[v1]`.
+
+**The card is built from the video's own frames.** Phase 1 looped the logo at
+the video's frame rate and paired the two streams by timestamp. That fails
+when the video doesn't start at t = 0, which AAC priming, edit lists and
+trimmed files all cause. On a clip whose video starts at 0.5 s, FFmpeg based
+the looped logo on the file start (0.478 s) instead of the video stream, and
+the conformance harness found the logo missing. Now each video frame is split
+off, cropped to the card size, cleared to transparent, and the still logo is
+composited onto it. The card therefore has exactly one frame per video frame,
+with the same timestamp, and `perspective`'s frame counter is the video's
+frame counter. Alignment holds by construction.
+
+**Geometry comes from the spec.** The kernel (`watermark.render.layout`)
+computes sizes and positions:
+
+- The logo width is `width-ratio × frame width`, and sizes are even because
+  yuv420 needs them.
+- Anchors and pixel offsets are measured inward from the anchored edges.
+- **Dimensions are display dimensions.** Phone footage carries a rotation in
+  its display matrix and FFmpeg auto-rotates while decoding. The probe
+  therefore reports a 90° clip as 720×1280, not the coded 1280×720.
+
+## The periodic Y-axis flip
+
+A 3D card flip is a per-frame homography, which is what `perspective` does
+with `eval=frame`. The kernel defines the projection
+(`watermark.render/logo-corners`): the card rotates about its vertical center
+line and is seen through a pinhole camera `D` pixels away (2.5 logo widths).
+The compiler emits the same projection as eight corner expressions for the
+card canvas (`W × H`), which carries the logo in its middle:
+
+```
+n'    = (in − 1) + first-frame
+p     = mod(n' − start, period)
+theta = if(gte(n', start) · lt(p, dur),  pi·(1 − cos(pi·p/dur)),  0)
+c     = cos theta, with |c| clamped to at least 0.02;   s = sin theta
+left  = D/(D + W/2·s)        right = D/(D − W/2·s)
+x0,x2 = W/2·(1 − c·left)     x1,x3 = W/2·(1 + c·right)
+y0,y2 = H/2·(1 ∓ left)       y1,y3 = H/2·(1 ∓ right)
+```
+
+Details that matter:
+
+- **`in` is 1-based in `perspective`** (`inlink->frame_count_out + 1` in
+  FFmpeg 6.1.1, 7.1 and master), unlike the 0-based `n` of timeline
+  expressions. Without the `−1` the flip ran one frame early; measurement
+  caught it in Phase 1.
+- **Segments count globally.** `first-frame` is the global index of the
+  render's frame 0, so a segment of a long master flips exactly where the
+  whole-file render would. Text timings use `n + first-frame` the same way.
+- **`mod()` is floored**, so frames before `start` would wrap into the cycle.
+  The `gte()` guard keeps them still. By default the first flip happens at
+  t = every-s, not on frame 0.
+- **|cos θ| is clamped at 0.02,** because an edge-on card is a degenerate
+  quad. When cos θ < 0 the edges cross, so the back of the card shows
+  mirrored, as a real card would.
+- **Canvas padding** fits the perspective bulge: vertically
+  `2 + ⌈h/2·(D/(D − w/2) − 1)⌉`, the worst-case growth of the near edge;
+  horizontally `2 + ⌈3% of w⌉`.
+- **Registers:** each corner expression stores θ, cos and sin in registers
+  (`st`/`ld`), keeping expressions short and evaluated once per frame.
+
+## Text layers
+
+The text never enters the graph. It is written to a UTF-8 file and read with
+`drawtext=textfile=...:expansion=none`. That rules out escaping bugs and
+filter injection (important for the hosted backend), and `%` stays literal.
+Colours are whitelisted by regex; paths go through two-level escaping.
+
+The kernel turns each mode into a frame-based timing and a placement, and the
+compiler maps each timing to an `enable=` expression:
+
+| Spec timing | Modes | Expression |
+|---|---|---|
+| `:always` | continuous | no `enable` |
+| `:windows` | scheduled; random (Pro) | `between(n,s1,e1)+between(n,s2,e2)+...` |
+| `:periodic` | subliminal canary (Pro) | `gte(n,O)*lt(mod(n-O,P),K)` |
+
+- **Scheduled times are frame ranges now.** Phase 1 used time-based
+  `between(t,a,a+d)`, which includes both ends and so could show one extra
+  frame. The kernel now converts `[at, at + duration)` into a half-open frame
+  range: 2 s at 30 fps is exactly 60 frames.
+- **Placement** is `x = fx(n)·(w − tw) + px`, likewise y, with `fx` constant,
+  keyed per burst, or per window.
+- **Canary position:** without an explicit anchor, a canary moves per burst.
+  Its x is `(w−tw)·(0.05 + 0.9·mod(floor((n−O)/P)·A + B, 997)/997)`,
+  constant within a burst, with A and B keyed.
+- **Canary burst length:** K is at least `ceil(fps/30)` frames. A 1-frame
+  insert in 60 fps footage has a 50% chance of vanishing when a platform
+  decimates to 30 fps.
+- **Random mode stays flat:** FFmpeg's expression parser caps nesting depth
+  at 100, so windows are flat sums, never nested `if()`. Hundreds of events
+  are fine.
+- **Photosensitivity guard:** Pro refuses sub-0.5 s inserts closer than 1 s
+  apart. WCAG 2.3.1 and ITU-R BT.1702 set the limit at 3 flashes per second.
+
+## Encoding
+
+Settings express intent that any engine can honour, plus an optional
+FFmpeg-only block that other engines ignore (tagged `x-engine: ffmpeg` in the
+JSON Schema):
+
+```clojure
+{:encode {:codec :h264            ; or :hevc
+          :quality :high          ; :archival | :high | :balanced | :compact
+          :audio :copy            ; or :aac | :none
+          :ffmpeg {:video-codec "h264_nvenc" :crf 20 :preset "p5"}}}   ; optional
+```
+
+The first available encoder wins:
+
+| Codec | Preference |
+|---|---|
+| H.264 | `libx264` → `h264_videotoolbox` → `h264_mf` → `h264_nvenc` → `h264_qsv` → `h264_amf` → `libopenh264` |
+| HEVC | `libx265` → `hevc_videotoolbox` → `hevc_mf` → `hevc_nvenc` → `hevc_qsv` → `hevc_amf` |
+
+| Quality | x264 CRF | x265 CRF | Other encoders (bits per pixel per frame) |
+|---|---|---|---|
+| archival | 14 | 19 | 0.20 |
+| high | 18 | 23 | 0.12 |
+| balanced | 22 | 27 | 0.08 |
+| compact | 26 | 31 | 0.05 |
+
+- **NVENC** gets `-rc vbr -cq` with the CRF value for its codec.
+- **HEVC** bitrate targets are 60% of the H.264 ones.
+- **libx265 output is tagged `hvc1`,** so it plays in QuickTime and on iOS.
+- **LGPL-only FFmpeg builds** have no x264. They fall back to the operating
+  system's encoder (Media Foundation on Windows, VideoToolbox on macOS) with
+  a bitrate target. This is unit-tested on the argv only; those encoders need
+  Windows or macOS to render.
+
+## Keyed schedules
+
+`seed = HMAC-SHA256(studio secret, "wmark/v1|input fingerprint|layer|mode|text")`,
+where the fingerprint is SHA-256 over size + first MiB + last MiB. The secret
+lives at `<home>/secret.key`: back it up. This gives three properties:
+
+- **Unpredictable:** without the secret, nobody can predict where or when the
+  marks appear. The derivation is open source on purpose (Kerckhoffs).
+- **Per-video:** every master gets a different schedule, so there is no
+  pattern to learn across a catalogue.
+- **Reproducible:** the owner can regenerate the exact frame list later and
+  show that a copy carries their marks at their frames.
+
+**Schedules come from a portable generator.** Pro schedules draw from
+SplitMix64 (`watermark.util.prng`), implemented exactly like
+`java.util.SplittableRandom`. It matched draw for draw over 104,312 draws,
+and existing Pro schedules came out unchanged across 3,000 comparisons. A
+Dart, Swift or Rust port reproduces the same frames by passing the golden
+vectors in `kernel/test/golden/`.
+
+## Portability rules
+
+- **Locale-independent numbers.** `format` with a German locale writes `0,85`,
+  and a comma is a filter separator. `String/format Locale/ROOT` and
+  `BigDecimal.toPlainString` are used everywhere; there's a test for exactly this.
+- **Locale-independent case folding** (`Locale/ROOT`), so a Turkish `I`
+  doesn't break keyword or OS matching.
+- **Forward slashes** for paths inside the graph; they work on Windows too.
+- **Terminal encoding.** A terminal in a non-UTF-8 locale mangles `--text "©"`
+  before the JVM sees it. wmark detects this and suggests `--text-file`.
+
+## Verification
+
+**Re-run after the engine refactor**, with FFmpeg 6.1.1 unless noted:
+
+| Check | Result |
+|---|---|
+| Conformance harness: 120-frame clips whose video starts at 0 s and at 0.5 s, measured against the reference semantics | Logo width within 1.24 px, height within 1.35 px, and flip axis within 1.35 px on every frame, including 8 edge-on frames. Text visible on exactly the scheduled frames (30–44 and 75–89) |
+| FFmpeg 7.0.2 static build without `drawtext` | Reported by `doctor`; logo-only specs render within 1.35 px via `-/filter_complex`; text layers refused before any work |
+| Release bundle with `bin/ffmpeg`, PATH emptied, run from the bundle folder | Found via `./bin/`; a 60-frame render completed |
+| Hardened order, no FFmpeg in the install folder | `doctor` reports NOT READY and lists every place it looked |
+
+**From Phase 1, not re-run here:** 6.1 `-filter_complex_script` and 7.0
+`-/filter_complex` gave bit-identical output; a rotated (90°) phone clip was
+planned as 720×1280; © and — rendered correctly through the text file. The
+images below are Phase 1 renders; the geometry above was re-measured
+numerically.
+
+![Flip](img/flip-sheet.png)
+
+The Pro editions' keyed canaries go through the same harness in their own
+repository.
+
+## What this does and doesn't stop
+
+Be honest with customers about the threat model.
+
+- **Visible marks raise cost; they don't make removal impossible.** Tools that
+  inpaint a fixed box work on any mark that stays in one place, including a
+  flip that stays inside its box. The countermeasures that actually help are
+  motion: per-video jitter and anchor migration, which defeat multi-frame
+  matte estimation, and placement over moving, salient content.
+- **Canary frames are evidence, not a barrier.** A 1–3 frame insert is visible
+  as a flicker, and it is the easiest element to strip, because it stands out
+  from neighbouring frames. Its value is proof: a keyed insert at a frame only
+  you can predict. Don't market it as "subliminal"; that word has regulatory
+  baggage in broadcast rules on subliminal techniques.
+- **Strongest roadmap items:**
+  - per-recipient fingerprinting, so a leak identifies its source (SaaS);
+  - a verification tool that re-derives the schedule and checks a suspect copy;
+  - an invisible watermark alongside the visible one.
+- **Pipeline order for a studio:** render → wmark → `publish_clean.py`. C2PA
+  signing has to be the last step, because any re-encode after signing
+  invalidates the manifest.

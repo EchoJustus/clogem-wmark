@@ -1,0 +1,12 @@
+;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
+;; SPDX-License-Identifier: EPL-2.0
+;;
+;; Test harnesses for code that plugs into clogem-wmark from elsewhere:
+;;   watermark.engine.conformance  render with any VideoEngine, measure real frames
+;;                                 against the reference semantics
+;;   watermark.store-contract      the behaviour every ProfileStore must show
+;;   watermark.golden              golden-vector files (cross-platform contract)
+;;   watermark.architecture        ns-form and license-header checks for fitness tests
+;; Consumers add it to their test alias:
+;;   wmark/testkit {:git/url ... :git/sha ... :deps/root "testkit"}
+{:paths ["src"]}

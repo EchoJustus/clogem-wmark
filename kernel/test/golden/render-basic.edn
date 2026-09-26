@@ -1,0 +1,152 @@
+{:spec
+ {:spec/version 1,
+  :canvas {:width 1280, :height 720},
+  :timebase
+  {:fps-num 30000, :fps-den 1001, :frames 5400, :first-frame 0},
+  :layers
+  [{:id "logo",
+    :kind :image,
+    :source {:path "/logos/l.png", :width 400, :height 160},
+    :box {:x 1096, :y 20, :width 154, :height 62},
+    :opacity 0.85,
+    :timing {:type :always},
+    :animation
+    {:type :flip-y,
+     :easing :cosine,
+     :start 150,
+     :period 150,
+     :duration 24,
+     :distance 385.0,
+     :min-cos 0.02}}
+   {:id "text-0",
+    :kind :text,
+    :mode :continuous,
+    :text "(c) Studio",
+    :style
+    {:font "/fonts/a.ttf",
+     :size 25,
+     :color "white",
+     :opacity 0.8,
+     :border 2,
+     :border-color "black",
+     :border-opacity 0.48},
+    :placement {:type :fixed, :fx 0.5, :fy 1.0, :px 24, :py -24},
+    :timing {:type :always}}
+   {:id "text-1",
+    :kind :text,
+    :mode :scheduled,
+    :text "Scheduled",
+    :style
+    {:font "/fonts/a.ttf",
+     :size 25,
+     :color "white",
+     :opacity 0.8,
+     :border 2,
+     :border-color "black",
+     :border-opacity 0.48},
+    :placement {:type :fixed, :fx 0.0, :fy 1.0, :px 24, :py -24},
+    :timing
+    {:type :windows,
+     :windows [{:start 60, :end 104} {:start 2713, :end 2757}]}}]},
+ :logo-bounds
+ {0 [1096.0 20.0 1250.0 82.0],
+  149 [1096.0 20.0 1250.0 82.0],
+  150 [1096.0 20.0 1250.0 82.0],
+  155 [1118.28 15.736 1242.772 86.264],
+  160 [1111.087 14.731 1219.205 87.269],
+  165 [1149.621 12.89 1207.104 89.11],
+  170 [1096.466 17.241 1237.971 84.759],
+  173 [1095.612 19.832 1249.561 82.168],
+  174 [1096.0 20.0 1250.0 82.0],
+  300 [1096.0 20.0 1250.0 82.0]},
+ :scheduled-frames
+ [60
+  61
+  62
+  63
+  64
+  65
+  66
+  67
+  68
+  69
+  70
+  71
+  72
+  73
+  74
+  75
+  76
+  77
+  78
+  79
+  80
+  81
+  82
+  83
+  84
+  85
+  86
+  87
+  88
+  89
+  90
+  91
+  92
+  93
+  94
+  95
+  96
+  97
+  98
+  99
+  100
+  101
+  102
+  103
+  104
+  2713
+  2714
+  2715
+  2716
+  2717
+  2718
+  2719
+  2720
+  2721
+  2722
+  2723
+  2724
+  2725
+  2726
+  2727
+  2728
+  2729
+  2730
+  2731
+  2732
+  2733
+  2734
+  2735
+  2736
+  2737
+  2738
+  2739
+  2740
+  2741
+  2742
+  2743
+  2744
+  2745
+  2746
+  2747
+  2748
+  2749
+  2750
+  2751
+  2752
+  2753
+  2754
+  2755
+  2756
+  2757]}

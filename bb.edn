@@ -1,0 +1,26 @@
+;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
+;; SPDX-License-Identifier: EPL-2.0
+;;
+;; Day-to-day tasks. All of them go through deps.edn: the component aliases
+;; and the :wmark/build-matrix are the only build configuration.
+{:tasks
+ {test       {:doc "Every test (native-engine tests need a C compiler; conformance needs ffmpeg)"
+              :task (clojure "-M:dev:test")}
+  lint       {:doc "Validate the build matrix and the component deps.edn files" :task (clojure "-T:build lint")}
+  matrix     {:doc "What ships at each roadmap stage"                 :task (clojure "-T:build matrix")}
+  dev        {:doc "Run the engine from source (opens the browser)"   :task (apply clojure "-M:dev -m watermark.main" *command-line-args*)}
+  tui        {:doc "Terminal client for a running engine"             :task (apply clojure "-M:dev -m watermark.tui.main" *command-line-args*)}
+  native     {:doc "Native binary for this OS, e.g. bb native :target :tui"
+              :task (apply clojure "-T:build native" (or (seq *command-line-args*) [":target" ":engine"]))}
+  bundle     {:doc "Assemble a download, e.g. bb bundle :bundle :desktop-server :ffmpeg-dir C:/ffmpeg/bin"
+              :task (apply clojure "-T:build bundle" *command-line-args*)}
+  e2e        {:doc "Browser smoke test of the built-in UI: needs ffmpeg and Python Playwright (test tooling only)"
+              :requires ([babashka.fs :as fs])
+              :task (shell "python3" "test/e2e/ui_smoke.py"
+                           "bb" "clojure" "-M:desktop:web" "-m" "watermark.main"
+                           "--home" (str (fs/create-temp-dir {:prefix "wmark-e2e-home"}))
+                           "serve" "--announce" "json")}
+  mock-engine {:doc "Build the mock native engine (Linux; see native/README.md for macOS and Windows)"
+               :requires ([babashka.fs :as fs])
+               :task (do (fs/create-dirs "target")
+                         (shell "cc -shared -fPIC -O2 -pthread -o target/libwmark_engine.so native/mock/mock_engine.c"))}}}

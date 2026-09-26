@@ -1,0 +1,8 @@
+;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
+;; SPDX-License-Identifier: EPL-2.0
+;; The portable kernel: settings schema, fallback resolution, render spec and
+;; reference semantics, keyed schedules, the engine protocol. Only .cljc, only
+;; portable dependencies -- consumed by the JVM host (root deps.edn) and by the
+;; ClojureDart GUI (gui/deps.edn) through :local/root.
+{:paths ["src"]
+ :deps  {metosin/malli {:mvn/version "0.20.1"}}}   ; only core.schema and render.schema use it

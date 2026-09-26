@@ -1,0 +1,20 @@
+# Line endings: LF everywhere, on every OS. Shell scripts break with CRLF, and
+# several tests compare bytes (the pinned SHA-256 of datastar.js, the Datastar
+# SDK wire-format cases, golden vectors).
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Vendored files are kept byte for byte.
+web/resources/public/datastar.js -text
+web/test/datastar-sdk-cases/** -text
+
+# Binary assets.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.der binary
+*.jar binary

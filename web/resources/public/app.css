@@ -1,0 +1,114 @@
+/* SPDX-FileCopyrightText: 2026 The clogem-wmark authors */
+/* SPDX-License-Identifier: EPL-2.0 */
+:root {
+  --bay: #2B2B2B;      /* neutral surround: no colour cast next to footage */
+  --panel: #333333;
+  --rule: #474747;
+  --ink: #EDEDED;
+  --ink-2: #A8A8A8;
+  --grease: #F0C419;   /* chinagraph pencil: selection, primary action, focus */
+  --tally: #E5484D;    /* failures */
+  --sans: "Bahnschrift", "DIN Alternate", "Segoe UI", system-ui, sans-serif;
+  --mono: "Cascadia Mono", ui-monospace, Consolas, "DejaVu Sans Mono", monospace;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bay); color: var(--ink); font: 400 14px/1.5 var(--sans); }
+h1, h2, h3 { font-weight: 600; margin: 0; }
+h1 { font-size: 22px; letter-spacing: 0.01em; }
+h2 { font-size: 17px; }
+h3 { font-size: 14px; color: var(--ink-2); font-weight: 500; }
+button, input, textarea { font: inherit; color: inherit; }
+
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 14px 24px; border-bottom: 1px solid var(--rule); }
+.status { margin: 0; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.status + .status { padding-left: 14px; border-left: 1px solid var(--rule); }
+.status.bad { color: var(--tally); }
+
+/* The one flourish: the product's own card flip, once. */
+.mark { perspective: 160px; }
+.mark-card {
+  width: 44px; height: 28px; display: grid; place-items: center;
+  background: linear-gradient(90deg, var(--grease) 50%, var(--ink) 50%);
+  color: var(--bay); font-weight: 700; font-size: 15px;
+  animation: flip 1.1s cubic-bezier(.45, 0, .55, 1) .35s 1 both;
+}
+@keyframes flip { from { transform: rotateY(0deg); } to { transform: rotateY(360deg); } }
+@media (prefers-reduced-motion: reduce) { .mark-card { animation: none; } }
+
+.desk { display: grid; grid-template-columns: 240px 1fr; grid-template-areas: "bin inspector" "queue queue"; }
+.bin { grid-area: bin; padding: 20px 16px 20px 24px; border-right: 1px solid var(--rule); }
+.inspector { grid-area: inspector; padding: 20px 24px; min-width: 0; }
+.queue { grid-area: queue; padding: 20px 24px 32px; border-top: 1px solid var(--rule); }
+
+#profiles { list-style: none; margin: 12px 0 16px; padding: 0; }
+#profiles button {
+  width: 100%; text-align: left; background: none; border: 0; padding: 7px 10px;
+  border-left: 3px solid transparent; cursor: pointer;
+}
+#profiles button:hover { background: var(--panel); }
+#profiles button[aria-current="true"] { border-left-color: var(--grease); background: var(--panel); }
+#profiles .auto { color: var(--ink-2); }
+#profiles .empty { color: var(--ink-2); padding: 0 10px; }
+
+button { background: var(--panel); border: 1px solid var(--rule); padding: 6px 14px; cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--ink-2); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--grease); border-color: var(--grease); color: var(--bay); font-weight: 600; }
+:focus-visible { outline: 2px solid var(--grease); outline-offset: 2px; }
+
+.inspector-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.message { min-height: 1.5em; margin: 10px 0; color: var(--ink-2); }
+.message.bad { color: var(--tally); }
+
+.panes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
+label span { display: block; color: var(--ink-2); margin-bottom: 6px; max-width: 70ch; }
+textarea {
+  width: 100%; background: var(--panel); border: 1px solid var(--rule); padding: 10px 12px;
+  font: 13px/1.55 var(--mono); resize: vertical;
+}
+#settings { min-height: 360px; }
+.effective table { width: 100%; border-collapse: collapse; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.effective th { text-align: left; color: var(--ink-2); font-weight: 500; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--rule); }
+/* Reads like a diff: what this profile sets is full contrast, inherited defaults recede. */
+.effective td { padding: 4px 8px 4px 0; border-bottom: 1px solid var(--panel); vertical-align: top;
+                color: var(--ink-2); overflow-wrap: anywhere; }
+.effective td:first-child { overflow-wrap: normal; }      /* breaks only after dots (see views.clj) */
+.effective td:last-child { white-space: nowrap; }
+.effective tr.set td { color: var(--ink); }
+.locked { color: var(--grease); margin: 6px 0 0; }
+
+.inputs { display: block; max-width: 960px; margin: 12px 0; }
+#jobs { list-style: none; padding: 0; margin: 18px 0 0; max-width: 960px; }
+#jobs li { display: grid; grid-template-columns: 1fr 110px 160px auto; gap: 12px; align-items: center;
+           padding: 8px 0; border-bottom: 1px solid var(--panel); }
+#jobs .file { overflow-wrap: anywhere; }
+#jobs .state { color: var(--ink-2); }
+#jobs .failed .state, #jobs .error { color: var(--tally); }
+#jobs .error { grid-column: 1 / -1; margin: 0; }
+progress { width: 100%; height: 6px; appearance: none; border: 0; background: var(--panel); }
+progress::-webkit-progress-bar { background: var(--panel); }
+progress::-webkit-progress-value { background: var(--grease); }
+progress::-moz-progress-bar { background: var(--grease); }
+
+input[type="text"] { background: var(--panel); border: 1px solid var(--rule); padding: 6px 10px; min-width: 0; }
+input[type="text"]:disabled { opacity: .45; }
+.namebar { display: flex; flex-direction: column; gap: 8px; }
+.actions input[type="text"] { width: 14em; }
+
+#activity { list-style: none; padding: 0; margin: 8px 0 0; max-width: 960px; color: var(--ink-2);
+            font: 12px/1.6 var(--mono); max-height: 12em; overflow-y: auto; }
+.queue h3 { margin-top: 22px; }
+
+@media (max-width: 820px) {
+  .bar { padding: 12px 16px; }
+  .status { flex-basis: 100%; }
+  .status + .status { padding-left: 0; border-left: 0; }
+  .bin, .inspector, .queue { padding-left: 16px; padding-right: 16px; }
+  .desk { grid-template-columns: 1fr; grid-template-areas: "bin" "inspector" "queue"; }
+  .bin { border-right: 0; border-bottom: 1px solid var(--rule); }
+  .panes { grid-template-columns: 1fr; }
+  #jobs li { grid-template-columns: 1fr auto; }
+}

@@ -1,0 +1,356 @@
+# Architecture
+
+wmark is a headless engine with a stable API and interchangeable clients (the
+Clash model), split so that each roadmap stage adds adapters instead of
+rewriting code. [ROADMAP.md](ROADMAP.md) maps the stages onto this structure;
+[ENGINE.md](ENGINE.md) specifies the render engine contract.
+
+## Components
+
+Each directory is a source root with its own alias in `deps.edn`. The
+components other repositories build on (`kernel/`, `web/`, `desktop/`, `tui/`,
+`testkit/`, `build/`) also have their own `deps.edn`, so they can be consumed
+from git with `:deps/root`; `bb lint` keeps each one in step with its alias.
+The commercial editions (Pro modes, licenses, the hosted backend and the apps)
+live in a separate, private repository that depends on this one. Nothing here
+names or requires them.
+
+| Directory | Contents | Runs on | May depend on |
+|---|---|---|---|
+| `kernel/` | Settings schema and resolution, the render spec and its reference semantics, keyed seeds, the PRNG, the text-mode registry, the engine protocol, the feature catalog | Any Clojure host: JVM today, ClojureDart later | malli (two namespaces), nothing else |
+| `src/` | Profile rules (`config`), the store, media and queue ports with local adapters, the job pipeline, the Core API, the FFmpeg and native engines, JSON REST routes | JVM | kernel |
+| `web/` | The built-in web UI: server-rendered HTML and Datastar events over SSE; vendored `datastar.js`, no npm | JVM | the Core API (src) |
+| `desktop/` | CLI, http-kit server, loopback security, sidecar mode, native-image metadata | JVM / native image | src, web |
+| `tui/` | Terminal client of a running engine (REST only) | JVM / native image | home discovery only |
+| `testkit/` | Harnesses for code that plugs in from elsewhere: engine conformance, the store contract, golden vectors, architecture checks | JVM (tests) | src, kernel |
+| `build/` | `wmark.build`, the interpreter of the build matrix | JVM (tool) | tools.build |
+| `native/` | C ABI for native engines, a mock engine, exported JSON Schemas | C / Swift / Rust / Kotlin | nothing |
+
+## Layers
+
+```
+ clients        web UI (Datastar) · wmark-tui · scripts · Flutter GUI (Stage 2: sidecar client)
+                    │ HTML + SSE       │ REST + SSE                │ argv
+ transports     desktop: http-kit, token, Host/Origin     desktop: watermark.app (CLI)
+                saas:    function adapter + wrap-identity (OIDC)
+                    │
+ contract       watermark.web.handler (/ and /ui/*) and watermark.server.routes (/api/v1)
+                    (Ring; no transport, no auth) ─► watermark.core.api
+                    │
+ orchestration  watermark.config (profile rules)        watermark.core.jobs (pipeline)
+                    │                                          │
+ kernel         resolve · render/build → render spec · seeds · modes · features
+                    │
+ ports          ProfileStore     MediaIO     JobQueue     VideoEngine     Entitlements
+ adapters       file · memory ·  local       local        FFmpeg ·        community · license ·
+                PostgreSQL       files       executor     native (C ABI)  hosted plan
+```
+
+- **One binary, several modes.** Run with no arguments (a double-click), the
+  engine serves on loopback and opens the browser. `serve` is headless, for
+  the TUI, scripts or a GUI shell. `run` encodes from the CLI through the same
+  Core API. `doctor` explains which engine and binaries were found.
+- **The TUI is a separate program** (`wmark-tui`), a REST client. That keeps
+  LGPL Lanterna out of the proprietary Pro binary.
+- **External UI.** `--ui-dir` replaces the built-in UI with one served from a
+  directory, like Clash's external-ui. It talks to the REST API.
+- **The routes know nothing about transport or identity.** They read the
+  caller from `(:wmark/ctx req)`. The desktop security middleware sets it to
+  the local user; the hosted handler sets it from a verified token. Both
+  deployments therefore serve the identical route table.
+
+## Ports and adapters
+
+| Port | Protocol | Adapters today | Planned adapters |
+|---|---|---|---|
+| Profile storage | `watermark.store/ProfileStore` | file (`store.file`), memory (`store.memory`), PostgreSQL (`saas.store`) | app-sandbox store for the GUI |
+| Rendering | `watermark.engine/VideoEngine` + `RenderHandle` | `FFmpegProcessor`, `NativeFFIProcessor` (C ABI) | AVFoundation, Media3, a Rust core: all behind the C ABI |
+| Media | `watermark.media/MediaIO` | local files (`media.local`) | object storage |
+| Queue | `watermark.core.jobs/JobQueue` | in-process executor (`jobs.local`) | SQS / Cloud Tasks / a Postgres table |
+| Entitlements | `watermark.core.features/Entitlements` | community, offline license, hosted plan | StoreKit, Play Billing |
+| Text modes | `watermark.core.modes/register!` (a registry) | continuous, scheduled; Pro: subliminal, random | — |
+
+Text modes are a registry rather than a multimethod because ClojureDart has
+no multimethods.
+
+## Dependency rules
+
+`test/watermark/architecture_test.clj` turns the rules into tests. They read
+`ns` forms only and run in milliseconds. Deliberately adding forbidden
+requires made them fail, as intended.
+
+| Rule | Protects |
+|---|---|
+| The kernel is `.cljc` only and requires nothing outside itself except `clojure.string`, plus malli in the two schema namespaces | Stages 3–4: the GUI runs the kernel in-process |
+| Pro schedules are portable too | Pro modes in the GUI apps |
+| `watermark.core.*` requires no engine, media or store implementation, no OS utilities, no server code | Stage 4+: new engines don't touch orchestration |
+| `src/` requires nothing from desktop, web, Pro, SaaS, TUI or http-kit | Stage 5: the backend reuses the host core as is |
+| `web/` talks to `watermark.core.api` only: no engines, stores, media, config, jobs internals, desktop, Pro or SaaS code | The same views serve the local UI and a hosted dashboard |
+| The backend doesn't use the desktop server; the TUI shares only home discovery | Licensing lanes (LGPL Lanterna) and lean images |
+
+## Core API ↔ REST
+
+| Core API (`watermark.core.api`) | Route |
+|---|---|
+| `health` | `GET /api/v1/health`: version, edition, engine status |
+| `diagnose` | `GET /api/v1/doctor`: the engine, its problems and warnings, where each binary came from |
+| `features` | `GET /api/v1/features` |
+| `settings-schema` | `GET /api/v1/schema/settings`: JSON Schema, with Pro fields tagged `x-tier: pro` |
+| `list-profiles` / `get-profile` | `GET /api/v1/profiles`, `GET /api/v1/profiles/:name` |
+| `create-profile!` | `POST /api/v1/profiles` `{name, settings}` |
+| `save-profile!` | `PUT /api/v1/profiles/:name` `{settings, overwrite?, if-rev?}` |
+| `rename-profile!` / `copy-profile!` | `POST /api/v1/profiles/:name/rename` and `/copy` with `{to}` |
+| `delete-profile!` | `DELETE /api/v1/profiles/:name` |
+| `resolve-settings` | `POST /api/v1/resolve`: effective settings, provenance, locked features |
+| `plan-batch` | `POST /api/v1/plan`: dry run returning each render spec and engine plan |
+| `submit-job!` / `list-jobs` / `cancel-job!` | `POST`/`GET /api/v1/jobs`, `DELETE /api/v1/jobs/:id` |
+| `subscribe-jobs!` / `unsubscribe-jobs!` | `GET /api/v1/events`: server-sent JSON events (desktop transport) |
+
+Every function takes `(sys ctx ...)`. `ctx` is `{:tenant :user}`: locally
+`{"local" "local"}`, hosted it comes from the token. `(:profiles-for sys)`
+returns the store for that caller. **Jobs are tenant-scoped.** `list-jobs`,
+`cancel-job!` and `subscribe-jobs!` only see the caller's tenant, so a shared
+hosted queue never shows one studio another's work.
+
+Error kinds map to HTTP statuses:
+
+| Kind | Status | Example |
+|---|---|---|
+| `:invalid` | 422 | settings fail the schema |
+| `:unsupported` | 422 | "The ffmpeg engine can't render this: layers text." |
+| `:not-found` | 404 | unknown profile |
+| `:conflict` | 409 | name collision, or a stale `if-rev` (`reason: "stale"`) |
+| `:feature-locked` / `:feature-unavailable` | 402 | a Pro mode without entitlement, or in the community binary |
+| `:unavailable` | 503 | no usable engine |
+
+On the wire, keywords keep their namespaces (`"text.mode/subliminal"`);
+plain data.json would drop them.
+
+## The built-in web UI (`web/`)
+
+The UI is server-rendered: Clojure renders HTML, and
+[Datastar](https://data-star.dev) (one vendored 13 KB script) morphs fragments
+into the page. There is no Node.js, npm or JavaScript build, and no JavaScript
+of our own.
+
+| Namespace | Role |
+|---|---|
+| `watermark.web.html` | Hiccup to HTML, escaping every text node and attribute value |
+| `watermark.web.sse` | Datastar's event format (`datastar-patch-elements`, `datastar-patch-signals`), written directly and checked against the 15 official SDK wire-format cases |
+| `watermark.web.views` | Pure functions from Core API results to hiccup: profiles, editor, effective settings with provenance, queue |
+| `watermark.web.handler` | `GET /` renders the page. Actions under `/ui/` (select, create, save, rename, duplicate, delete, preview, submit, cancel) answer with events. `GET /ui/stream` holds the queue open |
+
+**How a page behaves:**
+- **Every interaction is a request** under `/ui/`. The response carries
+  events that patch elements by id and update signals. For example, the
+  profile's revision (`rev`) comes back after each save and goes with the next
+  one, so a stale save is refused with a 409.
+- **The queue is one stream per visible tab.** Every (re)connect sends the
+  whole queue. After that, row updates are coalesced to at most ten a second,
+  whatever the engine emits. Datastar closes GET streams in hidden tabs and
+  reopens them, and a reopen simply re-renders.
+- **Live preview.** Editing the settings JSON resolves the unsaved text
+  (debounced) and shows each value's source. Invalid JSON or schema errors
+  appear as a message; the table keeps its last good state.
+
+**Security specific to the UI** (tests: `web_ui_test`, `views_test`, `html_test`):
+- **Pages carry data,** so `/` and `/ui/*` need the token, like `/api/*`.
+- **`/ui/*` also requires the `Datastar-Request` header,** which cross-site
+  forms can't set.
+- **A fresh CSP nonce per page.** Datastar's CSP mode compiles expressions into
+  nonce-carrying scripts, so the policy needs neither `unsafe-eval` nor
+  `unsafe-inline`.
+- **Injected markup would run despite the CSP,** because Datastar evaluates
+  `data-*` attributes and runs `<script>` tags inside patched fragments. So all
+  markup goes through the escaping renderer. User text never appears inside a
+  `data-*` expression: it travels as escaped element text, or as JSON signals
+  that the browser parses with `JSON.parse`. URLs inside expressions contain
+  only percent-encoded slugs and server-generated ids.
+
+**Hosting.** The same handler can serve a hosted dashboard behind its own
+authentication (`(handler sys ctx)`). It needs a long-running container,
+because every open tab holds a stream. See [ROADMAP.md](ROADMAP.md).
+
+## The job pipeline
+
+`watermark.core.jobs` talks only to ports. For each input:
+
+1. `media/open-input` checks the file and fingerprints it (for keyed seeds).
+2. `engine/probe` returns media facts. The input must be a video.
+3. `engine/probe` on the logo returns its size.
+4. `render/build` produces the render spec: every layer resolved to pixels and
+   frame indices.
+5. `media/open-output` reserves a temporary `.part` path.
+6. `engine/prepare` checks capabilities, then compiles an engine plan.
+7. `engine/execute!` renders, reporting progress. On `:done`,
+   `media/commit!` publishes the output atomically; otherwise
+   `media/discard!` removes it.
+
+A failure in one file is recorded for that file and the batch continues. A
+dry run (`plan-batch`) runs steps 1–6 with `:dry-run? true`: nothing is
+created or written, and `latest` isn't touched.
+
+## Configuration (`watermark.config`)
+
+**Home directory**, first match wins:
+1. `--home`
+2. `WMARK_HOME`
+3. `./wmark-data`, if it exists (portable, unzip-and-run installs)
+4. the OS default: `%APPDATA%\wmark`, `~/Library/Application Support/wmark`,
+   or `$XDG_CONFIG_HOME/wmark`
+
+**Profiles** have a display name and a slug:
+
+- `"16:9 Video Profile"` is stored under the slug `16-9-video-profile`.
+  Colons are illegal on Windows, and names are case-folded because NTFS and
+  APFS are case-insensitive. Windows device names are escaped (`CON` becomes
+  `_con`). Letters in any script survive.
+- Two different names that map to the same slug are a **conflict**, never a
+  silent overwrite. Addressing a profile by its slug never renames it.
+- On disk, a profile is a human-editable EDN file, `<home>/profiles/<slug>.edn`.
+
+**`latest`** is reserved and auto-saved by every real run, before encoding
+starts, so a crashed batch can be re-run with identical settings. Dry runs
+don't touch it. Inputs and seeds are never persisted into it.
+
+**Resolution** runs from lowest to highest precedence:
+`built-in defaults < base profile < explicit overrides`.
+
+- **Base profile:** the named profile, or `latest` when none is named, or
+  nothing with `--clean`.
+- **Missing parameters** (nil) fall through to the layer below.
+- **Merging:** maps merge deeply; vectors, such as text layers, replace
+  wholesale.
+- **Provenance:** every field records which layer won it, so UIs can show
+  "from last run".
+- **An unknown explicit profile is an error**, never a silent fallback to
+  `latest`.
+- **A damaged `latest` produces a warning and is skipped**, so it can't block a run.
+
+### Storage and concurrency
+
+`watermark.config` implements all of the rules above on the `ProfileStore`
+protocol and nothing else. The same functions therefore run over files, an
+atom, or PostgreSQL rows. `test/watermark/store_contract.clj` is the executable
+definition of the behaviour; every store must pass it.
+
+- **Revisions.** Every profile carries `:profile/rev`. Writes are
+  compare-and-set: create requires absence, replace requires the revision that
+  was read, and `latest` is last-writer-wins.
+- **Stale edits fail cleanly.** The web UI sends `if-rev`. If someone saved
+  the profile in the meantime, the save returns 409 with `reason: "stale"`
+  instead of overwriting their change. In the contract test, eight racing
+  editors produce exactly one winner.
+- **Units of work.** `-transact` runs a multi-step operation atomically. The
+  PostgreSQL store uses a database transaction. The file and memory stores
+  serialise operations and order their writes to fail safe: rename writes the
+  new name before deleting the old, so a crash leaves a copy, never a loss.
+- **File writes** go to a temp file, then fsync, then an atomic rename.
+  Retries cover the brief file locks that Windows antivirus and sync clients take.
+- **PostgreSQL** (the hosted backend, in the commercial repository): one row
+  per tenant, owner and slug; row-level security keyed on a transaction-local
+  tenant setting; `latest` per user, named profiles shared by the tenant. It
+  passes the same store contract (`testkit/`).
+
+## Security of the local server
+
+A server on 127.0.0.1 is reachable by any web page the user visits and by
+DNS-rebinding attacks. The defences, all covered by the HTTP test:
+
+- **Per-launch token.** A random 256-bit token guards `/api/*` and the
+  built-in UI (`/`, `/ui/*`). The CLI and TUI send `Authorization: Bearer`.
+  The browser gets the token once via `/?token=`: the server sets an
+  `HttpOnly; SameSite=Strict` cookie and redirects, which removes the token
+  from the address bar. The cookie also authenticates the UI's streams.
+- **Host allow-list** (loopback names plus the bound port) against DNS rebinding.
+- **Origin check** on state-changing requests, against CSRF.
+- **Browser hardening:** no CORS headers at all; a Content Security Policy
+  with `frame-ancestors 'none'` (per-page nonce for the UI); path-traversal
+  guards for static files.
+- **Runtime file.** `<home>/runtime/server.edn` holds the URL and token,
+  owner-only (0600 on POSIX), so the TUI can find the server. A shutdown hook
+  removes it.
+
+**Sidecar mode for GUI shells.** `wmark serve --announce json --parent-pid <pid>`
+prints one JSON line (`url`, `token`, `version`, `edition`, `pid`) for the
+process that launched it, and exits when that process exits, so a crashed GUI
+never leaves an orphaned server.
+
+## Open-core boundary
+
+Pro features are protected twice:
+
+1. **Code absence.** The community binary is built from this repository alone
+   (verified: zero Pro classes in the AOT output). Its mode registry simply
+   has no `:subliminal` or `:random` entry, so such a layer fails with
+   `:feature-unavailable` ("part of wmark Pro").
+2. **Entitlement.** The Pro binary registers its modes when
+   `watermark.pro.modes` loads (at image build time under native-image). The
+   core gate (`features/check!`) runs at planning time, and Pro code re-checks
+   with `features/assert!`.
+
+The hosted backend is built with Pro modes and gates them per request, from
+the caller's plan.
+
+The Pro and hosted code lives in a separate, private repository that depends
+on this one at a pinned commit. The architecture test keeps the direction one
+way: no namespace here is named `watermark.pro.*` or `watermark.saas.*`, none
+requires one, and every source file carries `SPDX-License-Identifier:
+EPL-2.0`.
+
+## GraalVM native-image rules
+
+- **JDK 25 / GraalVM 25 baseline.** The native engine binding uses the Foreign
+  Function & Memory API (final since JDK 22). Native Image 25 supports it when
+  the call shapes are registered: the six downcall shapes, one upcall shape and
+  the reflective `IFn.invoke` it targets are in
+  `desktop/resources/META-INF/native-image/.../reachability-metadata.json`.
+  The build passes `--enable-native-access=ALL-UNNAMED`.
+- **Build-time initialisation.** Clojure namespaces are initialised at image
+  build time (graal-build-time; v1 needs the explicit `--features=` flag). So
+  no top-level def may read the environment, the clock, or an RNG, or start a
+  thread; those would be frozen into the binary. Executors, tokens, secrets,
+  the home directory, engine discovery and the job queue are all created in
+  functions at run time.
+- **No reflection.** Every namespace sets `*warn-on-reflection*`; application
+  code has zero warnings.
+- **Resources** are declared in the same metadata file: `public/**` (the web
+  UI's `datastar.js`, its license and `app.css`) and `fonts/**`, plus `wmark/**`
+  for Pro.
+- **Build flags** (from the build matrix in `deps.edn`):
+  - `-march=compatibility`, because the default targets x86-64-v3 and would
+    crash on older laptops;
+  - `--install-exit-handlers`, so shutdown hooks run on Ctrl+C;
+  - `--no-fallback`.
+- **No cross-compilation.** WSL2 produces a Linux ELF. The Windows `.exe`
+  comes from a Windows machine with MSVC, or the `windows-latest` CI runner.
+  Keep the repo on the WSL ext4 filesystem, not a `/mnt` or 9p mount;
+  builds there are dramatically slower.
+- **GraalVM status.** Oracle detached GraalVM from the Java SE release train
+  in September 2025; GraalVM Community 25 continues. The hedge is that
+  nothing here depends on native-image: the same uberjar runs under a
+  `jlink`/`jpackage` runtime if needed.
+
+## What's tested
+
+89 tests with 14,424 assertions in 27 namespaces, all passing, with zero
+reflection warnings. The environment for the full run: JDK 25, FFmpeg 6.1.1
+(plus a 7.0.2 build without `drawtext`), PostgreSQL 16 and a C compiler. A
+browser smoke test (`test/e2e/ui_smoke.py`, 20 checks in Chromium) covers the
+web UI end to end.
+
+| Area | What the tests cover |
+|---|---|
+| Kernel | SplitMix64 draw-for-draw against `java.util.SplittableRandom`; golden vectors for the PRNG, seeds and a full render spec; settings layering and provenance; half-open scheduled windows; the flip projection; capability negotiation |
+| Architecture | The dependency rules above |
+| Profiles | The store contract on files, memory and PostgreSQL: slugs, aliases, `latest`, fallback, revisions, 8 racing editors, 40 concurrent auto-saves, damaged files, pre-revision files |
+| Engine lookup | Search order (`./`, then `./bin/`, then the install folder), the hardened order, explicit files and folders, unusable files reported in the diagnostic trail, ffprobe taken from ffmpeg's folder (and a warning when it isn't) |
+| FFmpeg compile | Escaping, German-locale numbers, argv per FFmpeg version, encoders and quality tiers, segment offsets, text never inside the graph, every emitted filter covered by the capability check |
+| Conformance | Real renders measured against the reference semantics, for clips starting at 0 s and at 0.5 s: logo within 1.35 px on every frame, text on exactly the scheduled frames |
+| Native engine | A C mock compiled by the test, driven through FFM and the unchanged job pipeline: handshake, probe errors, upcall progress from a native thread, cancel, capability refusal |
+| Jobs | A fake engine behind the protocol: publish on success, per-input failures, existing outputs never overwritten, capability gaps reported before rendering, cancel mid-render |
+| HTTP | A live server: 401, 421, cookie bootstrap, 403 for a foreign Origin, CRUD, stale `if-rev`, the doctor route, the built-in UI's protection, an external UI with SPA fallback, traversal |
+| Web UI | The official Datastar SDK wire-format cases; escaping of hostile names and texts; only numbers in `data-signals`; the page's CSP nonce; token and `Datastar-Request` checks; editing with revisions, live preview and validation messages; a render followed over the queue stream to "done" and the activity log |
+| Core API | Jobs are tenant-scoped: list, cancel and subscribe |
+| Sidecar | A server started with `--parent-pid` exits when its parent ends, including a parent that was gone before the watch began |
+| Commercial editions | Tested in their own repository against this one, with the same harnesses (`testkit/`) |

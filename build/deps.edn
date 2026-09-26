@@ -1,0 +1,10 @@
+;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
+;; SPDX-License-Identifier: EPL-2.0
+;;
+;; wmark.build, the interpreter of :wmark/build-matrix, as a tool library. It
+;; reads the deps.edn of the directory it runs in, so any repository with a
+;; build matrix can use it:
+;;   :build {:deps {wmark/build {:local/root "build"}} :ns-default wmark.build}               ; here
+;;   :build {:deps {wmark/build {:git/url ... :git/sha ... :deps/root "build"}} :ns-default wmark.build}
+{:paths ["src"]
+ :deps  {io.github.clojure/tools.build {:git/tag "v0.10.14" :git/sha "1176afd"}}}
