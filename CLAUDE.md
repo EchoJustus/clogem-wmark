@@ -272,7 +272,11 @@ bb lint          # build matrix and component deps.edn files vs repository
 bb e2e           # Chromium smoke test of the web UI (ffmpeg + Python Playwright)
 bb dev           # engine from source, opens the web UI     bb dev doctor | bb dev run ...
 bb tui           # terminal client
-bb native        # GraalVM binary for this OS (GRAALVM_HOME) bb bundle :bundle :desktop-server :ffmpeg-dir DIR
+bb native        # GraalVM binary for this OS (GRAALVM_HOME)  bb native :target :tui
+bb ffmpeg        # the pinned FFmpeg for this OS -> target/ffmpeg/<platform> (SHA-256 verified)
+bb bundle :bundle :desktop-server :ffmpeg-dir target/ffmpeg/<platform>
+bb smoke --bin target/bin --ffmpeg target/ffmpeg/<platform>/bin [--mock LIB] [--bundled true]
+bb sdk :name abi-v1   # engine SDK archive (header, mock, schemas, golden vectors)
 clojure -M:dev:test -n watermark.web.sse-test               # one namespace
 ```
 
@@ -291,7 +295,7 @@ clojure -M:dev:test -n watermark.web.sse-test               # one namespace
 | Components, ports, dependency rules, security, tests | `docs/ARCHITECTURE.md` |
 | Engine contract, render spec, C ABI, adding an engine | `docs/ENGINE.md`, `native/README.md` |
 | FFmpeg lookup, filtergraph, flip, encoding, verification | `docs/FFMPEG_STRATEGY.md` |
-| Stages, decisions, assessments | `docs/ROADMAP.md` |
+| Stages, decisions, assessments | `docs/ROADMAP.md`, `docs/adr/` |
 | Contributing, DCO, license headers | `CONTRIBUTING.md` |
 
 ## 8. Next work, in order (Phase 3)

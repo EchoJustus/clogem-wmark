@@ -28,7 +28,7 @@ tool (`build/`).
 | JDK | 25 (e.g. Temurin 25) | everything | `java -version` |
 | Babashka | recent | the task runner (`bb ...`); its built-in `bb clojure` replaces the Clojure CLI | `bb --version` |
 | Clojure CLI | 1.12+ (optional with bb) | `clojure -M...` / `-T:build` directly | `clojure --version` |
-| FFmpeg | full build, 5.1+ (6.1.1 and 7.0.2 tested) with `drawtext`, `libx264` | rendering; the conformance tests | `ffmpeg -hide_banner -filters \| grep drawtext` |
+| FFmpeg | a GPL build, 5.1+ (6.1.1, 7.0.2 and 9.0.1 tested) with `perspective`, `drawtext`, `libx264` | rendering; the conformance tests | `ffmpeg -hide_banner -filters \| grep -E 'perspective\|drawtext'` |
 | GraalVM Community | 25 (for JDK 25), `GRAALVM_HOME` set | native binaries | `$GRAALVM_HOME/bin/native-image --version` |
 | C toolchain for native-image | Linux: `gcc`, zlib headers; macOS: Xcode Command Line Tools; Windows: Visual Studio 2022 Build Tools ("Desktop development with C++") | native binaries | |
 | C compiler (`cc`) | any | native-engine tests (optional) | `cc --version` |
@@ -38,8 +38,10 @@ tool (`build/`).
 the vendored `web/resources/public/datastar.js`. Playwright is test tooling;
 it brings its own driver.
 
-**FFmpeg.** Use a full build. Minimal builds often lack `drawtext`, and then
-text layers are refused.
+**FFmpeg.** Use a full **GPL** build. LGPL builds lack `perspective`, which the
+flip needs (FFmpeg builds it only with `--enable-gpl`), and minimal builds
+often lack `drawtext`, without which text layers are refused. Release
+downloads carry a pinned build (`bb ffmpeg`, below).
 - Ubuntu 24.04: `apt install ffmpeg` (6.1.1, has everything; verified).
 - Windows: a "full" GPL build, e.g. from gyan.dev or BtbN. Put `ffmpeg.exe`
   and `ffprobe.exe` in `bin\` next to `wmark.exe`, or on PATH.
@@ -122,7 +124,8 @@ bb lint        # build matrix vs repository
 bb e2e         # browser smoke test of the web UI (ffmpeg + Python Playwright)
 ```
 
-`bb test` runs 73 tests (10,554 assertions) in 22 namespaces (**verified**).
+`bb test` runs 84 tests (10,587 assertions) in 25 namespaces (**verified**,
+2026-09-27). CI fails on any `Reflection warning` in its output.
 Two groups need extra tools and **skip themselves, saying so**, when those
 tools are missing:
 
@@ -174,34 +177,86 @@ target/bin/wmark doctor
   - `--no-fallback`
   - `-march=compatibility`
   - graal-build-time's `--features`
-  - `--install-exit-handlers`
   - `--enable-native-access=ALL-UNNAMED`
-- Metadata (resources `public/**`, `fonts/**`, `wmark/**`; the FFM call shapes)
-  comes from `desktop/resources/META-INF/native-image/clogem/wmark/reachability-metadata.json`.
+
+  GraalVM 25 installs exit handlers in executables by default, so
+  `--install-exit-handlers` is gone (it warned as deprecated).
+- **The build locale matters.** An image keeps the path and argument charset
+  of the machine that built it (`sun.jnu.encoding`,
+  [oracle/graal#10237](https://github.com/oracle/graal/issues/10237)). A Linux
+  build in a POSIX locale made a binary that couldn't open `vidéo/clip é.mp4`,
+  whatever the user's locale. `native` therefore runs native-image in
+  `C.UTF-8` on Linux; macOS always uses UTF-8; CI's smoke test checks Windows.
+- Metadata (resources `public/**`, `fonts/**`; the FFM call shapes) comes from
+  `desktop/resources/META-INF/native-image/clogem/wmark/reachability-metadata.json`.
+  The tracing agent, run over the browser suite, a real render, the profile
+  commands and the native mock engine, recorded exactly the six downcall and
+  one upcall shapes listed there, and no resource or reflection the binary
+  lacks (Clojure's namespaces are initialised at build time).
 - **No cross-compilation.** Build the Linux binary on Linux (WSL2 is fine),
   the Mac binary on a Mac, and the `.exe` on Windows. On Windows, run from the
-  "x64 Native Tools Command Prompt for VS 2022". CI does all three:
-  `.github/workflows/ci.yml` runs on tags `v*` or by hand.
-- **After a native build, click through the UI once.** Also run a render and
-  `wmark --engine native --native-lib ... doctor` against the mock, to catch
-  missing reachability metadata. If something is missing, rerun the uberjar
-  under the tracing agent to collect it:
-  `java -agentlib:native-image-agent=config-output-dir=... -jar target/wmark.jar`.
+  "x64 Native Tools Command Prompt for VS 2022".
+- **Smoke-test every build:**
+  ```bash
+  bb ffmpeg                    # the pinned FFmpeg for this OS -> target/ffmpeg/<platform>/
+  bb mock-engine               # optional: the C mock, for the native-engine checks
+  bb smoke --bin target/bin --ffmpeg target/ffmpeg/linux-x64/bin --mock target/libwmark_engine.so
+  python3 test/e2e/ui_smoke.py target/bin/wmark --home /tmp/w serve --announce json
+  ```
+  `test/smoke/native.clj` checks `--help`, `version`, `doctor`, a real render
+  of a clip in a non-ASCII folder (every frame kept), the API behind the
+  token, the sign-in redirect, the UI page and its assets, a `wmark-tui`
+  session, and a render through the C ABI. CI's `native` job runs it on
+  Linux x64, Windows x64, macOS arm64 and macOS x64 (by hand, or on a pull
+  request labelled `native`).
+
+### FFmpeg for the download
+```bash
+bb ffmpeg                       # this OS;  bb ffmpeg :platform :windows-x64  for another
+```
+The builds are pinned in `deps.edn` (`:wmark/build-matrix` → `:ffmpeg`): exact
+archives by URL and SHA-256, never "latest"
+([ADR 0001](adr/0001-ffmpeg-in-release-bundles.md)). A changed or missing file
+fails the task. It writes `target/ffmpeg/<platform>/bin/{ffmpeg,ffprobe}` and
+`licenses/{COPYING.GPLv3,SOURCE.txt}`; downloads are cached in
+`target/downloads/`. To move a pin, change the URL and SHA-256 together, run
+`bb lint` (it rejects unpinned or plain-http archives) and the smoke test.
 
 ### The download (Stage 1)
 ```bash
-bb native && bb native :target :tui
-bb bundle :bundle :desktop-server :ffmpeg-dir /path/to/ffmpeg/bin
+bb native && bb native :target :tui && bb ffmpeg
+bb bundle :bundle :desktop-server :ffmpeg-dir target/ffmpeg/linux-x64
+bb smoke --bin dist/desktop-server --ffmpeg dist/desktop-server/bin --bundled true
 ```
 This writes `dist/desktop-server/` with:
 - `wmark(.exe)` and `wmark-tui(.exe)`;
 - `bin/ffmpeg(.exe)` and `bin/ffprobe(.exe)`;
-- `licenses/` (this repository's `LICENSE` and `NOTICE`), `SHA256SUMS` and
-  `README.txt`.
+- `licenses/`: this repository's `LICENSE` and `NOTICE`,
+  `THIRD-PARTY-wmark.txt` and `THIRD-PARTY-wmark-tui.txt` (every library in
+  the binary with its declared license and the license files it ships,
+  generated from the resolved dependencies), and `ffmpeg/COPYING.GPLv3` and
+  `ffmpeg/SOURCE.txt`;
+- `SHA256SUMS` and `README.txt`.
 
-Before shipping, add FFmpeg's license and source offer (GPL builds), sign the
-binaries (Authenticode on Windows; Developer ID and notarization on macOS),
-and zip the folder.
+`--bundled true` makes the smoke test find FFmpeg the way a download does:
+in `bin/` next to wmark, under the hardened search order.
+
+### Releases
+Push a tag `vX.Y.Z` (or `vX.Y.Z-rc.N`) on `main`; `.github/workflows/release.yml`
+does the rest and stops at a **draft** release:
+1. builds and smoke-tests the bundle on Linux x64, Windows x64, macOS arm64 and
+   macOS x64 (and runs the browser suite against the Linux binary);
+2. signs in the protected `release` environment, once the owner has set it up:
+   Authenticode ([ADR 0002](adr/0002-windows-code-signing.md)); Developer ID and
+   notarization for every Mach-O ([ADR 0003](adr/0003-macos-signing-and-library-validation.md));
+3. publishes `wmark-<version>-<platform>.zip|tar.gz`, `SHA256SUMS`, a keyless
+   Sigstore signature of the checksums and build-provenance attestations
+   ([ADR 0004](adr/0004-release-supply-chain.md)).
+
+The draft's notes say which bundles are signed and how to verify a download.
+Tags `abi-vN` and `kernel-v*` publish the **engine SDK** (`bb sdk :name abi-v1`
+locally): the header, the mock, the JSON Schemas, the golden vectors, README and
+ENGINE.md. `abi-vN` must match `WMARK_ENGINE_ABI_VERSION`.
 
 ## 6. Troubleshooting
 
@@ -216,26 +271,34 @@ and zip the folder.
 | Tests skipped | See the table in section 4 |
 | Native build fails on Windows | Run from the x64 Native Tools prompt; check `GRAALVM_HOME` |
 | Missing class or resource only in the native binary | Collect metadata with the tracing agent, add it to reachability-metadata.json |
+| The native UI loads without styles or stays inert (404 for `datastar.js`) | The uberjar missed the components' resources; fixed in `wmark.build/project-dirs`. Rebuild |
+| A native binary can't open `vidéo/clip é.mp4` or save "Café" | It was built in a POSIX locale before `native` pinned `C.UTF-8`; rebuild |
+| `bb lint` in a cloud session: "Cannot download Clojure tools ... PKIX" | bb's built-in `clojure` uses its own trust store, which a TLS-inspecting proxy breaks. `scripts/cloud-setup.sh` copies the CLI's tools jar into `~/.deps.clj/<version>/ClojureTools/`; do that by hand if the setup script didn't run |
+| HTTP 429 from Maven Central while resolving | Rate limiting on a shared egress; run `clojure -P -M:dev:test` once to fill `~/.m2`, then retry |
 
 ## What hasn't been run
 
-The sandbox that produced this repository could reach GitHub but not Maven
-Central or Clojars, and had no GraalVM, Windows or macOS. So these steps have
-not been run:
-- tools.build's `uber` and `native`;
-- a native-image build;
-- the Windows and macOS binaries;
-- the OS encoders.
+**Verified on 2026-09-27** (a Linux x64 cloud session: OpenJDK 25.0.4.1,
+GraalVM CE 25.0.2, FFmpeg 6.1.1 and the pinned 9.0.1, Chromium 141):
+- native builds of the engine (about 2 minutes) and the TUI;
+- the smoke test (17 checks) on both binaries, including the C mock through FFM,
+  and on the assembled Linux bundle with its bundled FFmpeg (15 checks);
+- the browser suite (20 checks) against the native binary and on the JVM;
+- the tracing agent over those flows (see "Native binaries");
+- `bb ffmpeg` for all four platforms (downloads and checksums; only the Linux
+  binaries were run);
+- the FFmpeg conformance harness with FFmpeg 9.0.1.
 
-What was run:
-- The real Clojure CLI (1.12.2) resolved `deps.edn` against a local stand-in
-  Maven repository; `bb test`, `bb lint` and `bb e2e` (20 browser checks) ran
-  through Babashka in this repository as split out, and `-T:build lint` and
-  `matrix` ran with the `build/` library.
-- Each target was AOT-compiled with a plain `compile` and its classes were
-  counted: the community engine has 2,599 classes (web 129, no commercial
-  classes), the TUI 281 (no web or server classes).
-- Before the split, the release bundle (with PATH emptied) ran on JDK 25 with
-  FFmpeg 6.1.1.
+**Verified in CI before this change:** the native builds compile on Windows,
+macOS and Linux (their old smoke step only ran `--help`).
 
-The first CI run on GitHub is the real check for the rest.
+**Not run yet:**
+- the new smoke test and bundle on Windows and macOS (CI's `native` job, first
+  run pending);
+- the release and SDK workflows (they run on tags);
+- signing and notarization: the certificates don't exist yet (ADRs 0002 and
+  0003);
+- Windows paths outside the system code page, e.g. Chinese folder names on an
+  English Windows: the smoke test's non-ASCII render covers it on the first
+  Windows run;
+- the OS encoders (Media Foundation, VideoToolbox) on real hardware.
