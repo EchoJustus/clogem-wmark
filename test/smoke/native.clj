@@ -8,6 +8,7 @@
     bb test/smoke/native.clj --bin dist/desktop-server --ffmpeg dist/desktop-server/bin --bundled true
 
   It checks what a user's first minutes need: --help, doctor, a real render
+  (render spec v1, and v2 drawn by wmark itself)
   of a clip in a non-ASCII folder, the web UI's assets and the API behind the
   token, a wmark-tui session, and (with --mock) a render through the C ABI.
   Exits 1 if any check fails."
@@ -85,6 +86,17 @@
       (check "render: logo flip and text, non-ASCII paths" (and (zero? exit) (fs/exists? result)) (str out err))
       (when (fs/exists? result)
         (check "render: every frame kept" (= 100 (frames ffprobe result)) (str (frames ffprobe result) " frames"))))
+
+    ;; render spec v2: the kernel's TrueType reader, text rasterizer and warp run
+    ;; inside the binary, the bundled font included; FFmpeg decodes the logo
+    (let [out2 (str (fs/path work "out v2"))
+          {:keys [exit out err]} (apply run wmark (concat base ["--render-spec" "2" "run" "--logo" logo
+                                                                 "--text" "(c) Studio — ©" "-o" out2 clip]))
+          result (str (fs/path out2 "clip é_wm.mp4"))]
+      (check "render spec v2: wmark draws the flip and the text, FFmpeg composites"
+             (and (zero? exit) (fs/exists? result)) (str out err))
+      (when (fs/exists? result)
+        (check "render spec v2: every frame kept" (= 100 (frames ffprobe result)) (str (frames ffprobe result) " frames"))))
 
     (let [srv   (apply p/process {:err :string} wmark (concat base ["serve" "--announce" "json"]))
           line  (.readLine ^java.io.BufferedReader (io/reader (:out srv)))
