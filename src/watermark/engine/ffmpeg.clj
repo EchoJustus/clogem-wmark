@@ -174,6 +174,29 @@
         (.start))
       handle)))
 
+(defn- decode-still
+  "The first frame of `source` as straight RGBA8 at its probed size, from one
+  `ffmpeg ... -f rawvideo -pix_fmt rgba -` (PNG decoding is lossless, so the
+  pixels don't depend on the FFmpeg version)."
+  [eng source]
+  (let [{:keys [width height]} (engine/probe eng source)
+        ffmpeg (or (get-in (engine/info eng) [:binaries :ffmpeg :path])
+                   (throw (ex-info "FFmpeg not found." {:wmark/error :unavailable})))
+        ^java.util.List argv [ffmpeg "-v" "error" "-nostdin" "-i" (str source)
+                              "-frames:v" "1" "-f" "rawvideo" "-pix_fmt" "rgba" "-"]
+        p   (.start (ProcessBuilder. argv))
+        ^bytes px (with-open [in (.getInputStream p)] (.readAllBytes in))
+        err (slurp (.getErrorStream p))]
+    (when-not (and (zero? (.waitFor p)) (= (alength px) (* 4 (long width) (long height))))
+      (throw (ex-info (str "FFmpeg couldn't decode the image " source
+                           (when-not (str/blank? err) (str ": " (str/trim err))))
+                      {:wmark/error :invalid :path (str source)})))
+    {:width width :height height :px px}))
+
+(extend-type FFmpegProcessor
+  engine/StillDecoder
+  (decode-still [eng source] (decode-still eng source)))
+
 (defn ffmpeg-engine
   "FFmpeg engine.
     :ffmpeg    explicit ffmpeg path or directory (--ffmpeg / WMARK_FFMPEG)

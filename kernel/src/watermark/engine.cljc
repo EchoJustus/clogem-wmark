@@ -65,6 +65,12 @@
   (cancel! [handle])
   (outcome [handle]))
 
+(defprotocol StillDecoder
+  (decode-still [engine source]
+    "A still image (the logo) decoded by the engine, as {:width :height :px}:
+    straight RGBA8 bytes, row-major. Hosts draw render spec v2's bitmaps
+    from it, so image formats stay the engine's business (docs/adr/0006)."))
+
 ;; ---------------------------------------------------------------------------
 ;; Capability negotiation
 

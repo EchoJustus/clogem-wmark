@@ -13,6 +13,7 @@
             [watermark.core.schema :as schema]
             [watermark.engine :as engine]
             [watermark.raster :as raster]
+            [watermark.raster.local :as raster-local]
             [watermark.render :as render])
   (:import (java.io DataInputStream File)
            (java.nio.file Files)
@@ -59,7 +60,8 @@
 (defn render!
   "Plan and render `input` with `settings` through the engine protocol only.
   Returns {:spec :output :outcome :media :plan}. With :spec-version 2 the host
-  rasterizes (watermark.raster) and the engine gets the v2 spec, returned as
+  rasterizes (watermark.raster, the local adapter) and the engine, which
+  also decodes the logo, gets the v2 spec, returned as
   :v2; :spec stays the v1 spec, whose reference geometry the frames are
   measured against."
   [eng settings input {:keys [entitlements seed-fn out-dir spec-version]}]
@@ -71,7 +73,8 @@
                               :seed-fn      (or seed-fn (constantly 42))
                               :entitlements (or entitlements (features/community))
                               :font         (system-font)})
-        v2     (when (= 2 spec-version) (raster/realize spec (io/file out-dir "bitmaps")))
+        v2     (when (= 2 spec-version)
+                 (raster/realize! (raster-local/local-rasterizer {:work-root out-dir}) eng spec))
         out    (str (io/file out-dir (str (.getName (io/file input)) ".out.mp4")))
         plan   (engine/prepare eng {:spec (or v2 spec) :source input :media media
                                     :output {:path out :container "mp4"}

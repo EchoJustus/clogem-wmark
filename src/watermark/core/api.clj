@@ -108,6 +108,7 @@
   (let [r (prepare! sys ctx req)]
     (assoc r :plans (mapv (fn [input]
                             (let [p (jobs/plan-input sys (assoc ctx :dry-run? true) (:settings r) input)]
+                              (jobs/release! sys p)          ; a dry run keeps no bitmaps
                               {:input  (:input p)
                                :output (get-in p [:output :final])
                                :spec   (:spec p)
