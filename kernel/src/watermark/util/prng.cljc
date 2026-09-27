@@ -16,8 +16,6 @@
   and Dart VM/AOT (Flutter) qualify; JavaScript numbers do not, so this
   namespace is not for ClojureScript.")
 
-#?(:clj (set! *warn-on-reflection* true))
-
 ;; 0x9e3779b97f4a7c15, 0xbf58476d1ce4e5b9, 0x94d049bb133111eb as signed longs
 (def ^:private golden-gamma -7046029254386353131)
 (def ^:private mix-a -4658895280553007687)

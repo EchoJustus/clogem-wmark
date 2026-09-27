@@ -15,8 +15,6 @@
        deployments share this protocol, so the gate code is identical."
   (:require [clojure.string :as str]))
 
-#?(:clj (set! *warn-on-reflection* true))
-
 (def catalog
   "Every gateable capability. Keep ids stable: they appear in license payloads."
   {:logo/static          {:tier :community :title "Static logo"}

@@ -21,8 +21,6 @@
   (:import (java.net URLDecoder)
            (java.nio.charset StandardCharsets)))
 
-(set! *warn-on-reflection* true)
-
 ;; ---------------------------------------------------------------------------
 ;; JSON
 

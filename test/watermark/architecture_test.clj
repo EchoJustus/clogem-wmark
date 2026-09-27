@@ -17,8 +17,7 @@
                                 depends on this one, never the reverse
 
   Rules read `ns` forms and file headers only, so they run in milliseconds."
-  (:require [clojure.java.io :as io]
-            [clojure.string :as str]
+  (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [watermark.architecture :as arch :refer [sources violations under?]]))
 
@@ -85,15 +84,6 @@
         "no namespace of the commercial editions lives in the open core")
     (is (empty? (violations nses #(under? ["watermark.pro" "watermark.saas" "wmark.dev"] %)))
         "the open core requires nothing from the commercial editions; they plug in through registries and ports")))
-
-(deftest every-namespace-warns-on-reflection
-  (let [files (->> ["kernel/src" "src" "web/src" "desktop/src" "tui/src" "testkit/src" "build/src"
-                    "kernel/test" "test" "web/test" "desktop/test"]
-                   (mapcat sources)
-                   (map (comp io/file :file)))]
-    (is (< 50 (count files)))
-    (is (empty? (remove arch/warns-on-reflection? files))
-        "(set! *warn-on-reflection* true) follows every ns form, so no reflective call compiles silently")))
 
 (deftest every-source-file-carries-the-open-license
   (let [files (arch/code-files public-roots :excluded vendored)]

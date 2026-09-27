@@ -16,8 +16,6 @@
            (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)))
 
-(set! *warn-on-reflection* true)
-
 (def ^:dynamic *srv* nil)
 
 (use-fixtures :once

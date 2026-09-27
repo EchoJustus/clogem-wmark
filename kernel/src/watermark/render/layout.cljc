@@ -9,8 +9,6 @@
   spec have nothing left to disagree about except pixel rendering."
   (:require [watermark.util.num :as num]))
 
-#?(:clj (set! *warn-on-reflection* true))
-
 (def anchor-fractions
   "Anchor -> [fx fy]: where a box sits in the free space around it
   (0 = left/top edge, 1 = right/bottom edge)."

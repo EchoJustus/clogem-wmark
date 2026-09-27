@@ -8,8 +8,6 @@
   (:require [clojure.test :refer [is testing]]
             [watermark.config :as config]))
 
-(set! *warn-on-reflection* true)
-
 (defn- kind [f]
   (try (f) nil (catch clojure.lang.ExceptionInfo e (:wmark/error (ex-data e)))))
 

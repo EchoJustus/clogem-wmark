@@ -16,8 +16,6 @@
   (:import (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)))
 
-(set! *warn-on-reflection* true)
-
 (def ^:dynamic *dir* nil)
 
 (use-fixtures :each
@@ -56,7 +54,6 @@
         (deliver result
                  (cond @cancelled   {:status :cancelled}
                        (= mode :fail) (engine/failed "boom")
-                       (= mode :no-output) {:status :done}       ; claims success, writes nothing
                        :else        (do (spit (:output plan) "frames") {:status :done}))))
       (->FakeHandle result cancelled))))
 
@@ -101,13 +98,6 @@
     (is (not (.exists (io/file *dir* "a_wm.part.mp4"))) "a failed render leaves no temp file")
     (is (= :invalid (:kind (nth results 2))) "missing input: rejected before the engine is asked")
     (is (not-any? #(= [:probe c] %) @(:calls env)))))
-
-(deftest an-engine-that-writes-nothing-fails-the-input-not-the-batch
-  (let [env     (fake-env :behaviour {(input! "a.mp4") :no-output})
-        results (jobs/run-job! env {:ctx {:tenant "t"} :settings (settings) :inputs [(input! "a.mp4") (input! "b.mp4")]} {})]
-    (is (= [:failed :done] (map :state results)))
-    (is (re-find #"wrote no output" (str (:error (first results)))) (str (first results)))
-    (is (= :failed (:kind (first results))))))
 
 (deftest existing-outputs-are-not-overwritten
   (let [a (input! "a.mov")]

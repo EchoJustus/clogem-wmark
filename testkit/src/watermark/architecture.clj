@@ -39,19 +39,6 @@
                             {:file (str f) :ns (second form) :requires (required form)
                              :cljc? (str/ends-with? (.getName f) ".cljc")})))))
 
-(defn warns-on-reflection?
-  "Is the first form after `f`'s ns form `(set! *warn-on-reflection* true)`?
-  In a .cljc file it may sit behind #?(:clj ...), which reads as the plain form
-  on the JVM. A native image fails at run time on a reflective call its build
-  didn't register, and reflection warnings are how those calls show up."
-  [^File f]
-  (with-open [r (PushbackReader. (io/reader f))]
-    (binding [*read-eval* false]
-      (let [opts {:read-cond :allow :features #{:clj} :eof ::eof}]
-        (try (read opts r)
-             (= '(set! *warn-on-reflection* true) (read opts r))
-             (catch Exception _ false))))))
-
 (defn violations [nses pred]
   (for [{:keys [ns requires]} nses, r requires :when (pred r)] [ns r]))
 

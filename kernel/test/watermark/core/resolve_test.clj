@@ -4,8 +4,6 @@
   (:require [clojure.test :refer [deftest is]]
             [watermark.core.resolve :as resolve]))
 
-(set! *warn-on-reflection* true)
-
 (deftest layering
   (let [{:keys [settings provenance]}
         (resolve/layer [[:defaults  {:logo {:anchor :bottom-right :offset {:x 24 :y 24}} :texts []}]

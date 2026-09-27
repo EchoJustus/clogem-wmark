@@ -10,8 +10,6 @@
             [watermark.render.layout :as layout]
             [watermark.render.schema :as spec-schema]))
 
-(set! *warn-on-reflection* true)
-
 (def media-30 {:width 1920 :height 1080 :fps-num 30 :fps-den 1 :frames 3600})
 
 (defn- spec-for [settings & {:as more}]

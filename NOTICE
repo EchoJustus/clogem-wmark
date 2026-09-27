@@ -26,14 +26,10 @@ Third-party libraries used at build and run time (not included here)
 --------------------------------------------------------------------
 
 Declared in deps.edn and fetched by the Clojure CLI; each is distributed under
-its own license, which binary releases reproduce: the build writes
-licenses/THIRD-PARTY-<binary>.txt from the resolved dependencies (each
-library, its declared license and the license files it ships). They include
+its own license, which binary releases must reproduce. Generate the list for a
+release from the resolved dependencies (clojure -X:deps list). They include
 Clojure and its contrib libraries (EPL-1.0), malli (EPL-2.0), http-kit
-(Apache-2.0) and, declared for the separate wmark-tui binary only, Lanterna
-(LGPL-3.0).
+(Apache-2.0) and, in the separate wmark-tui binary only, Lanterna (LGPL-3.0).
 
-FFmpeg is not part of this program. It runs as a separate executable. Release
-downloads bundle a pinned FFmpeg build in bin/, licensed under the GNU GPL
-version 3 or later; its license and a note on its exact archives and source
-code are in licenses/ffmpeg/.
+FFmpeg is not part of this program. It runs as a separate executable; a
+download that bundles it must add FFmpeg's own license and source offer.

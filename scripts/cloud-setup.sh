@@ -37,17 +37,6 @@ wait $a || { echo "apt install failed"; fail=1; }
 wait $b || { echo "babashka install failed"; fail=1; }
 wait $c || { echo "clojure CLI install failed (bb clojure still works)"; }
 
-# bb's built-in `clojure` (deps.clj) downloads the Clojure tools jar with its
-# own trust store, which a TLS-inspecting egress proxy rejects (PKIX). Give it
-# the CLI's copy of the same version, so `bb lint`/`bb test` work offline.
-if command -v clojure >/dev/null; then
-  v=$(clojure --version 2>/dev/null | awk '{print $NF}')
-  if [ -n "$v" ] && ls /usr/local/lib/clojure/libexec/*.jar >/dev/null 2>&1; then
-    mkdir -p "$HOME/.deps.clj/$v/ClojureTools" &&
-    cp /usr/local/lib/clojure/libexec/*.jar "$HOME/.deps.clj/$v/ClojureTools/"
-  fi
-fi
-
 java -version 2>&1 | head -1
 command -v bb >/dev/null && bb --version
 command -v clojure >/dev/null && clojure --version

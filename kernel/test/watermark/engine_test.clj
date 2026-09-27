@@ -4,8 +4,6 @@
   (:require [clojure.test :refer [deftest is]]
             [watermark.engine :as engine]))
 
-(set! *warn-on-reflection* true)
-
 (def request
   {:spec   {:layers [{:kind :image :timing {:type :always} :animation {:type :flip-y}}
                      {:kind :text :timing {:type :periodic} :placement {:type :burst-scatter}}]}

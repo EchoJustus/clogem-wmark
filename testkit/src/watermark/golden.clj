@@ -12,8 +12,6 @@
             [clojure.pprint :as pprint]
             [clojure.test :refer [is]]))
 
-(set! *warn-on-reflection* true)
-
 (defn check-in
   "Compare `actual` with the golden file `dir`/`name`.edn (or rewrite it when
   updating)."

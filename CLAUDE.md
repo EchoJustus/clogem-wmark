@@ -256,11 +256,6 @@ its own matrix.
   them in the doc you touch.
 - **Commits:** imperative subject; the body says why; `git commit -s` (DCO).
   Branch for anything non-trivial. Don't force-push shared branches.
-- **Decisions:** record each non-trivial one as a short ADR in
-  `docs/adr/NNNN-title.md`. Escalate to the owner instead of deciding alone:
-  purchases and credentials, anything that changes what is public or how it
-  is licensed, relaxing an invariant, history-rewriting git operations, and
-  security trade-offs.
 - **Never add Datastar Pro, Node or npm,** or code that sends scripts to the
   browser.
 
@@ -272,11 +267,7 @@ bb lint          # build matrix and component deps.edn files vs repository
 bb e2e           # Chromium smoke test of the web UI (ffmpeg + Python Playwright)
 bb dev           # engine from source, opens the web UI     bb dev doctor | bb dev run ...
 bb tui           # terminal client
-bb native        # GraalVM binary for this OS (GRAALVM_HOME)  bb native :target :tui
-bb ffmpeg        # the pinned FFmpeg for this OS -> target/ffmpeg/<platform> (SHA-256 verified)
-bb bundle :bundle :desktop-server :ffmpeg-dir target/ffmpeg/<platform>
-bb smoke --bin target/bin --ffmpeg target/ffmpeg/<platform>/bin [--mock LIB] [--bundled true]
-bb sdk :name abi-v1   # engine SDK archive (header, mock, schemas, golden vectors)
+bb native        # GraalVM binary for this OS (GRAALVM_HOME) bb bundle :bundle :desktop-server :ffmpeg-dir DIR
 clojure -M:dev:test -n watermark.web.sse-test               # one namespace
 ```
 
@@ -295,60 +286,20 @@ clojure -M:dev:test -n watermark.web.sse-test               # one namespace
 | Components, ports, dependency rules, security, tests | `docs/ARCHITECTURE.md` |
 | Engine contract, render spec, C ABI, adding an engine | `docs/ENGINE.md`, `native/README.md` |
 | FFmpeg lookup, filtergraph, flip, encoding, verification | `docs/FFMPEG_STRATEGY.md` |
-| Stages, decisions, assessments | `docs/ROADMAP.md`, `docs/adr/` |
+| Stages, decisions, assessments | `docs/ROADMAP.md` |
 | Contributing, DCO, license headers | `CONTRIBUTING.md` |
 
-## 8. Next work, in order (Phase 3)
+## 8. Next work, in order
 
-M1 → M2 → the kernel under ClojureDart (it waits for M2's kernel changes).
-M4 starts after M1 and once the v2 spec schema is frozen. Each milestone ends
-with its exit criteria met, the docs updated and a short status report.
-
-1. **M1 · CI/CD with signed artifacts.**
-   - The first real native-image builds on Windows, macOS and Linux. Collect
-     missing `reachability-metadata.json` entries with the tracing agent (the
-     e2e test, a real render, `--engine native` with the C mock). Binaries
-     pass `--help`, `doctor` and a real render; the e2e suite runs against the
-     Linux binary.
-   - A release workflow on `v*` tags: build, `bb bundle`, `SHA256SUMS`, sign,
-     draft GitHub Release. FFmpeg is pinned per OS (version and SHA-256 in the
-     repository, never "latest") with its license and source offer in
-     `licenses/`; third-party notices come from the resolved dependencies.
-   - Signing: Authenticode with timestamping through a hardware-backed service
-     (ADR; the owner procures); Developer ID and notarization for every
-     Mach-O, `bin/ffmpeg` included; checksums, Sigstore signatures and
-     build-provenance attestations. Signing runs only in a protected `release`
-     environment, on tags from `main`, with least-privilege `permissions` and
-     actions pinned by commit SHA.
-   - `kernel-v*` and `abi-v*` tags with an engine SDK archive.
-   - Exit: a `vX.Y.Z-rc` tag produces a draft release with signed, notarized
-     and attested bundles for Windows x64, macOS arm64 and Linux x64, each
-     smoke-tested on a clean runner.
-2. **M2 · Render spec v2** (ENGINE.md, "Planned: render spec v2"). Additive:
-   `:spec/version 2` is chosen by capability negotiation, and v1 stays until
-   every engine migrates.
-   - Baked geometry as compact periodic tables (flip period, phase, the quads
-     within one flip, a static pose), never per-video-frame arrays; bitmap
-     layers referenced by content hash and pixel size; windows stay half-open.
-   - A `TextRasterizer` host port in `src/` (Java2D, a bundled OFL font, fixed
-     antialiasing, hinting, colour space and alpha policy). The kernel places
-     measured sizes deterministically and stays graphics-free.
-   - FFmpeg composites v2 text as bitmaps, so minimal and LGPL builds become
-     fully capable; `required-filters` stays exact.
-   - The C ABI version is bumped under a written compatibility rule,
-     `render-spec.schema.json` is updated, and the C mock consumes v2.
-   - New golden vectors (diff reviewed); the conformance harness measures v2
-     on real frames for FFmpeg and the mock.
-3. **M3 · The kernel under ClojureDart.** It compiles and passes
-   `kernel/test/golden/*.edn` in Dart: the `util/num` `:cljd` branches,
-   HMAC-SHA256 through `package:crypto`, and malli or the schema fallback.
-   GUI clients drive the engine as a sidecar
-   (`serve --announce json --parent-pid`) over the unchanged REST and SSE API.
-4. **M4 · Port contracts for hosting** (`testkit/`, modelled on
-   `store-contract`); the local adapters must pass them:
-   - `JobQueue`: at-least-once delivery with leases, idempotent completion,
-     cancel, per-job ordered progress, tenant isolation, a dead-letter path;
-   - `MediaIO`: put, get, stat, delete, presigned URLs, size and type limits,
-     tenant-scoped keys.
-   Hosted adapters are built against these suites. FFmpeg never receives
-   arbitrary URLs: media is downloaded to scratch first.
+1. **CI/CD.** The first real native-image run on Windows, macOS and Linux;
+   signing (Authenticode, Developer ID and notarization); the release bundle
+   with FFmpeg and its license; `kernel-v*` and `abi-v*` tags with an engine
+   SDK archive.
+2. **Render spec v2.**
+   - A baked per-frame flip table and host-rasterized text layers, as
+     capabilities.
+   - The FFmpeg engine unchanged or simplified; new golden vectors.
+3. **ClojureDart readiness of the kernel:** the `:cljd` branches compile and
+   the golden vectors pass under ClojureDart.
+4. **Core ports for hosting:** object-storage `MediaIO` with presigned
+   uploads, a durable `JobQueue`, an identity middleware seam.

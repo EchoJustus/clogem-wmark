@@ -5,8 +5,6 @@
   fully resolved settings and never persist profiles."
   (:require [watermark.store :as store]))
 
-(set! *warn-on-reflection* true)
-
 (defrecord MemoryStore [state lock]
   store/ProfileStore
   (-read [_ slug] (get @state slug))

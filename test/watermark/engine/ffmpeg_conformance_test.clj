@@ -8,8 +8,6 @@
             [watermark.engine.conformance :as c]
             [watermark.engine.ffmpeg :as ffmpeg]))
 
-(set! *warn-on-reflection* true)
-
 (def settings-for
   (fn [logo]
     {:logo  {:path logo :anchor :center-left :offset {:x 40 :y 0} :width-ratio 0.25 :opacity 1.0

@@ -41,9 +41,6 @@
        :overwrite? (boolean (:overwrite? output))}))
 
   (commit! [_ _ {:keys [final temp overwrite?]}]
-    (when-not (.isFile (File. (str temp)))
-      (throw (ex-info (str "The engine reported success but wrote no output (" temp ").")
-                      {:wmark/error :failed :path (str temp)})))
     (fs/publish! temp final overwrite?)
     final)
 

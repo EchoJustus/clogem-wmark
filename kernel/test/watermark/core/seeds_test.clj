@@ -5,8 +5,6 @@
             [watermark.core.seeds :as seeds]
             [watermark.golden :as golden]))
 
-(set! *warn-on-reflection* true)
-
 (def layer {:mode :subliminal :content "(c) Studio"})
 
 (deftest seeds-are-keyed-and-reproducible

@@ -32,8 +32,6 @@
   (:require [clojure.edn :as edn]
             [clojure.pprint :as pprint]))
 
-(set! *warn-on-reflection* true)
-
 (defprotocol ProfileStore
   (-read     [store slug]                   "Document for `slug`, or nil.")
   (-read-all [store]                        "Every document as [slug doc], or [slug {:error msg}]

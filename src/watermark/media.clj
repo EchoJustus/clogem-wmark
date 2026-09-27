@@ -16,8 +16,6 @@
   schedules, so every implementation must compute it identically -- a render
   made on the desktop must be verifiable by the backend and vice versa.")
 
-(set! *warn-on-reflection* true)
-
 (defprotocol MediaIO
   (open-input  [io ctx input]
     "{:id display-name, :location local path or URL for the engine, :fingerprint hex}")
@@ -25,6 +23,5 @@
     "{:final where the result will live, :temp local path the engine writes,
       :container \"mp4\"}. Fails early (:conflict) if the result exists and
       overwriting is off, before any encoding time is spent.")
-  (commit!     [io ctx output] "Publish :temp as :final; returns the final location. A missing
-                               :temp is an ex-info with :wmark/error :failed.")
+  (commit!     [io ctx output] "Publish :temp as :final; returns the final location.")
   (discard!    [io ctx output] "Remove :temp after a failed or cancelled render."))

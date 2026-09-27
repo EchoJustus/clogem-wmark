@@ -16,8 +16,6 @@
             [watermark.engine.ffmpeg.process :as process])
   (:import (java.io File)))
 
-(set! *warn-on-reflection* true)
-
 (defn ffmpeg-path
   "Forward slashes: FFmpeg accepts them on Windows too, and they need no
   escaping inside a filtergraph."

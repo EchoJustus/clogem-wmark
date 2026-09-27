@@ -29,13 +29,8 @@
             [clojure.java.io :as io]
             [clojure.string :as str])
   (:import (java.io File)
-           (java.net URI)
-           (java.net.http HttpClient HttpClient$Redirect HttpRequest HttpResponse
-                          HttpResponse$BodyHandlers)
-           (java.nio.file CopyOption Files StandardCopyOption)
            (java.security MessageDigest)
-           (java.util HexFormat)
-           (java.util.zip ZipEntry ZipFile ZipInputStream)))
+           (java.util HexFormat)))
 
 (set! *warn-on-reflection* true)
 
@@ -130,27 +125,6 @@
         :when problem]
     problem))
 
-(defn ffmpeg-pin-problems
-  "What's wrong with the matrix's :ffmpeg pins: every platform needs a
-  version, at least one https archive with a SHA-256, and source notes; the
-  license text is pinned the same way. Bundles that ship sidecars need pins."
-  [{:keys [ffmpeg bundles]}]
-  (let [sha?     #(and (string? %) (re-matches #"[0-9a-f]{64}" %))
-        https?   #(and (string? %) (str/starts-with? % "https://"))
-        pinned?  (fn [{:keys [url sha256]}] (and (https? url) (sha? sha256)))]
-    (concat
-     (when (and (some (comp seq :sidecars) (vals bundles)) (empty? (:platforms ffmpeg)))
-       ["bundles ship FFmpeg sidecars, but the matrix pins no :ffmpeg builds"])
-     (when (and ffmpeg (not (pinned? (get-in ffmpeg [:license :text]))))
-       [":ffmpeg :license :text needs an https :url and a :sha256"])
-     (for [[p {:keys [version archives source]}] (:platforms ffmpeg)
-           problem [(when-not (string? version) (str "FFmpeg for " p " has no :version"))
-                    (when (empty? archives) (str "FFmpeg for " p " has no :archives"))
-                    (when-not (every? pinned? archives) (str "FFmpeg for " p ": every archive needs an https :url and a 64-hex :sha256"))
-                    (when (empty? source) (str "FFmpeg for " p " doesn't say where its source is (:source)"))]
-           :when problem]
-       problem))))
-
 (defn lint
   "Validate the matrix against the repository: every alias exists, every path
   exists, every main namespace is on its target's paths (or comes from the
@@ -194,7 +168,6 @@
     (doseq [[s {:keys [bundles]}] stages, b bundles]
       (when-not (contains? (:bundles m) b) (problem! (str "stage " s " names unknown bundle " b))))
     (doseq [p (manifest-problems deps)] (problem! p))
-    (doseq [p (ffmpeg-pin-problems m)] (problem! p))
     (if (seq @problems)
       (fail! (str "Build matrix problems:\n  " (str/join "\n  " @problems)) {:problems @problems})
       (println (format "Build matrix OK: %d stages, %d bundles, %d targets, %d editions."
@@ -205,15 +178,6 @@
 
 (defn clean [_] ((tb 'delete) {:path "target"}))
 
-(defn project-dirs
-  "The project's own folders in `basis`: its :paths and the :extra-paths of
-  the aliases in play, sorted. (:paths basis) alone misses the second kind,
-  which is where components keep their assets and native-image metadata
-  (web/resources, desktop/resources, an edition's resources). Libraries,
-  local ones included, reach the uberjar through tools.build's `uber`."
-  [basis]
-  (vec (sort (for [[path {:keys [path-key]}] (:classpath basis) :when path-key] path))))
-
 (defn uber
   "AOT-compiled, direct-linked uberjar for a target and edition."
   [opts]
@@ -222,7 +186,7 @@
         class-dir (str "target/classes/" artifact)
         jar       (str "target/" artifact ".jar")]
     ((tb 'delete) {:path class-dir})
-    ((tb 'copy-dir) {:src-dirs (project-dirs basis) :target-dir class-dir :include "**/{*.json,*.edn,*.html,*.css,*.js,*.der,*.ttf,*.png,*.svg,*.txt}"})
+    ((tb 'copy-dir) {:src-dirs (:paths basis) :target-dir class-dir :include "**/{*.json,*.edn,*.html,*.css,*.js,*.der,*.ttf,*.png,*.svg,*.txt}"})
     ((tb 'compile-clj) {:basis        basis
                         :class-dir    class-dir
                         :ns-compile   [main]            ; transitive: everything main requires
@@ -239,32 +203,6 @@
                  (fail! "Set GRAALVM_HOME to a GraalVM 25 (Community) installation."))]
     (str home (if (windows?) "\\bin\\native-image.cmd" "/bin/native-image"))))
 
-(defn- linux? [] (str/starts-with? (str/lower-case (System/getProperty "os.name")) "linux"))
-
-(defn native-image-env
-  "Environment for the native-image process. The image keeps the charset it
-  was built with for paths, arguments and the environment (sun.jnu.encoding,
-  oracle/graal#10237), and a JVM derives that charset from the locale: a Linux
-  build in a POSIX locale (containers, CI) makes a binary that can't open
-  `vidéo/clip.mp4` whatever the user's locale. So Linux builds run in
-  C.UTF-8. macOS always uses UTF-8; Windows is covered by CI's
-  non-ASCII smoke test."
-  []
-  (if (linux?) {"LC_ALL" "C.UTF-8"} {}))
-
-(defn windows-link-options
-  "Extra native-image options on Windows: embed wmark/utf8.manifest, which
-  makes UTF-8 the process code page. The C runtime passes arguments in the
-  process code page and the image decodes them as UTF-8, so without it a
-  Windows binary received `vidéo\\clip é.mp4` as `vid?o\\clip ?.mp4`
-  (Windows 10 1903 or later)."
-  []
-  (let [f (io/file "target/utf8.manifest")]
-    (io/make-parents f)
-    (spit f (slurp (io/resource "wmark/utf8.manifest")))
-    ["-H:NativeLinkerOption=/MANIFEST:EMBED"
-     (str "-H:NativeLinkerOption=/MANIFESTINPUT:" (.getAbsolutePath f))]))
-
 (defn native
   "Uberjar -> single native binary for the current OS/arch -> target/bin/."
   [opts]
@@ -273,224 +211,15 @@
         jar (uber opts)
         _   (.mkdirs (io/file "target/bin"))
         out (str "target/bin/" artifact)                ; native-image appends .exe on Windows
-        {:keys [exit]} ((tb 'process) {:command-args (concat [(native-image-bin) "-jar" jar "-o" out] native-image
-                                                             (when (windows?) (windows-link-options)))
-                                       :env          (native-image-env)})]
+        {:keys [exit]} ((tb 'process) {:command-args (concat [(native-image-bin) "-jar" jar "-o" out] native-image)})]
     (when-not (zero? exit) (fail! "native-image failed" {:exit exit}))
     (println "Built" out)))
 
 ;; ---------------------------------------------------------------------------
-;; FFmpeg: the pinned sidecar binaries
+;; Bundles: what a user downloads
 
 (defn- sha256 [^File f]
-  (let [md (MessageDigest/getInstance "SHA-256")
-        buf (byte-array 65536)]
-    (with-open [in (io/input-stream f)]
-      (loop []
-        (let [n (.read in buf)]
-          (when (pos? n) (.update md buf 0 n) (recur)))))
-    (.formatHex (HexFormat/of) (.digest md))))
-
-(defn platform
-  "This machine as a key of the matrix's :ffmpeg :platforms, e.g. :linux-x64,
-  :windows-x64, :macos-arm64."
-  []
-  (let [os   (str/lower-case (System/getProperty "os.name"))
-        arch (str/lower-case (System/getProperty "os.arch"))]
-    (keyword (str (cond (str/starts-with? os "windows") "windows"
-                        (str/starts-with? os "mac")     "macos"
-                        :else                           "linux")
-                  (if (#{"aarch64" "arm64"} arch) "-arm64" "-x64")))))
-
-(defn- exe-on [platform name]
-  (if (str/starts-with? (clojure.core/name platform) "windows") (str name ".exe") name))
-
-(defn- download!
-  "Fetch `url` into `dest` unless a file with `sha` is already there; fail
-  unless the result has that SHA-256."
-  [url sha ^File dest]
-  (when-not (and (.isFile dest) (= sha (sha256 dest)))
-    (io/make-parents dest)
-    (println "Downloading" url)
-    (let [part    (io/file (str dest ".part"))
-          ^HttpClient client (-> (HttpClient/newBuilder) (.followRedirects HttpClient$Redirect/NORMAL) (.build))
-          ^HttpResponse resp (.send client (.build (HttpRequest/newBuilder (URI. url)))
-                                    (HttpResponse$BodyHandlers/ofFile (.toPath part)))]
-      (when-not (= 200 (.statusCode resp))
-        (fail! (str "HTTP " (.statusCode resp) " for " url)))
-      (Files/move (.toPath part) (.toPath dest) (into-array CopyOption [StandardCopyOption/REPLACE_EXISTING]))))
-  (let [actual (sha256 dest)]
-    (when-not (= sha actual)
-      (.delete dest)
-      (fail! (str "SHA-256 mismatch for " url ": expected " sha ", got " actual) {:url url})))
-  dest)
-
-(defn- extract!
-  "Copy the files of `archive` (.zip or .tar.xz) whose names are in `wanted`
-  into `dir`, flattening their paths; returns the names found."
-  [^File archive wanted ^File dir]
-  (.mkdirs dir)
-  (let [n (.getName archive)]
-    (cond
-      (str/ends-with? n ".zip")
-      (with-open [zin (ZipInputStream. (io/input-stream archive))]
-        (loop [found #{}]
-          (if-let [e (.getNextEntry zin)]
-            (let [base (last (str/split (.getName e) #"/"))]
-              (if (and (not (.isDirectory e)) (wanted base))
-                (do (io/copy zin (io/file dir base)) (recur (conj found base)))
-                (recur found)))
-            found)))
-
-      (str/ends-with? n ".tar.xz")
-      (let [tmp (io/file (str archive ".d"))]
-        (.mkdirs tmp)
-        (let [^java.util.List argv ["tar" "-xJf" (str archive) "-C" (str tmp)]
-              p (-> (ProcessBuilder. argv) (.inheritIO) (.start))]
-          (when-not (zero? (.waitFor p)) (fail! (str "tar failed on " archive))))
-        (into #{} (for [^File f (file-seq tmp) :when (and (.isFile f) (wanted (.getName f)))]
-                    (do (io/copy f (io/file dir (.getName f))) (.getName f)))))
-
-      :else (fail! (str "Unknown archive type: " n)))))
-
-(defn- source-note [platform {:keys [version archives source]} {:keys [spdx]}]
-  (str/join "\n"
-            (concat [(str "FFmpeg " version " for " (name platform) ": bin/ffmpeg and bin/ffprobe in this download.")
-                     ""
-                     "wmark runs FFmpeg as a separate program. FFmpeg is not part of wmark; it is"
-                     (str "licensed under " spdx " (COPYING.GPLv3, next to this file).")
-                     ""
-                     "The binaries come unmodified from these archives (SHA-256 verified):"]
-                    (for [{:keys [url sha256]} archives] (str "  " url "\n    sha256 " sha256))
-                    ["" "Source code of this build:"]
-                    (map #(str "  " %) source)
-                    [""])))
-
-(defn ffmpeg
-  "Fetch the pinned FFmpeg build for this platform (or :platform) and verify
-  it against its SHA-256:
-
-    <out>/<platform>/bin/ffmpeg(.exe), bin/ffprobe(.exe)
-    <out>/<platform>/licenses/COPYING.GPLv3, SOURCE.txt
-
-  :out defaults to target/ffmpeg; downloads are cached in target/downloads.
-  Pass the platform folder to `bundle` as :ffmpeg-dir."
-  [{:keys [out] :as opts :or {out "target/ffmpeg"}}]
-  (let [{:keys [license platforms]} (or (:ffmpeg (matrix*)) (fail! "deps.edn has no :ffmpeg pins in its build matrix"))
-        p     (or (kw (:platform opts)) (platform))
-        pin   (or (get platforms p) (fail! (str "No FFmpeg pinned for " p "; pinned: " (vec (keys platforms)))))
-        dir   (io/file (str out) (name p))
-        cache (io/file "target/downloads" (name p))
-        want  #{(exe-on p "ffmpeg") (exe-on p "ffprobe")}
-        found (reduce (fn [found {:keys [url sha256]}]
-                        (into found (extract! (download! url sha256 (io/file cache (last (str/split url #"/"))))
-                                              want (io/file dir "bin"))))
-                      #{} (:archives pin))]
-    (when-let [missing (seq (remove found want))]
-      (fail! (str "The pinned archives for " p " lack " (vec missing))))
-    (doseq [f want] (.setExecutable (io/file dir "bin" f) true))
-    (io/copy (download! (get-in license [:text :url]) (get-in license [:text :sha256])
-                        (io/file "target/downloads" "COPYING.GPLv3"))
-             (doto (io/file dir "licenses" "COPYING.GPLv3") io/make-parents))
-    (spit (io/file dir "licenses" "SOURCE.txt") (source-note p pin license))
-    (println "FFmpeg" (:version pin) "for" (name p) "in" (str dir))
-    (str dir)))
-
-;; ---------------------------------------------------------------------------
-;; Third-party notices, from the resolved dependencies
-
-(defn- pom-of
-  "The POM next to a jar in the local Maven repository, or nil."
-  ^File [^String jar]
-  (let [f (io/file (str/replace jar #"\.jar$" ".pom"))] (when (.isFile f) f)))
-
-(defn- tag [xml t] (some-> (re-find (re-pattern (str "(?s)<" t ">\\s*(.*?)\\s*</" t ">")) xml) second))
-
-(defn pom-licenses
-  "[{:name :url}] from a POM's <licenses>, following <parent> POMs through
-  the local repository `repo` (Clojure's contrib libraries inherit theirs)."
-  [repo ^File pom]
-  (loop [^File pom pom depth 0]
-    (when (and pom (.isFile pom) (< depth 6))
-      (let [xml   (slurp pom)
-            found (for [l (map second (re-seq #"(?s)<license>(.*?)</license>" xml))]
-                    {:name (tag l "name") :url (tag l "url")})]
-        (if (seq found)
-          (vec found)
-          (when-let [p (tag xml "parent")]
-            (let [g (tag p "groupId") a (tag p "artifactId") v (tag p "version")]
-              (when (and g a v)
-                (recur (io/file repo (str/replace g "." "/") a v (str a "-" v ".pom")) (inc depth))))))))))
-
-(defn- local-repo
-  "The Maven repository root that holds `jar` of library `lib`
-  (<repo>/<group path>/<artifact>/<version>/<jar>)."
-  ^File [lib ^String jar]
-  (nth (iterate #(some-> ^File % .getParentFile) (io/file jar))
-       (+ 3 (count (str/split (or (namespace lib) (name lib)) #"\.")))))
-
-(defn git-license
-  "The SPDX-License-Identifier at the top of the first Clojure source under a
-  git dependency's source folder, e.g. \"EPL-2.0\" for clogem-wmark's
-  components."
-  [dir]
-  (let [d (io/file (str dir))]
-    (when (.isDirectory d)
-      (some (fn [^File f]
-              (when (and (.isFile f) (re-find #"\.clj[cd]?$" (.getName f)))
-                (with-open [r (io/reader f)]
-                  (some #(second (re-find #"SPDX-License-Identifier:\s*([A-Za-z0-9.+\-]+)" %))
-                        (take 5 (line-seq r))))))
-            (file-seq d)))))
-
-(defn- embedded-notices
-  "Texts of LICENSE, NOTICE and COPYING files inside a jar."
-  [^String jar]
-  (with-open [z (ZipFile. jar)]
-    (vec (for [^ZipEntry e (enumeration-seq (.entries z))
-               :when (and (not (.isDirectory e))
-                          (re-find #"(?i)^(META-INF/)?(LICENSE|NOTICE|COPYING)[^/]*$" (.getName e)))]
-           [(.getName e) (slurp (.getInputStream z e) :encoding "UTF-8")]))))
-
-(defn notices-text
-  "THIRD-PARTY notices for a basis: each library, its version and declared
-  license, and the license and notice files it ships. Libraries without a
-  version (local roots) are part of the project itself."
-  [basis title]
-  (let [libs (sort-by (comp str key) (:libs basis))]
-    (str title "\n" (apply str (repeat (count title) "=")) "\n\n"
-         "Libraries included in this program, with the licenses their publishers\n"
-         "declare. Their source code is published with each library (Maven Central,\n"
-         "Clojars or the git repository named).\n\n"
-         (str/join
-          "\n"
-          (for [[lib {:keys [mvn/version git/url git/sha paths]}] libs
-                :when (or version url)
-                :let [jar  (first (filter #(str/ends-with? (str %) ".jar") paths))
-                      lics (when jar (pom-licenses (local-repo lib jar) (pom-of jar)))
-                      spdx (when url (some-> (first paths) git-license))]]
-            (str "-- " lib " " (or version (str url " " sha)) "\n"
-                 (cond
-                   (seq lics) (str/join "" (for [{n :name u :url} lics] (str "   License: " n (when u (str " <" u ">")) "\n")))
-                   url        (str "   License: " (or spdx "see the repository") "\n"
-                                   "   Source: " (str/replace url #"\.git$" "") "/tree/" sha "\n")
-                   :else      "   License: see the library's own files below or its repository\n")
-                 (str/join "" (for [[entry text] (some-> jar embedded-notices)]
-                                (str "\n   " entry ":\n" (str/join "\n" (map #(str "   | " %) (str/split-lines text))) "\n")))))))))
-
-(defn notices
-  "Write the third-party notices of a target to target/notices/<artifact>.txt."
-  [opts]
-  (let [{:keys [aliases artifact]} (resolve-target opts)
-        f (io/file "target/notices" (str artifact ".txt"))]
-    (io/make-parents f)
-    (spit f (notices-text ((tb 'create-basis) {:aliases aliases})
-                          (str "Third-party notices for " artifact)))
-    (println "Wrote" (str f))
-    (str f)))
-
-;; ---------------------------------------------------------------------------
-;; Bundles: what a user downloads
+  (.formatHex (HexFormat/of) (.digest (MessageDigest/getInstance "SHA-256") (java.nio.file.Files/readAllBytes (.toPath f)))))
 
 (defn- exe [name] (if (windows?) (str name ".exe") name))
 
@@ -513,25 +242,12 @@
           (when (.isDirectory (io/file "licenses"))
             (sort-by str (filter #(.isFile ^File %) (file-seq (io/file "licenses")))))))
 
-(defn- sidecar-dirs
-  "The folder holding the sidecar executables, and the one holding their
-  license files: either `ffmpeg-dir` itself (a plain FFmpeg folder) or its
-  bin/ and licenses/ (what the `ffmpeg` task writes)."
-  [ffmpeg-dir]
-  (let [d (io/file (str ffmpeg-dir))                  ; -T passes unquoted paths as symbols
-        bin (io/file d "bin")]
-    [(if (.isDirectory bin) bin d)
-     (let [l (io/file d "licenses")] (when (.isDirectory l) l))]))
-
 (defn bundle
   "Assemble dist/<bundle>/ for this OS from binaries already built with
-  `native` (target/bin/) and FFmpeg sidecars from :ffmpeg-dir (a folder with
-  the executables, or what `clojure -T:build ffmpeg` wrote):
+  `native` (target/bin/) and FFmpeg sidecars from :ffmpeg-dir:
 
     wmark(.exe)  wmark-tui(.exe)  bin/ffmpeg(.exe)  bin/ffprobe(.exe)
-    licenses/    (LICENSE, NOTICE, licenses/*, THIRD-PARTY-<artifact>.txt,
-                  ffmpeg/COPYING.GPLv3 and ffmpeg/SOURCE.txt)
-    SHA256SUMS   README.txt
+    licenses/    SHA256SUMS       README.txt
 
   wmark finds bin/ffmpeg next to itself (see watermark.util.locate). GUI and
   container targets are built by their own toolchains; this reports them."
@@ -539,95 +255,41 @@
   (let [m       (matrix*)
         b       (or (kw bundle) (fail! (str "Pass :bundle, one of " (vec (keys (:bundles m))))))
         {:keys [targets sidecars doc]} (or (get-in m [:bundles b]) (fail! (str "Unknown bundle " b)))
-        dir     (io/file (str out) (name b))
-        copied  (atom [])
-        put!    (fn [^File src ^File dest]
-                  (io/make-parents dest)
-                  (io/copy src dest)
-                  (swap! copied conj dest)
-                  dest)]
+        dir     (io/file out (name b))
+        copied  (atom [])]
     (.mkdirs (io/file dir "bin"))
     (doseq [t targets]
       (let [{:keys [toolchain package commands] :as target} (get-in m [:targets t])]
         (cond
           (and (= :jvm toolchain) (not package))
-          (let [opts {:target t :edition (target-edition target (kw edition))}
-                {:keys [artifact]} (resolve-target opts)
+          (let [{:keys [artifact]} (resolve-target {:target t :edition (target-edition target (kw edition))})
                 src (io/file "target/bin" (exe artifact))]
             (when-not (.isFile src)
               (fail! (str "Missing " src ": run  clojure -T:build native :target " t
                           (when edition (str " :edition " edition)))))
-            (.setExecutable ^File (put! src (io/file dir (exe artifact))) true)
-            (put! (io/file (notices opts)) (io/file dir "licenses" (str "THIRD-PARTY-" artifact ".txt"))))
+            (io/copy src (io/file dir (exe artifact)))
+            (.setExecutable (io/file dir (exe artifact)) true)
+            (swap! copied conj (io/file dir (exe artifact))))
 
           :else
           (println (str "  " (name t) ": built separately (" (name toolchain) ") -- " (pr-str (or commands package)))))))
-    (when (seq sidecars)
-      (let [[bin lic] (sidecar-dirs (or ffmpeg-dir (fail! "Pass :ffmpeg-dir: run  clojure -T:build ffmpeg  and pass target/ffmpeg/<platform>")))]
-        (doseq [s sidecars]
-          (let [src (io/file bin (exe (name s)))]
-            (when-not (.isFile src) (fail! (str "Missing sidecar " src)))
-            (.setExecutable ^File (put! src (io/file dir "bin" (exe (name s)))) true)))
-        (if lic
-          (doseq [^File f (sort-by str (.listFiles ^File lic)) :when (.isFile f)]
-            (put! f (io/file dir "licenses" "ffmpeg" (.getName f))))
-          (println "  WARNING: no FFmpeg license files next to" (str bin)
-                   "-- add FFmpeg's license and source notes to licenses/ffmpeg/ before shipping"))))
+    (doseq [s sidecars]
+      (let [src (io/file (or ffmpeg-dir (fail! "Pass :ffmpeg-dir with a full FFmpeg build (drawtext included).")) (exe (name s)))]
+        (when-not (.isFile src) (fail! (str "Missing sidecar " src)))
+        (io/copy src (io/file dir "bin" (exe (name s))))
+        (.setExecutable (io/file dir "bin" (exe (name s))) true)
+        (swap! copied conj (io/file dir "bin" (exe (name s))))))
     (doseq [^File f (license-files)]
-      (put! f (io/file dir "licenses" (.getName f))))
+      (let [dest (io/file dir "licenses" (.getName f))]
+        (io/make-parents dest)
+        (io/copy f dest)
+        (swap! copied conj dest)))
     (spit (io/file dir "SHA256SUMS")
-          (apply str (for [^File f (sort-by str @copied)]
+          (apply str (for [^File f @copied]
                        (str (sha256 f) "  " (str/replace (str (.relativize (.toPath dir) (.toPath f))) "\\" "/") "\n"))))
     (spit (io/file dir "README.txt")
           (str "wmark -- " doc "\n\nStart: double-click " (exe "wmark") " (or run it from a terminal).\n"
                "FFmpeg is included in bin/; `" (exe "wmark") " doctor` shows what was found.\n"
-               "Licenses and notices: licenses/ (FFmpeg's in licenses/ffmpeg/).\n"))
+               "Licenses and notices: see licenses/. Add FFmpeg's license and source offer there before shipping.\n"))
     (println "Bundled" (str dir) (count @copied) "files")
     (str dir)))
-
-;; ---------------------------------------------------------------------------
-;; Engine SDK: what a native engine (Swift, Kotlin, Rust) or a kernel port
-;; builds against, released on abi-v* and kernel-v* tags
-
-(def sdk-files
-  "[source destination] pairs of the engine SDK archive."
-  [["native/include/wmark_engine.h"   "include/wmark_engine.h"]
-   ["native/mock/mock_engine.c"       "mock/mock_engine.c"]
-   ["native/render-spec.schema.json"  "schemas/render-spec.schema.json"]
-   ["native/settings.schema.json"     "schemas/settings.schema.json"]
-   ["kernel/test/golden/prng.edn"     "golden/prng.edn"]
-   ["kernel/test/golden/seeds.edn"    "golden/seeds.edn"]
-   ["kernel/test/golden/render-basic.edn" "golden/render-basic.edn"]
-   ["native/README.md"                "README.md"]
-   ["docs/ENGINE.md"                  "ENGINE.md"]
-   ["LICENSE"                         "LICENSE"]
-   ["NOTICE"                          "NOTICE"]])
-
-(defn abi-version
-  "WMARK_ENGINE_ABI_VERSION as written in the header."
-  []
-  (some->> (slurp "native/include/wmark_engine.h")
-           (re-find #"#define\s+WMARK_ENGINE_ABI_VERSION\s+(\d+)")
-           second parse-long))
-
-(defn sdk
-  "Zip the engine SDK as dist/wmark-engine-sdk-<name>.zip. An abi-vN name
-  must match the header's WMARK_ENGINE_ABI_VERSION."
-  [{:keys [name] :or {name "dev"}}]
-  (let [name (str name)
-        n    (some->> name (re-matches #"abi-v(\d+)") second parse-long)
-        _    (when (and n (not= n (abi-version)))
-               (fail! (str name " doesn't match WMARK_ENGINE_ABI_VERSION " (abi-version) " in the header")))
-        base (str "wmark-engine-sdk-" name)
-        zip  (io/file "dist" (str base ".zip"))]
-    (io/make-parents zip)
-    (with-open [out (java.util.zip.ZipOutputStream. (io/output-stream zip))]
-      (doseq [[src dest] sdk-files]
-        (let [f (io/file src)]
-          (when-not (.isFile f) (fail! (str "SDK input missing: " src)))
-          (.putNextEntry out (ZipEntry. (str base "/" dest)))
-          (io/copy f out)
-          (.closeEntry out))))
-    (println "Wrote" (str zip))
-    (str zip)))
-

@@ -25,8 +25,6 @@
             [watermark.core.schema :as schema]
             [watermark.engine :as engine]))
 
-(set! *warn-on-reflection* true)
-
 (defn- store [sys ctx] ((:profiles-for sys) ctx))
 
 ;; ---------------------------------------------------------------------------

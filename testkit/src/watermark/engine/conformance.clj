@@ -17,8 +17,6 @@
            (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)))
 
-(set! *warn-on-reflection* true)
-
 (defn tmp-dir [] (str (Files/createTempDirectory "wmark-conf" (make-array FileAttribute 0))))
 
 (defn ffmpeg! [& args]

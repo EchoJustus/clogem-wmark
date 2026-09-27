@@ -7,8 +7,6 @@
   (:import (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)))
 
-(set! *warn-on-reflection* true)
-
 (defn- tmp [] (str (Files/createTempDirectory "wmark-locate" (make-array FileAttribute 0))))
 
 (defn- touch! [dir name exec?]

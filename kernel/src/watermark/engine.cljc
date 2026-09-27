@@ -53,8 +53,6 @@
   lowered to image layers first (text rasterised by the host) -- the escape
   hatch for minimal GPU cores.")
 
-#?(:clj (set! *warn-on-reflection* true))
-
 (defprotocol VideoEngine
   (info     [engine])
   (probe    [engine source])

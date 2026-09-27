@@ -29,8 +29,6 @@
             [watermark.render.layout :as layout]
             [watermark.util.num :as num]))
 
-#?(:clj (set! *warn-on-reflection* true))
-
 (def version 1)
 
 (defn build

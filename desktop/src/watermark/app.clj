@@ -30,8 +30,6 @@
   (:import (java.lang ProcessHandle)
            (java.nio.file Path)))
 
-(set! *warn-on-reflection* true)
-
 (def version "0.2.0-SNAPSHOT")
 
 ;; ---------------------------------------------------------------------------
@@ -120,9 +118,7 @@
    (num-opt "--text-duration SEC" "How long each scheduled text shows" parse-double)
    ["-o" "--out DIR" "Output directory (default: next to each input)"]])
 
-(def run-options (conj settings-options
-                       [nil "--dry-run" "Print the FFmpeg command and filtergraph only"]
-                       ["-h" "--help" "Show this help"]))
+(def run-options (conj settings-options [nil "--dry-run" "Print the FFmpeg command and filtergraph only"]))
 
 (def save-options (conj settings-options [nil "--overwrite" "Replace a profile whose name maps to the same file"]))
 
@@ -225,7 +221,6 @@
   (let [{:keys [options arguments errors summary]} (cli/parse-opts args run-options)]
     (cond
       errors            (fail! 2 (str/join "\n" errors))
-      (:help options)   (do (println (str "Usage: wmark run [options] INPUT...\n\n" summary)) 0)
       (empty? arguments) (fail! 2 (str "Usage: wmark run [options] INPUT...\n\n" summary))
       (:dry-run options)
       (let [r (api/plan-batch sys {:tenant "local" :user "local"} (request options arguments))]
