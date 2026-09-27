@@ -115,24 +115,48 @@ capabilities from the binary it found:
 then rasterize text layers to image layers before calling it. This is how a
 first GPU core can start with images only.
 
-## Planned: render spec v2 (thinner native engines)
+## Render spec v2: the host renders, engines composite (M2, prototype)
 
-The native-engine plan is to shrink what each engine has to compute, not to
-change its language. Spec v2 adds two optional forms, both announced through
-capabilities so v1 engines keep working:
+Spec v2 takes all drawing out of the engines. The host renders the logo
+warped for every frame of a flip, the static pose and every text layer, as
+bitmaps. An engine then only has to draw bitmap B with its top-left at whole
+pixel (x, y) on frame n. FFmpeg's `overlay` does that, so an LGPL build
+(no `perspective`) renders it. Design, measurements and open decisions:
+[ADR 0006](adr/0006-render-spec-v2-host-rendered-overlays.md).
 
-- **A baked flip table.** For an animated image layer, the kernel emits the
-  quad corners for each frame of one flip, derived from `logo-corners`. The
-  engine looks up entry `p = mod(n - start, period)` while `p < duration`,
-  instead of evaluating the projection itself.
-- **Host-rasterized text.** The host renders text layers to bitmaps with their
-  final size and opacity (Java2D on the JVM, Flutter's text painter in the
-  apps). Engines then see only image layers with per-frame positions. That is
-  the escape hatch described above, made standard.
+```clojure
+{:spec/version 2
+ :canvas {...} :timebase {...}                       ; as in v1
+ :bitmaps {"<sha256>" {:width 176 :height 76 :path "/scratch/<sha256>.rgba"}}  ; straight RGBA8
+ :layers [{:id "logo" :kind :flipbook :timing {:type :always}
+           :rest  {:bitmap "<sha256>" :x 40 :y 142}
+           :cycle {:start 15 :period 30 :frames [{:bitmap "<sha256>" :x 38 :y 139} ...]}}
+          {:id "text-0" :kind :bitmap :bitmap "<sha256>"
+           :placement {...v1...} :timing {...v1...}}]}
+```
 
-A v2 engine therefore only has to draw bitmap B into quad Q at opacity a on
-frame n, in its platform's native API. Golden vectors for the baked tables
-will pin them for ports.
+- **Planning** (`watermark.render.v2`, portable and graphics-free):
+  - `raster-requests` lists what to draw. A flip frame's quad comes from the
+    reference `logo-corners`, in a whole-pixel box.
+  - `assemble` builds the spec from the host's bitmaps.
+- **Reference semantics:** `(draw-at spec layer n)` gives the bitmap and
+  position at frame n.
+  - A flipbook shows `cycle` frame `mod(n - start, period)` while that is
+    below its frame count, and `rest` otherwise.
+  - A bitmap layer sits where v1 would put a text box of the bitmap's size,
+    floored.
+- **Rasterizing** (`watermark.raster`, JVM): area-averaged scaling, an exact
+  projective warp in premultiplied alpha, and opacity in alpha. Text and logo
+  decoding still use Java2D and ImageIO, which native images can't load on
+  macOS (ADR 0006, "Open decisions").
+- **Negotiation:** engines list `:spec-versions`, and a v2 request requires
+  2. The FFmpeg engine reports `#{1 2}`, or `#{2}` for a build without
+  `perspective`. Engines that don't list them take v1 only.
+- **Not yet:**
+  - the job pipeline producing v2 (only the conformance harness does today);
+  - the v2 schema and its JSON export;
+  - golden vectors;
+  - the C ABI and the mock.
 
 ## The C ABI (`native/include/wmark_engine.h`)
 

@@ -12,6 +12,7 @@
             [watermark.core.resolve :as resolve]
             [watermark.core.schema :as schema]
             [watermark.engine :as engine]
+            [watermark.raster :as raster]
             [watermark.render :as render])
   (:import (java.io DataInputStream File)
            (java.nio.file Files)
@@ -57,8 +58,11 @@
 
 (defn render!
   "Plan and render `input` with `settings` through the engine protocol only.
-  Returns {:spec :output :outcome :media}."
-  [eng settings input {:keys [entitlements seed-fn out-dir]}]
+  Returns {:spec :output :outcome :media :plan}. With :spec-version 2 the host
+  rasterizes (watermark.raster) and the engine gets the v2 spec, returned as
+  :v2; :spec stays the v1 spec, whose reference geometry the frames are
+  measured against."
+  [eng settings input {:keys [entitlements seed-fn out-dir spec-version]}]
   (let [media  (engine/probe eng input)
         logo   (get-in settings [:logo :path])
         spec   (render/build {:settings     (resolve/deep-merge schema/defaults settings)
@@ -67,13 +71,14 @@
                               :seed-fn      (or seed-fn (constantly 42))
                               :entitlements (or entitlements (features/community))
                               :font         (system-font)})
+        v2     (when (= 2 spec-version) (raster/realize spec (io/file out-dir "bitmaps")))
         out    (str (io/file out-dir (str (.getName (io/file input)) ".out.mp4")))
-        plan   (engine/prepare eng {:spec spec :source input :media media
+        plan   (engine/prepare eng {:spec (or v2 spec) :source input :media media
                                     :output {:path out :container "mp4"}
                                     :encode {:codec :h264 :quality :archival :audio :copy}
                                     :strip-metadata? true})
         result (deref (engine/outcome (engine/execute! eng plan nil)) 120000 {:status :timeout})]
-    {:spec spec :output out :outcome result :media media}))
+    {:spec spec :v2 v2 :output out :outcome result :media media :plan plan}))
 
 (defn gray-frames
   "Every frame of `path` as a luma byte array, decoded by ffmpeg."

@@ -61,22 +61,35 @@
        :capabilities {}}
       (let [{:keys [version filters encoders]} (process/describe-binary (:path ffmpeg))
             missing   (remove filters process/required-filters)
+            v1?       (empty? missing)
+            ;; spec v2 (host-rendered bitmaps) needs compositing only: LGPL
+            ;; builds, which lack the GPL-only perspective filter, qualify
+            v2?       (every? filters process/required-filters-v2)
             text?     (contains? filters "drawtext")
             codecs    (compile/codecs-available encoders)]
         {:engine/id      :ffmpeg
          :engine/version (or (second (re-find #"version\s+n?(\S+)" (str (:raw version)))) "unknown")
-         :available?     (and (empty? missing) (seq codecs) true)
+         :available?     (and (or v1? v2?) (seq codecs) true)
          :problems       (cond-> []
-                           (seq missing) (conj (str "This FFmpeg build lacks required filters: " (str/join ", " missing)))
-                           (not text?)   (conj "This FFmpeg build has no drawtext filter (needs libfreetype/libharfbuzz): text layers are unavailable.")
+                           (not (or v1? v2?)) (conj (str "This FFmpeg build lacks required filters: " (str/join ", " missing)))
+                           (and v1? (not text?)) (conj "This FFmpeg build has no drawtext filter (needs libfreetype/libharfbuzz): text layers are unavailable.")
                            (empty? codecs) (conj "This FFmpeg build has no H.264 or HEVC encoder."))
          :warnings       (vec (concat (keep locate/working-dir-warning [ffmpeg ffprobe])
-                                      (some-> (split-build-warning bins) vector)))
+                                      (some-> (split-build-warning bins) vector)
+                                      (when (and v2? (not v1?))
+                                        ;; M2 in progress: the job pipeline doesn't produce v2 yet
+                                        [(str "This FFmpeg build lacks " (str/join ", " missing)
+                                              " (an LGPL build?). It can only composite host-drawn bitmaps (render spec v2), which"
+                                              " wmark's CLI and UI don't produce yet: a logo flip or text needs an FFmpeg with perspective until then.")])))
          :binaries       bins
          :version        version
          :encoders       encoders
-         :capabilities   {:layers     (cond-> #{:image} text? (conj :text))
-                          :animations #{:flip-y}
+         :capabilities   {:spec-versions (cond-> #{} v1? (conj 1) v2? (conj 2))
+                          :layers     (cond-> #{}
+                                        v1?           (conj :image)
+                                        (and v1? text?) (conj :text)
+                                        v2?           (into #{:flipbook :bitmap}))
+                          :animations (if v1? #{:flip-y} #{})
                           :timing     #{:always :windows :periodic}
                           :placement  #{:fixed :burst-scatter :per-window}
                           :codecs     codecs
@@ -117,10 +130,11 @@
         (when-not (contains? (:encoders info) forced)
           (throw (ex-info (str "This FFmpeg build has no " forced " encoder.")
                           {:wmark/error :unsupported :missing [[:encoders forced]]}))))
-      (compile/compile-request request {:ffmpeg   (get-in info [:binaries :ffmpeg :path])
-                                        :version  (:version info)
-                                        :encoders (:encoders info)
-                                        :workdir  (scratch-dir (:work-root opts))})))
+      ((if (= 2 (get-in request [:spec :spec/version])) compile/compile-request-v2 compile/compile-request)
+       request {:ffmpeg   (get-in info [:binaries :ffmpeg :path])
+                :version  (:version info)
+                :encoders (:encoders info)
+                :workdir  (scratch-dir (:work-root opts))})))
 
   (execute! [_ plan listener]
     (let [result    (promise)

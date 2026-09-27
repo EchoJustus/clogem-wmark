@@ -73,6 +73,8 @@
   [{:keys [spec encode output]}]
   (distinct
    (concat
+    ;; v1 is the baseline every engine takes; newer versions are negotiated
+    (when (not= 1 (:spec/version spec 1)) [[:spec-versions (:spec/version spec)]])
     (for [l (:layers spec)] [:layers (:kind l)])
     (for [l (:layers spec) :when (:animation l)] [:animations (get-in l [:animation :type])])
     (for [l (:layers spec)] [:timing (get-in l [:timing :type])])

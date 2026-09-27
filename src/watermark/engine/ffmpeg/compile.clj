@@ -55,8 +55,10 @@
          ")")))
 
 (defn placement-exprs
-  "drawtext x and y expressions: x = f(n) * (w - tw) + px, likewise y."
-  [{:keys [placement timing]} n]
+  "x and y expressions: x = f(n) * free-x + px, likewise y. The free space is
+  (w-tw) for drawtext (the default) and (W-w) for overlay."
+  ([layer n] (placement-exprs layer n ["(w-tw)" "(h-th)"]))
+  ([{:keys [placement timing]} n [free-x free-y]]
   (let [{:keys [type fx fy px py] :or {px 0 py 0}} placement
         lin (fn [free frac off]
               (let [frac-part (cond (and (number? frac) (zero? frac)) nil
@@ -66,11 +68,11 @@
                       (zero? off)      frac-part
                       :else            (str frac-part "+(" (g/num-str off) ")"))))]
     (case type
-      :fixed         [(lin "(w-tw)" fx px) (lin "(h-th)" fy py)]
-      :burst-scatter [(lin "(w-tw)" (scatter-expr (:x placement) placement timing n) 0)
-                      (lin "(h-th)" (scatter-expr (:y placement) placement timing n) 0)]
-      :per-window    [(lin "(w-tw)" (per-window-expr (:windows timing) (:points placement) 0 n) 0)
-                      (lin "(h-th)" (per-window-expr (:windows timing) (:points placement) 1 n) 0)])))
+      :fixed         [(lin free-x fx px) (lin free-y fy py)]
+      :burst-scatter [(lin free-x (scatter-expr (:x placement) placement timing n) 0)
+                      (lin free-y (scatter-expr (:y placement) placement timing n) 0)]
+      :per-window    [(lin free-x (per-window-expr (:windows timing) (:points placement) 0 n) 0)
+                      (lin free-y (per-window-expr (:windows timing) (:points placement) 1 n) 0)]))))
 
 ;; ---------------------------------------------------------------------------
 ;; Image layers: scale, opacity, transparent canvas, flip
@@ -148,10 +150,12 @@
 
 (def ^:private encoder-preference
   "Encoders per codec family, best first: software x264/x265 (deterministic),
-  then OS encoders (LGPL-only builds: Media Foundation, VideoToolbox), then
-  vendor hardware, which may be listed yet absent at run time."
-  {:h264 ["libx264" "h264_videotoolbox" "h264_mf" "h264_nvenc" "h264_qsv" "h264_amf" "libopenh264"]
-   :hevc ["libx265" "hevc_videotoolbox" "hevc_mf" "hevc_nvenc" "hevc_qsv" "hevc_amf"]})
+  then OS encoders (LGPL-only builds: Media Foundation, VideoToolbox), then the
+  LGPL-compatible software encoders (OpenH264, Kvazaar), which always work,
+  and last vendor hardware, which may be listed yet absent at run time (an
+  LGPL build lists NVENC, QSV and AMF on machines without the hardware)."
+  {:h264 ["libx264" "h264_videotoolbox" "h264_mf" "libopenh264" "h264_nvenc" "h264_qsv" "h264_amf"]
+   :hevc ["libx265" "hevc_videotoolbox" "hevc_mf" "libkvazaar" "hevc_nvenc" "hevc_qsv" "hevc_amf"]})
 
 (def ^:private x264-crf {:archival 14 :high 18 :balanced 22 :compact 26})
 (def ^:private bits-per-pixel {:archival 0.20 :high 0.12 :balanced 0.08 :compact 0.05})
@@ -256,6 +260,95 @@
                              "-progress" "pipe:1" "-nostats"
                              "-i" (str source)]
                             (mapcat (fn [img] ["-i" (get-in img [:source :path])]) images)
+                            (process/script-args version graph-file)
+                            ["-map" "[vout]"]
+                            (audio-args (:audio encode :copy) (:has-audio? media true))
+                            (video-args encode encoder canvas fps)
+                            ["-pix_fmt" "yuv420p"]
+                            (frame-sync-args version)
+                            (when strip-metadata? ["-map_metadata" "-1"])
+                            (when (#{"mp4" "mov"} container) ["-movflags" "+faststart"])
+                            [(str (:path output))]))}))
+
+;; ---------------------------------------------------------------------------
+;; Render spec v2: composite host-rendered bitmaps with overlay only (M2 prototype)
+
+(defn- all-of
+  "Product of enable expressions (nil = always)."
+  [& exprs]
+  (let [es (remove nil? exprs)]
+    (when (seq es) (str/join "*" (map #(str "(" % ")") es)))))
+
+(defn- flipbook-draws
+  "Draws for a :flipbook layer: the rest pose outside flips, and one overlay
+  per frame of the flip, each enabled on exactly its frames."
+  [{:keys [timing rest cycle]} n]
+  (let [base (timing-expr timing n)
+        {:keys [start period frames]} cycle
+        in-flip (when cycle (g/fmt "gte(%s,%d)*lt(mod(%s-%d,%d),%d)" n start n start period (count frames)))]
+    (into [{:bitmap (:bitmap rest) :x (:x rest) :y (:y rest)
+            :enable (all-of base (some->> in-flip (str "1-")))}]
+          (map-indexed (fn [p {:keys [bitmap x y]}]
+                         {:bitmap bitmap :x x :y y
+                          :enable (all-of base (g/fmt "gte(%s,%d)*eq(mod(%s-%d,%d),%d)" n start n start period p))})
+                       frames))))
+
+(defn- bitmap-draw
+  "Draw for a :bitmap layer: v1 placement with the bitmap as the text box,
+  floored to whole pixels (watermark.render.v2/bitmap-origin)."
+  [{:keys [bitmap placement timing] :as layer} n]
+  (let [[x y] (placement-exprs layer n ["(W-w)" "(H-h)"])]
+    {:bitmap bitmap
+     :x (g/expr (str "floor(" x ")")) :y (g/expr (str "floor(" y ")"))
+     :per-frame? (not= :fixed (:type placement))
+     :enable (timing-expr timing n)}))
+
+(defn compile-request-v2
+  "Engine plan for a v2 render request: every draw is one `overlay` of a
+  still RGBA bitmap (rawvideo input), in yuv444 so positions stay exact
+  (yuv420 would round them to even pixels)."
+  [{:keys [spec source media output encode strip-metadata?]} {:keys [ffmpeg version encoders workdir]}]
+  (let [{:keys [canvas timebase layers bitmaps]} spec
+        first-frame (:first-frame timebase 0)
+        fps-str     (str (:fps-num timebase) "/" (:fps-den timebase))
+        fps         (/ (double (:fps-num timebase)) (:fps-den timebase))
+        n           (frame-var "n" first-frame)
+        draws       (vec (mapcat (fn [layer]
+                                   (case (:kind layer)
+                                     :flipbook (flipbook-draws layer n)
+                                     :bitmap   [(bitmap-draw layer n)]))
+                                 layers))
+        base        (if (:vfr? media) "base" "0:v")
+        normalize   (when (:vfr? media) [(g/chain ["0:v"] [(g/f "fps" :fps fps-str)] ["base"])])
+        overlays    (map-indexed
+                     (fn [i {:keys [x y enable per-frame?]}]
+                       (g/chain [(if (zero? i) base (str "d" i)) (str (inc i) ":v")]
+                                [(g/f "overlay" :x x :y y :format "yuv444" :eof_action "repeat"
+                                      :eval (when per-frame? "frame")
+                                      :enable (some-> enable g/expr))]
+                                [(if (= i (dec (count draws))) "vout" (str "d" (inc i)))]))
+                     draws)
+        graph       (g/render (concat normalize
+                                      (if (seq draws)
+                                        overlays
+                                        [(g/chain [base] [(g/f "null")] ["vout"])])))
+        graph-file  (str (File. (str workdir) "graph.txt"))
+        encoder     (pick-encoder encode encoders)
+        container   (:container output "mp4")]
+    {:engine   :ffmpeg
+     :workdir  (str workdir)
+     :output   (:path output)
+     :graph    graph
+     :files    {graph-file graph}
+     :total-us (some-> (:duration-s media) (* 1e6) long)
+     :argv     (vec (concat [ffmpeg "-hide_banner" "-nostdin" "-y" "-loglevel" "error"
+                             "-progress" "pipe:1" "-nostats"
+                             "-i" (str source)]
+                            (mapcat (fn [{:keys [bitmap]}]
+                                      (let [{:keys [width height path]} (bitmaps bitmap)]
+                                        ["-f" "rawvideo" "-pix_fmt" "rgba" "-video_size" (str width "x" height)
+                                         "-framerate" "1" "-i" (str path)]))
+                                    draws)
                             (process/script-args version graph-file)
                             ["-map" "[vout]"]
                             (audio-args (:audio encode :copy) (:has-audio? media true))

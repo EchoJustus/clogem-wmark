@@ -132,6 +132,7 @@ tools are missing:
 | Group | Needs | Enable with |
 |---|---|---|
 | FFmpeg conformance (real renders measured against the reference semantics) | `ffmpeg` on PATH, a TrueType font (DejaVu on Linux) | install FFmpeg |
+| v2 conformance on the pinned LGPL FFmpeg (M2's exit test) | `target/ffmpeg/linux-x64-lgpl/bin`, or `WMARK_FFMPEG_LGPL` | `bb ffmpeg :variant :lgpl`; CI sets `WMARK_REQUIRE_LGPL=1`, so it can't skip there |
 | Native engine (C mock through Java's FFM API) | `cc` | install a C compiler |
 
 **Golden vectors.** `kernel/test/golden/*.edn` pin the kernel's outputs
@@ -227,6 +228,11 @@ fails the task. It writes `target/ffmpeg/<platform>/bin/{ffmpeg,ffprobe}` and
 `licenses/{COPYING.GPLv3,SOURCE.txt}`; downloads are cached in
 `target/downloads/`. To move a pin, change the URL and SHA-256 together, run
 `bb lint` (it rejects unpinned or plain-http archives) and the smoke test.
+
+`bb ffmpeg :variant :lgpl` fetches the pinned LGPL build instead (Linux x64
+only, for now) into `target/ffmpeg/linux-x64-lgpl/`, with `COPYING.LGPLv3`
+and `COPYING.GPLv3`. It has no `perspective`, so it renders only render
+spec v2 (ADR 0006). The tests use it; bundles don't ship it yet.
 
 ### The download (Stage 1)
 ```bash
