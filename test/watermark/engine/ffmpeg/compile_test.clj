@@ -9,7 +9,8 @@
             [watermark.core.schema :as schema]
             [watermark.engine.ffmpeg.compile :as compile]
             [watermark.engine.ffmpeg.process :as process]
-            [watermark.render :as render]))
+            [watermark.render :as render]
+            [watermark.render.v2 :as v2]))
 
 (set! *warn-on-reflection* true)
 
@@ -165,3 +166,61 @@
         "the sample plans exercise every branch of the compiler")
     (is (empty? (set/difference used process/required-filters #{"drawtext"}))
         "a build missing any of these must be reported by `wmark doctor`, not fail mid-render")))
+
+;; ---------------------------------------------------------------------------
+;; Render spec v2: overlay only
+
+(defn- v2-plan
+  "Compile the v2 spec of `settings`, with made-up bitmaps of the requested
+  sizes (text bitmaps are 120 x 40)."
+  [settings & {:keys [media-overrides encoders]}]
+  (let [m    (merge media media-overrides)
+        spec (spec-for settings :media m)
+        s2   (v2/assemble spec (into {} (for [{:keys [key size kind]} (v2/raster-requests spec)
+                                              :let [[w h] (if (= :text kind) [120 40] size)]]
+                                          [key {:bitmap (str "b" (hash key)) :width w :height h
+                                                :path (str "/scratch/b" (hash key) ".rgba")}])))]
+    (compile/compile-request-v2 {:spec s2 :source "/in/clip.mov" :media m
+                                 :output {:path "/out/clip_wm.part.mp4" :container "mp4"}
+                                 :encode (:encode (resolve/deep-merge schema/defaults settings))
+                                 :strip-metadata? true}
+                                {:ffmpeg "/opt/wmark/bin/ffmpeg" :version {:major 9}
+                                 :encoders (or encoders x264-build) :workdir "/tmp/job"})))
+
+(def flip {:path "/l.png" :animation {:type :flip-y :every-s 2.0 :duration-s 0.4}})
+
+(deftest v2-composites-with-overlay-only
+  (let [used (->> [(v2-plan {:logo flip} :media-overrides {:vfr? true})
+                   (v2-plan {:logo flip :texts [{:mode :continuous :content "x"}]})
+                   (v2-plan {:logo {:enabled false}})]
+                  (map (comp filters-in :graph))
+                  (apply set/union))]
+    (is (= #{"fps" "overlay" "null"} used) "the sample plans exercise every branch")
+    (is (set/subset? used process/required-filters-v2)
+        "an LGPL build (no perspective, no drawtext needed) can run every v2 plan")))
+
+(deftest v2-draws-one-overlay-per-flip-frame
+  (let [{:keys [graph argv]} (v2-plan {:logo flip})
+        spec  (spec-for {:logo flip})
+        {:keys [start period duration]} (:animation (first (render/layers-of spec :image)))]
+    (is (= 10 duration) "0.4 s at 25 fps")
+    (is (= (inc duration) (count (re-seq #"overlay=" graph))) "the rest pose plus one per frame of the flip")
+    (is (= (inc duration) (count (filter #{"rawvideo"} argv))) "each overlay reads its own still bitmap")
+    (is (str/includes? graph (format "1-gte(n,%d)*lt(mod(n-%d,%d),%d)" start start period duration))
+        "the rest pose hides exactly while a flip frame shows")
+    (doseq [p [0 (dec duration)]]
+      (is (str/includes? graph (format "gte(n,%d)*eq(mod(n-%d,%d),%d)" start start period p))))
+    (is (str/includes? graph "format=yuv444") "whole-pixel positions: yuv420 would round them to even")))
+
+(deftest v2-text-sits-where-v1-text-would-floored
+  (let [g (:graph (v2-plan {:logo {:enabled false}
+                            :texts [{:mode :continuous :content "x" :anchor :bottom-right :offset {:x 24 :y 24}}]}))]
+    (is (str/includes? g "x='floor((W-w)+(-24))'"))
+    (is (str/includes? g "y='floor((H-h)+(-24))'"))))
+
+(deftest an-lgpl-build-encodes-with-its-software-encoders
+  (testing "hardware encoders an LGPL build lists may be absent at run time"
+    (is (= "libopenh264" (arg-after (:argv (plan {} :encoders #{"libopenh264" "h264_nvenc" "h264_qsv"})) "-c:v")))
+    (is (= "libkvazaar" (arg-after (:argv (plan {:encode {:codec :hevc}} :encoders #{"libkvazaar" "hevc_nvenc"})) "-c:v"))))
+  (is (= "libx264" (arg-after (:argv (plan {} :encoders #{"libx264" "libopenh264" "h264_nvenc"})) "-c:v"))
+      "x264 still comes first where it exists"))

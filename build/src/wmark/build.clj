@@ -130,26 +130,37 @@
         :when problem]
     problem))
 
+(defn license-texts
+  "The license files a pinned FFmpeg build ships: [{:file :url :sha256}].
+  A single :text is the GPLv3."
+  [{:keys [text texts]}]
+  (or texts (when text [(assoc text :file "COPYING.GPLv3")])))
+
 (defn ffmpeg-pin-problems
-  "What's wrong with the matrix's :ffmpeg pins: every platform needs a
-  version, at least one https archive with a SHA-256, and source notes; the
-  license text is pinned the same way. Bundles that ship sidecars need pins."
+  "What's wrong with the matrix's :ffmpeg pins (and each :variants entry):
+  every platform needs a version, at least one https archive with a SHA-256,
+  and source notes; the license texts are pinned the same way. Bundles that
+  ship sidecars need pins."
   [{:keys [ffmpeg bundles]}]
   (let [sha?     #(and (string? %) (re-matches #"[0-9a-f]{64}" %))
         https?   #(and (string? %) (str/starts-with? % "https://"))
-        pinned?  (fn [{:keys [url sha256]}] (and (https? url) (sha? sha256)))]
+        pinned?  (fn [{:keys [url sha256]}] (and (https? url) (sha? sha256)))
+        pins     (fn [label {:keys [license platforms]}]
+                   (concat
+                    (when-not (and (seq (license-texts license)) (every? pinned? (license-texts license)))
+                      [(str label " :license needs its texts with an https :url and a :sha256 each")])
+                    (for [[p {:keys [version archives source]}] platforms
+                          problem [(when-not (string? version) (str label " for " p " has no :version"))
+                                   (when (empty? archives) (str label " for " p " has no :archives"))
+                                   (when-not (every? pinned? archives) (str label " for " p ": every archive needs an https :url and a 64-hex :sha256"))
+                                   (when (empty? source) (str label " for " p " doesn't say where its source is (:source)"))]
+                          :when problem]
+                      problem)))]
     (concat
      (when (and (some (comp seq :sidecars) (vals bundles)) (empty? (:platforms ffmpeg)))
        ["bundles ship FFmpeg sidecars, but the matrix pins no :ffmpeg builds"])
-     (when (and ffmpeg (not (pinned? (get-in ffmpeg [:license :text]))))
-       [":ffmpeg :license :text needs an https :url and a :sha256"])
-     (for [[p {:keys [version archives source]}] (:platforms ffmpeg)
-           problem [(when-not (string? version) (str "FFmpeg for " p " has no :version"))
-                    (when (empty? archives) (str "FFmpeg for " p " has no :archives"))
-                    (when-not (every? pinned? archives) (str "FFmpeg for " p ": every archive needs an https :url and a 64-hex :sha256"))
-                    (when (empty? source) (str "FFmpeg for " p " doesn't say where its source is (:source)"))]
-           :when problem]
-       problem))))
+     (when ffmpeg (pins "FFmpeg" ffmpeg))
+     (mapcat (fn [[v pin]] (pins (str "FFmpeg (" (name v) ")") pin)) (:variants ffmpeg)))))
 
 (defn lint
   "Validate the matrix against the repository: every alias exists, every path
@@ -353,12 +364,12 @@
 
       :else (fail! (str "Unknown archive type: " n)))))
 
-(defn- source-note [platform {:keys [version archives source]} {:keys [spdx]}]
+(defn- source-note [platform {:keys [version archives source]} {:keys [spdx] :as license}]
   (str/join "\n"
             (concat [(str "FFmpeg " version " for " (name platform) ": bin/ffmpeg and bin/ffprobe in this download.")
                      ""
                      "wmark runs FFmpeg as a separate program. FFmpeg is not part of wmark; it is"
-                     (str "licensed under " spdx " (COPYING.GPLv3, next to this file).")
+                     (str "licensed under " spdx " (" (str/join ", " (map :file (license-texts license))) ", next to this file).")
                      ""
                      "The binaries come unmodified from these archives (SHA-256 verified):"]
                     (for [{:keys [url sha256]} archives] (str "  " url "\n    sha256 " sha256))
@@ -373,13 +384,18 @@
     <out>/<platform>/bin/ffmpeg(.exe), bin/ffprobe(.exe)
     <out>/<platform>/licenses/COPYING.GPLv3, SOURCE.txt
 
+  :variant :lgpl fetches the LGPL pin instead, into <out>/<platform>-lgpl.
   :out defaults to target/ffmpeg; downloads are cached in target/downloads.
   Pass the platform folder to `bundle` as :ffmpeg-dir."
-  [{:keys [out] :as opts :or {out "target/ffmpeg"}}]
-  (let [{:keys [license platforms]} (or (:ffmpeg (matrix*)) (fail! "deps.edn has no :ffmpeg pins in its build matrix"))
+  [{:keys [out variant] :as opts :or {out "target/ffmpeg"}}]
+  (let [pins  (or (:ffmpeg (matrix*)) (fail! "deps.edn has no :ffmpeg pins in its build matrix"))
+        {:keys [license platforms]} (if variant
+                                      (or (get-in pins [:variants (kw variant)])
+                                          (fail! (str "No FFmpeg variant " variant "; pinned: " (vec (keys (:variants pins))))))
+                                      pins)
         p     (or (kw (:platform opts)) (platform))
         pin   (or (get platforms p) (fail! (str "No FFmpeg pinned for " p "; pinned: " (vec (keys platforms)))))
-        dir   (io/file (str out) (name p))
+        dir   (io/file (str out) (str (name p) (when variant (str "-" (name (kw variant))))))
         cache (io/file "target/downloads" (name p))
         want  #{(exe-on p "ffmpeg") (exe-on p "ffprobe")}
         found (reduce (fn [found {:keys [url sha256]}]
@@ -389,9 +405,9 @@
     (when-let [missing (seq (remove found want))]
       (fail! (str "The pinned archives for " p " lack " (vec missing))))
     (doseq [f want] (.setExecutable (io/file dir "bin" f) true))
-    (io/copy (download! (get-in license [:text :url]) (get-in license [:text :sha256])
-                        (io/file "target/downloads" "COPYING.GPLv3"))
-             (doto (io/file dir "licenses" "COPYING.GPLv3") io/make-parents))
+    (doseq [{:keys [file url sha256]} (license-texts license)]
+      (io/copy (download! url sha256 (io/file "target/downloads" file))
+               (doto (io/file dir "licenses" file) io/make-parents)))
     (spit (io/file dir "licenses" "SOURCE.txt") (source-note p pin license))
     (println "FFmpeg" (:version pin) "for" (name p) "in" (str dir))
     (str dir)))
@@ -594,10 +610,14 @@
   [["native/include/wmark_engine.h"   "include/wmark_engine.h"]
    ["native/mock/mock_engine.c"       "mock/mock_engine.c"]
    ["native/render-spec.schema.json"  "schemas/render-spec.schema.json"]
+   ["native/render-spec-v2.schema.json" "schemas/render-spec-v2.schema.json"]
    ["native/settings.schema.json"     "schemas/settings.schema.json"]
    ["kernel/test/golden/prng.edn"     "golden/prng.edn"]
    ["kernel/test/golden/seeds.edn"    "golden/seeds.edn"]
    ["kernel/test/golden/render-basic.edn" "golden/render-basic.edn"]
+   ["kernel/test/golden/render-v2.edn" "golden/render-v2.edn"]
+   ["resources/fonts/wmark.ttf"       "golden/fonts/wmark.ttf"]     ; render-v2's text
+   ["licenses/FiraSans-OFL.txt"       "golden/fonts/OFL.txt"]
    ["native/README.md"                "README.md"]
    ["docs/ENGINE.md"                  "ENGINE.md"]
    ["LICENSE"                         "LICENSE"]

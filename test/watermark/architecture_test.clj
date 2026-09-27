@@ -51,6 +51,7 @@
   (let [jobs (filter #(str/starts-with? (str (:ns %)) "watermark.core.") host)]
     (is (some #(= 'watermark.core.jobs (:ns %)) jobs))
     (is (empty? (violations jobs #(under? ["watermark.engine." "watermark.media." "watermark.store."
+                                           "watermark.raster.local"
                                            "watermark.util.os" "watermark.util.locate"
                                            "watermark.server" "org.httpkit"] %)))
         "core namespaces use the watermark.engine / watermark.media ports, never implementations")))

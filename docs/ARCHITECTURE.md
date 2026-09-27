@@ -17,8 +17,8 @@ names or requires them.
 
 | Directory | Contents | Runs on | May depend on |
 |---|---|---|---|
-| `kernel/` | Settings schema and resolution, the render spec and its reference semantics, keyed seeds, the PRNG, the text-mode registry, the engine protocol, the feature catalog | Any Clojure host: JVM today, ClojureDart later | malli (two namespaces), nothing else |
-| `src/` | Profile rules (`config`), the store, media and queue ports with local adapters, the job pipeline, the Core API, the FFmpeg and native engines, JSON REST routes | JVM | kernel |
+| `kernel/` | Settings schema and resolution, the render spec (v1 and v2) and its reference semantics, the rasterizer that draws v2's bitmaps (TrueType, text, the warp), keyed seeds, the PRNG, the text-mode registry, the engine protocol, the feature catalog | Any Clojure host: JVM today, ClojureDart later | malli (two namespaces), nothing else |
+| `src/` | Profile rules (`config`), the store, media, queue and rasterizer ports' local adapters, the job pipeline, the Core API, the FFmpeg and native engines, JSON REST routes | JVM | kernel |
 | `web/` | The built-in web UI: server-rendered HTML and Datastar events over SSE; vendored `datastar.js`, no npm | JVM | the Core API (src) |
 | `desktop/` | CLI, http-kit server, loopback security, sidecar mode, native-image metadata | JVM / native image | src, web |
 | `tui/` | Terminal client of a running engine (REST only) | JVM / native image | home discovery only |
@@ -41,9 +41,10 @@ names or requires them.
                     │                                          │
  kernel         resolve · render/build → render spec · seeds · modes · features
                     │
- ports          ProfileStore     MediaIO     JobQueue     VideoEngine     Entitlements
- adapters       file · memory ·  local       local        FFmpeg ·        community · license ·
-                PostgreSQL       files       executor     native (C ABI)  hosted plan
+ ports          ProfileStore     MediaIO     JobQueue     VideoEngine     Entitlements    Rasterizer
+ adapters       file · memory ·  local       local        FFmpeg ·        community ·     local
+                PostgreSQL       files       executor     native (C ABI)  license ·       (scratch
+                                                                          hosted plan     files)
 ```
 
 - **One binary, several modes.** Run with no arguments (a double-click), the
@@ -64,7 +65,8 @@ names or requires them.
 | Port | Protocol | Adapters today | Planned adapters |
 |---|---|---|---|
 | Profile storage | `watermark.store/ProfileStore` | file (`store.file`), memory (`store.memory`), PostgreSQL (`saas.store`) | app-sandbox store for the GUI |
-| Rendering | `watermark.engine/VideoEngine` + `RenderHandle` | `FFmpegProcessor`, `NativeFFIProcessor` (C ABI) | AVFoundation, Media3, a Rust core: all behind the C ABI |
+| Rendering | `watermark.engine/VideoEngine` + `RenderHandle`, and `StillDecoder` for engines that take render spec v2 | `FFmpegProcessor`, `NativeFFIProcessor` (C ABI) | AVFoundation, Media3, a Rust core: all behind the C ABI |
+| Host drawing (render spec v2) | `watermark.raster/Rasterizer` (`realize!`, `release!`) | local: bitmaps in a scratch folder per render (`raster.local`) | object storage next to hosted workers |
 | Media | `watermark.media/MediaIO` | local files (`media.local`) | object storage |
 | Queue | `watermark.core.jobs/JobQueue` | in-process executor (`jobs.local`) | SQS / Cloud Tasks / a Postgres table |
 | Entitlements | `watermark.core.features/Entitlements` | community, offline license, hosted plan | StoreKit, Play Billing |
@@ -192,15 +194,20 @@ because every open tab holds a stream. See [ROADMAP.md](ROADMAP.md).
 3. `engine/probe` on the logo returns its size.
 4. `render/build` produces the render spec: every layer resolved to pixels and
    frame indices.
-5. `media/open-output` reserves a temporary `.part` path.
-6. `engine/prepare` checks capabilities, then compiles an engine plan.
-7. `engine/execute!` renders, reporting progress. On `:done`,
+5. The spec version is chosen (`jobs/spec-version`): v1 where the engine can
+   draw all of it, else v2. For v2, the `Rasterizer` draws every bitmap
+   (the engine decodes the logo) and returns the v2 spec; its files live
+   until the render ends or planning fails.
+6. `media/open-output` reserves a temporary `.part` path.
+7. `engine/prepare` checks capabilities, then compiles an engine plan.
+8. `engine/execute!` renders, reporting progress. On `:done`,
    `media/commit!` publishes the output atomically; otherwise
    `media/discard!` removes it.
 
 A failure in one file is recorded for that file and the batch continues. A
-dry run (`plan-batch`) runs steps 1–6 with `:dry-run? true`: nothing is
-created or written, and `latest` isn't touched.
+dry run (`plan-batch`) runs steps 1–7 with `:dry-run? true`: no output is
+created, `latest` isn't touched, and a v2 plan's bitmaps are deleted as soon
+as the plan is returned.
 
 ## Configuration (`watermark.config`)
 
@@ -362,14 +369,14 @@ web UI end to end, on the JVM and against the native binary, and
 
 | Area | What the tests cover |
 |---|---|
-| Kernel | SplitMix64 draw-for-draw against `java.util.SplittableRandom`; golden vectors for the PRNG, seeds and a full render spec; settings layering and provenance; half-open scheduled windows; the flip projection; capability negotiation |
+| Kernel | SplitMix64 draw-for-draw against `java.util.SplittableRandom`; golden vectors for the PRNG, seeds, a full render spec, and render spec v2 down to every bitmap; settings layering and provenance; half-open scheduled windows; the flip projection; capability negotiation; the TrueType reader against fontTools; text coverage, borders and colours; the warp against its homography; both exported render spec schemas equal to the code |
 | Architecture | The dependency rules above |
 | Profiles | The store contract on files, memory and PostgreSQL: slugs, aliases, `latest`, fallback, revisions, 8 racing editors, 40 concurrent auto-saves, damaged files, pre-revision files |
 | Engine lookup | Search order (`./`, then `./bin/`, then the install folder), the hardened order, explicit files and folders, unusable files reported in the diagnostic trail, ffprobe taken from ffmpeg's folder (and a warning when it isn't) |
 | FFmpeg compile | Escaping, German-locale numbers, argv per FFmpeg version, encoders and quality tiers, segment offsets, text never inside the graph, every emitted filter covered by the capability check |
-| Conformance | Real renders measured against the reference semantics, for clips starting at 0 s and at 0.5 s: logo within 1.35 px on every frame, text on exactly the scheduled frames |
-| Native engine | A C mock compiled by the test, driven through FFM and the unchanged job pipeline: handshake, probe errors, upcall progress from a native thread, cancel, capability refusal, a non-ASCII path arriving as UTF-8 |
-| Jobs | A fake engine behind the protocol: publish on success, per-input failures, an engine that reports success but writes nothing, existing outputs never overwritten, capability gaps reported before rendering, cancel mid-render |
+| Conformance | Real renders measured against the reference semantics, for clips starting at 0 s and at 0.5 s: logo within 1.35 px on every frame, text on exactly the scheduled frames. Render spec v2 on the FFmpeg on PATH, the pinned LGPL FFmpeg and the C mock: within 1.11 px |
+| Native engine | A C mock compiled by the test, driven through FFM and the unchanged job pipeline: handshake and the ABI compatibility rule (the mock built as ABI 1 and 3), probe errors, upcall progress from a native thread, cancel, capability refusal, a non-ASCII path arriving as UTF-8, still decoding, a v2 render checked frame by frame |
+| Jobs | A fake engine behind the protocol: publish on success, per-input failures, an engine that reports success but writes nothing, existing outputs never overwritten, capability gaps reported before rendering, cancel mid-render; the spec version choice; a v2-only engine given host-drawn bitmaps that exist while it renders and are gone afterwards |
 | HTTP | A live server: 401, 421, cookie bootstrap, 403 for a foreign Origin, CRUD, stale `if-rev`, the doctor route, the built-in UI's protection, an external UI with SPA fallback, traversal |
 | Web UI | The official Datastar SDK wire-format cases; escaping of hostile names and texts; only numbers in `data-signals`; the page's CSP nonce; token and `Datastar-Request` checks; editing with revisions, live preview and validation messages; a render followed over the queue stream to "done" and the activity log |
 | Core API | Jobs are tenant-scoped: list, cancel and subscribe |

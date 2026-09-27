@@ -19,6 +19,11 @@
 
 (defn cos [x] #?(:clj (Math/cos (double x)) :cljs (js/Math.cos x) :cljd (math/cos x)))
 (defn sin [x] #?(:clj (Math/sin (double x)) :cljs (js/Math.sin x) :cljd (math/sin x)))
+(defn sqrt
+  "Square root. IEEE 754 requires it correctly rounded, so unlike cos and sin
+  it is bit-identical on every host."
+  [x]
+  #?(:clj (Math/sqrt (double x)) :cljs (js/Math.sqrt x) :cljd (math/sqrt x)))
 
 (defn floor-int
   "Largest integer <= x."

@@ -24,6 +24,7 @@
             [watermark.engine.ffmpeg :as ffmpeg]
             [watermark.engine.native :as native]
             [watermark.media.local :as local-media]
+            [watermark.raster.local :as raster-local]
             [watermark.server.http :as http]
             [watermark.util.fs :as fs]
             [watermark.util.os :as os])
@@ -64,6 +65,8 @@
      :entitlements ((:entitlements-fn edition) home)
      :engine       (make-engine opts home)
      :media        (local-media/local-media)
+     :rasterizer   (raster-local/local-rasterizer {:work-root (str (.resolve home "work"))})
+     :spec-version (:render-spec opts)             ; nil: v1 where the engine takes it
      :secret-for   (fn [_ctx] @secret)            ; SaaS: per-tenant secret
      :font         (delay (os/default-font (.resolve home "cache")))}))
 
@@ -82,6 +85,8 @@
    [nil "--ffmpeg PATH" "ffmpeg executable or folder (default: ./, ./bin/, wmark's folder, its bin/, PATH)"]
    [nil "--ffmpeg-search ORDER" "Where to look, e.g. app,app-bin,path to skip the working folder"]
    [nil "--native-lib PATH" "Native engine library (wmark_engine.dll / libwmark_engine.dylib / .so)"]
+   [nil "--render-spec N" "1: the engine draws; 2: wmark draws, the engine only composites (default: 1 if the engine can)"
+    :parse-fn parse-long :validate [#{1 2} "must be 1 or 2"]]
    ["-h" "--help" "Show help"]])
 
 (def serve-options

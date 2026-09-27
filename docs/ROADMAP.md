@@ -94,6 +94,30 @@ spec: an engine-neutral description of one watermarked video.
    line-mode REST client with no terminal library, and its third-party
    notices now list no LGPL code.
 
+## Decisions on the M2 prototype (27 September 2026)
+
+The prototype drew text with Java2D and decoded the logo with ImageIO,
+which native images can't load on macOS. The owner decided
+([ADR 0006](adr/0006-render-spec-v2-host-rendered-overlays.md), now
+accepted):
+
+1. **Text: a portable rasterizer of our own** in the kernel (a TrueType
+   reader, exact area coverage, no platform graphics), so every OS and,
+   later, ClojureDart produce the same pixels.
+2. **Stills: the engine decodes them** (FFmpeg, and `wmark_engine_decode_still`
+   in C ABI 2), so the kernel carries no image dependency.
+3. **Intel Macs stay supported,** with macOS x64 builds pinned to GraalVM
+   25.0.1, the last release for that platform (ADR 0007).
+
+**M2 status.** Built: the kernel draws every bitmap; FFmpeg composites with
+`overlay` only; the job pipeline picks v1 where an engine can draw the whole
+spec, else v2; the v2 schema and golden vectors; C ABI 2 with a written
+compatibility rule; the C mock composites v2. **Exit met:** the pinned LGPL
+FFmpeg and the C mock pass v2 conformance on real frames (worst 1.11 px,
+text on exactly the scheduled frames), more accurately than v1. Open: LGPL
+pins for Windows and macOS, and whether the downloads bundle LGPL builds
+(ADR 0001).
+
 ## Stages → bundles → code
 
 The same mapping lives as data in `deps.edn` (`:wmark/build-matrix`).

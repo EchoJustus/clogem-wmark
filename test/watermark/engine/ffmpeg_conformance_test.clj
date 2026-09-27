@@ -30,7 +30,7 @@
         (is (<= (:dw width) 3) (str "logo width within 3 px of the reference at every frame, worst " width))
         (is (<= (:dh height) 3) (str "logo height within 3 px, worst " height))
         (is (<= (:dcx centre) 2) (str "rotation axis stays put, worst " centre)))
-      (when (c/system-font)
+      (when (c/font)
         (let [{:keys [measured reference]} (c/visible-frames spec frames 640 text-region "text-0")]
           (is (= reference measured) "text shows on exactly the reference frames")
           (is (= (concat (range 30 45) (range 75 90)) reference) "[1.0 s, 1.5 s) and [2.5 s, 3.0 s) at 30 fps"))))))

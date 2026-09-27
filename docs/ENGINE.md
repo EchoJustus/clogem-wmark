@@ -21,6 +21,7 @@ watermark.core.jobs ── plan-input ─► watermark.render/build ─► rende
 |---|---|---|
 | `(info e)` | `{:engine/id :engine/version :available? :problems :warnings :capabilities :binaries}` | Never throws. Cheap after the first call. `wmark doctor` and `/api/v1/health` show it. |
 | `(probe e source)` | media facts: `:kind :width :height :fps-num :fps-den :frames :duration-s :start-s :vfr? :has-audio? :rotation` | Must handle still images (the logo) as well as video. Width and height are *display* dimensions, with rotation applied. |
+| `(decode-still e source)` | `{:width :height :px}`: straight RGBA8, row-major | The `StillDecoder` protocol, for engines that take render spec v2: the host draws the logo's bitmaps from these pixels. |
 | `(prepare e request)` | an engine plan: plain, serializable data | Capability check first (`engine/check!`), then compile. Nothing is written. Dry runs print it. |
 | `(execute! e plan listener)` | a `RenderHandle`, returned immediately | `listener` receives `{:event :progress :fraction :frame}` on any thread. |
 | `(cancel! handle)` / `(outcome handle)` | outcome deferred: `{:status :done/:failed/:cancelled :error}` | On the JVM, deref blocks until the render ends. |
@@ -43,9 +44,11 @@ discards it otherwise.
 ## The render spec
 
 Schema: `watermark.render.schema` (malli), exported as
-`native/render-spec.schema.json`. The exported schema was checked with an
-independent validator (Python `jsonschema`) against kernel-produced specs of
-every layer, timing and placement type.
+`native/render-spec.schema.json` (version 1) and
+`native/render-spec-v2.schema.json` (version 2, below); a test keeps each
+file equal to the code. The v1 export was checked with an independent
+validator (Python `jsonschema`) against kernel-produced specs of every
+layer, timing and placement type.
 
 ```clojure
 {:spec/version 1
@@ -91,9 +94,10 @@ These are the functions in `watermark.render`, and they are normative:
 - `(text-origin layer n [W H] [tw th])`: the top-left pixel of the text box,
   given the rasterized text size.
 
-Text rasterization (font, hinting) is the one thing that legitimately differs
-between engines. Placement is defined relative to the rendered box, so
-positions still agree to within glyph bearings.
+In v1, text rasterization (font, hinting) is the one thing that
+legitimately differs between engines. Placement is defined relative to the
+rendered box, so positions still agree to within glyph bearings. In v2 the
+host draws the text, so every engine shows the same pixels.
 
 ## Capabilities
 
@@ -115,32 +119,74 @@ capabilities from the binary it found:
 then rasterize text layers to image layers before calling it. This is how a
 first GPU core can start with images only.
 
-## Planned: render spec v2 (thinner native engines)
+## Render spec v2: the host renders, engines composite
 
-The native-engine plan is to shrink what each engine has to compute, not to
-change its language. Spec v2 adds two optional forms, both announced through
-capabilities so v1 engines keep working:
+Spec v2 takes all drawing out of the engines. The host renders the logo
+warped for every frame of a flip, the static pose and every text layer, as
+bitmaps. An engine then only has to draw bitmap B with its top-left at whole
+pixel (x, y) on frame n. FFmpeg's `overlay` does that, so an LGPL build (no
+`perspective`, no `drawtext` needed) is a complete engine. Design, decisions
+and measurements: [ADR 0006](adr/0006-render-spec-v2-host-rendered-overlays.md).
 
-- **A baked flip table.** For an animated image layer, the kernel emits the
-  quad corners for each frame of one flip, derived from `logo-corners`. The
-  engine looks up entry `p = mod(n - start, period)` while `p < duration`,
-  instead of evaluating the projection itself.
-- **Host-rasterized text.** The host renders text layers to bitmaps with their
-  final size and opacity (Java2D on the JVM, Flutter's text painter in the
-  apps). Engines then see only image layers with per-frame positions. That is
-  the escape hatch described above, made standard.
+```clojure
+{:spec/version 2
+ :canvas {...} :timebase {...}                       ; as in v1
+ :bitmaps {"<sha256>" {:width 176 :height 76 :path "/scratch/<sha256>.rgba"}}  ; straight RGBA8
+ :layers [{:id "logo" :kind :flipbook :timing {:type :always}
+           :rest  {:bitmap "<sha256>" :x 40 :y 142}
+           :cycle {:start 15 :period 30 :frames [{:bitmap "<sha256>" :x 38 :y 139} ...]}}
+          {:id "text-0" :kind :bitmap :bitmap "<sha256>"
+           :placement {...v1...} :timing {...v1...}}]}
+```
 
-A v2 engine therefore only has to draw bitmap B into quad Q at opacity a on
-frame n, in its platform's native API. Golden vectors for the baked tables
-will pin them for ports.
+- **Bitmaps** are raw files: width × height straight (not premultiplied)
+  RGBA8 pixels, row-major, top row first, no header. A bitmap's id is the
+  SHA-256 (hex) of `"<width>x<height>:"` followed by its pixels
+  (`watermark.raster/bitmap-id`). Opacity is baked into alpha.
+- **Reference semantics:** `(watermark.render.v2/draw-at spec layer n)`
+  gives the bitmap and position at frame n, or nil.
+  - A flipbook shows `cycle` frame `mod(n - start, period)` while that is
+    below its frame count, and `rest` otherwise.
+  - A bitmap layer sits where v1 would put a text box of the bitmap's size
+    (`text-origin`), floored to whole pixels.
+  - Layers composite in order, source over, straight alpha.
+- **What the host draws** (`watermark.render.v2`, graphics-free):
+  `raster-requests` lists the static pose, one card per flip frame (its
+  quad from the reference `logo-corners`, in a whole-pixel box) and each
+  text layer; `assemble` builds the spec from the drawn bitmaps.
+- **How the host draws** (`watermark.raster.*`, portable `.cljc`): pure
+  arithmetic, so every host produces the same pixels.
+  - Images: premultiplied area scaling, then an exact projective warp with
+    bilinear sampling.
+  - Text: the kernel's TrueType reader and rasterizer (exact area coverage,
+    unhinted, advance-width layout: no kerning or shaping), a soft border
+    under the text, and the bundled Fira Sans Bold unless a layer names a
+    font file.
+  - The engine decodes the logo (`StillDecoder`), so image formats stay its
+    business.
+  - The local adapter (`watermark.raster.local`) writes the bitmaps to
+    `<home>/work/v2-<uuid>/`, validates the spec against the schema, and
+    deletes the folder after the render.
+- **Negotiation:** engines list `:spec-versions` (absent means `#{1}`), and
+  a v2 request requires 2. The job pipeline gives an engine v1 when it
+  takes it, else v2; `--render-spec N` forces a version. The FFmpeg engine
+  reports `#{1 2}`, or `#{2}` for a build without `perspective`; an ABI 2
+  native library lists its own.
+- **Pinned outputs:** `kernel/test/golden/render-v2.edn` pins the requests,
+  every bitmap (by id), the assembled spec and `draw-at` samples.
 
 ## The C ABI (`native/include/wmark_engine.h`)
 
 - **Control plane only; frames never cross it.** JSON in and out, with
   library-owned strings freed through `wmark_free`.
 - **Events arrive through a callback,** possibly on an engine thread.
-- **Versioning:** `wmark_abi_version()` must be checked first. Changes are
-  additive within a version.
+- **Versioning:** `wmark_abi_version()` is checked first. The header writes
+  down the compatibility rule: a library implements one ABI version; a host
+  accepts every version from 1 to its own (wmark: 1 and 2) and calls only
+  that version's functions; changes within a version are additive.
+- **ABI 2** adds render spec v2: `wmark_engine_decode_still` (the logo as
+  raw RGBA8 in a scratch file) and the `spec-versions` capability. An ABI 1
+  library takes spec 1 only.
 
 **On the JVM:** `watermark.engine.native` binds it with the Foreign Function &
 Memory API: downcalls for every function, and an upcall stub for the event
@@ -152,7 +198,7 @@ first native build failed on exactly that. GraalVM supports FFM downcalls and
 upcalls on Linux x64 and AArch64, Windows x64 and macOS AArch64
 ([GraalVM 25: FFM API](https://www.graalvm.org/jdk25/reference-manual/native-image/native-code-interoperability/ffm-api/)),
 so an Intel Mac build of `wmark` can't load native engines. The six downcall
-shapes and one upcall
+shapes (ABI 2's new function shares `probe`'s) and one upcall
 shape are registered in
 `desktop/resources/META-INF/native-image/.../reachability-metadata.json`, and
 the build passes `--enable-native-access=ALL-UNNAMED`.
@@ -161,12 +207,17 @@ the build passes `--enable-native-access=ALL-UNNAMED`.
 
 The mock (`native/mock/mock_engine.c`) is compiled by the test suite, then
 driven through the binding and through the unchanged job pipeline. That covers
-the handshake, info, probe errors, a render with upcall events from its own
-pthread, cancellation, and a capability refusal.
+the handshake and the compatibility rule (the mock built as ABI 1 and 3),
+info, probe errors, a render with upcall events from its own pthread,
+cancellation, still decoding and a capability refusal. It composites
+render spec v2 for real (grey Y4M over a white canvas) and passes the
+conformance harness with FFmpeg's tolerances.
 
 ## Adding an engine: checklist
 
-1. **Implement `wmark_engine.h`.**
+1. **Implement `wmark_engine.h`**, ABI 2. Taking render spec v2 is the
+   short road: composite the host's bitmaps, decode stills, and list
+   `"spec-versions": [2]`.
    - Swift: `@_cdecl` exports around an AVFoundation composition.
    - Rust: `#[no_mangle] extern "C"` plus `cbindgen`.
    - Kotlin: a thin JNI/C shim over Media3.
@@ -176,8 +227,9 @@ pthread, cancellation, and a capability refusal.
    `:compact`. Ignore the `:ffmpeg` block.
 4. **Keep frames exact.** Never duplicate or drop frames. VFR input is
    rendered on the spec's constant-rate timebase.
-5. **Run the conformance harness** (`test/watermark/engine/conformance.clj`).
+5. **Run the conformance harness** (`testkit/src/watermark/engine/conformance.clj`).
    Point it at your engine: it renders test clips through the protocol and
-   compares measured frames with the reference semantics.
+   compares measured frames with the reference semantics
+   (`:spec-version 2` for v2).
 6. **Reproduce the golden vectors** if your platform re-implements any kernel
-   logic, such as the PRNG or seeds.
+   logic, such as the PRNG, seeds, or v2's drawing (`render-v2.edn`).

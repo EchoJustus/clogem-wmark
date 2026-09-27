@@ -12,6 +12,8 @@
             [watermark.core.resolve :as resolve]
             [watermark.core.schema :as schema]
             [watermark.engine :as engine]
+            [watermark.raster :as raster]
+            [watermark.raster.local :as raster-local]
             [watermark.render :as render])
   (:import (java.io DataInputStream File)
            (java.nio.file Files)
@@ -35,6 +37,19 @@
          "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
          "C:/Windows/Fonts/arialbd.ttf"]))
 
+(def ^:private bundled-font
+  (delay (when-let [r (io/resource "fonts/wmark.ttf")]
+           (let [f (io/file (tmp-dir) "wmark.ttf")]
+             (with-open [in (io/input-stream r)] (io/copy in f))
+             (str f)))))
+
+(defn font
+  "A TrueType font file for text layers: a common system font, else the
+  bundled one (fonts/wmark.ttf on the classpath), so text is measured
+  everywhere."
+  []
+  (or (system-font) @bundled-font))
+
 (defn make-media!
   "White test clip (with a silent audio track) and a two-colour opaque logo.
   `start-s` > 0 produces a file whose video starts at that timestamp."
@@ -57,8 +72,14 @@
 
 (defn render!
   "Plan and render `input` with `settings` through the engine protocol only.
-  Returns {:spec :output :outcome :media}."
-  [eng settings input {:keys [entitlements seed-fn out-dir]}]
+  Returns {:spec :output :outcome :media :plan}. With :spec-version 2 the host
+  rasterizes (watermark.raster, the local adapter) and the engine, which
+  also decodes the logo, gets the v2 spec, returned as
+  :v2; :spec stays the v1 spec, whose reference geometry the frames are
+  measured against. The output is lossless H.264 in MP4 with the audio
+  copied, unless :container, :codec and :audio say otherwise."
+  [eng settings input {:keys [entitlements seed-fn out-dir spec-version container codec audio]
+                       :or   {container "mp4" codec :h264 audio :copy}}]
   (let [media  (engine/probe eng input)
         logo   (get-in settings [:logo :path])
         spec   (render/build {:settings     (resolve/deep-merge schema/defaults settings)
@@ -66,14 +87,16 @@
                               :logo-media   (when logo (engine/probe eng logo))
                               :seed-fn      (or seed-fn (constantly 42))
                               :entitlements (or entitlements (features/community))
-                              :font         (system-font)})
-        out    (str (io/file out-dir (str (.getName (io/file input)) ".out.mp4")))
-        plan   (engine/prepare eng {:spec spec :source input :media media
-                                    :output {:path out :container "mp4"}
-                                    :encode {:codec :h264 :quality :archival :audio :copy}
+                              :font         (font)})
+        v2     (when (= 2 spec-version)
+                 (raster/realize! (raster-local/local-rasterizer {:work-root out-dir}) eng spec))
+        out    (str (io/file out-dir (str (.getName (io/file input)) ".out." container)))
+        plan   (engine/prepare eng {:spec (or v2 spec) :source input :media media
+                                    :output {:path out :container container}
+                                    :encode {:codec codec :quality :archival :audio audio}
                                     :strip-metadata? true})
         result (deref (engine/outcome (engine/execute! eng plan nil)) 120000 {:status :timeout})]
-    {:spec spec :output out :outcome result :media media}))
+    {:spec spec :v2 v2 :output out :outcome result :media media :plan plan}))
 
 (defn gray-frames
   "Every frame of `path` as a luma byte array, decoded by ffmpeg."
