@@ -124,7 +124,7 @@ bb lint        # build matrix vs repository
 bb e2e         # browser smoke test of the web UI (ffmpeg + Python Playwright)
 ```
 
-`bb test` runs 84 tests (10,587 assertions) in 25 namespaces (**verified**,
+`bb test` runs 86 tests (10,592 assertions) in 25 namespaces (**verified**,
 2026-09-27). CI fails on any `Reflection warning` in its output.
 Two groups need extra tools and **skip themselves, saying so**, when those
 tools are missing:
@@ -295,18 +295,20 @@ GraalVM CE 25.0.2, FFmpeg 6.1.1 and the pinned 9.0.1, Chromium 141):
   binaries were run);
 - the FFmpeg conformance harness with FFmpeg 9.0.1.
 
-**Verified in CI (2026-09-27, `native` job):**
-- macOS 15 arm64: the smoke test (17 checks, the FFM mock included), the
-  bundle (15), and an ad-hoc hardened-runtime signature (17);
-- macOS 15 Intel: the smoke test and the bundle (no native engines: GraalVM has
-  no FFM on Intel macOS);
-- Linux x64: the smoke test and the bundle;
-- Windows x64: 14 of 16 checks, the FFM mock included; the two with non-ASCII
-  arguments failed, which the UTF-8 manifest (above) addresses.
+**Verified in CI (2026-09-27, `native` job, run 36324745992): every step green**
+on Linux x64, Windows x64 (Windows Server 2025), macOS 15 arm64 and macOS 15
+Intel:
+- the smoke test on the binaries (the FFM mock included, except on Intel macOS,
+  where GraalVM has no FFM) and on each assembled bundle;
+- the browser suite against the Linux native binary;
+- on macOS arm64, the same smoke test under an ad-hoc hardened-runtime
+  signature.
+
+The first run found what the Windows manifest and the e2e `PATH` fix address:
+non-ASCII arguments arrived mangled on Windows, and the runner had no ffmpeg
+for the browser suite.
 
 **Not run yet:**
-- the Windows build with the manifest, and the browser suite against the Linux
-  native binary in CI (the first run lacked FFmpeg on PATH);
 - the release and SDK workflows (they run on tags);
 - signing and notarization: the certificates don't exist yet (ADRs 0002 and
   0003);

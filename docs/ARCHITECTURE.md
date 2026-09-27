@@ -341,7 +341,7 @@ EPL-2.0`.
 
 ## What's tested
 
-84 tests with 10,587 assertions in 25 namespaces, all passing, with zero
+86 tests with 10,592 assertions in 25 namespaces, all passing, with zero
 reflection warnings (2026-09-27; JDK 25, FFmpeg 6.1.1 and a C compiler). A
 browser smoke test (`test/e2e/ui_smoke.py`, 20 checks in Chromium) covers the
 web UI end to end, on the JVM and against the native binary, and
