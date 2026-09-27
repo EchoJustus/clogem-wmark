@@ -12,6 +12,8 @@
             [watermark.web.sse :as sse])
   (:import (java.io ByteArrayInputStream File)))
 
+(set! *warn-on-reflection* true)
+
 (def ^:private cases-dir (io/file (io/resource "datastar-sdk-cases")))   ; web/test is on the classpath
 
 (defn- render [{:strs [type elements selector mode useViewTransition namespace eventId retryDuration

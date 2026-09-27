@@ -4,6 +4,8 @@
   (:require [clojure.test :refer [deftest is testing]]
             [watermark.web.html :as h]))
 
+(set! *warn-on-reflection* true)
+
 (deftest renders-hiccup
   (is (= "<p class=\"note\">a &lt; b</p>" (h/html [:p {:class "note"} "a < b"])))
   (is (= "<input disabled data-bind:name>" (h/html [:input {:disabled true "data-bind:name" true :hidden false :x nil}])))

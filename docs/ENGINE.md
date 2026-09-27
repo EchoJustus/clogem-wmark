@@ -144,8 +144,15 @@ will pin them for ports.
 
 **On the JVM:** `watermark.engine.native` binds it with the Foreign Function &
 Memory API: downcalls for every function, and an upcall stub for the event
-callback, living in a shared arena that is released after the final event.
-GraalVM Native Image 25 supports this. The six downcall shapes and one upcall
+callback. The stub lives in an automatic arena that stays reachable until
+`wmark_render_release` returns, after the final event; the GC frees it
+later. It isn't a shared arena because Native Image 25 supports
+`Arena.ofShared` only behind an expert option (`-H:+SharedArenaSupport`); the
+first native build failed on exactly that. GraalVM supports FFM downcalls and
+upcalls on Linux x64 and AArch64, Windows x64 and macOS AArch64
+([GraalVM 25: FFM API](https://www.graalvm.org/jdk25/reference-manual/native-image/native-code-interoperability/ffm-api/)),
+so an Intel Mac build of `wmark` can't load native engines. The six downcall
+shapes and one upcall
 shape are registered in
 `desktop/resources/META-INF/native-image/.../reachability-metadata.json`, and
 the build passes `--enable-native-access=ALL-UNNAMED`.

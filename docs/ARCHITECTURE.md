@@ -312,16 +312,24 @@ EPL-2.0`.
   thread; those would be frozen into the binary. Executors, tokens, secrets,
   the home directory, engine discovery and the job queue are all created in
   functions at run time.
-- **No reflection.** Every namespace sets `*warn-on-reflection*`; application
-  code has zero warnings.
+- **No reflection.** Every namespace sets `*warn-on-reflection*` right after
+  its `ns` form (`architecture_test` fails otherwise), and the suite compiles
+  with zero warnings; CI fails on any.
+- **Arenas.** Native Image 25 supports `Arena.ofShared` only behind an expert
+  option, so the native engine keeps a render's upcall stub in an automatic
+  arena, reachable until `wmark_render_release` returns.
+- **Charset.** An image keeps the build machine's `sun.jnu.encoding`; Linux
+  builds run in `C.UTF-8` (RUNBOOK, "Native binaries").
 - **Resources** are declared in the same metadata file: `public/**` (the web
   UI's `datastar.js`, its license and `app.css`) and `fonts/**`, plus `wmark/**`
   for Pro.
 - **Build flags** (from the build matrix in `deps.edn`):
   - `-march=compatibility`, because the default targets x86-64-v3 and would
     crash on older laptops;
-  - `--install-exit-handlers`, so shutdown hooks run on Ctrl+C;
   - `--no-fallback`.
+
+  Shutdown hooks run on Ctrl+C without a flag: GraalVM 25 installs exit
+  handlers in executables by default.
 - **No cross-compilation.** WSL2 produces a Linux ELF. The Windows `.exe`
   comes from a Windows machine with MSVC, or the `windows-latest` CI runner.
   Keep the repo on the WSL ext4 filesystem, not a `/mnt` or 9p mount;
@@ -333,11 +341,12 @@ EPL-2.0`.
 
 ## What's tested
 
-89 tests with 14,424 assertions in 27 namespaces, all passing, with zero
-reflection warnings. The environment for the full run: JDK 25, FFmpeg 6.1.1
-(plus a 7.0.2 build without `drawtext`), PostgreSQL 16 and a C compiler. A
+86 tests with 10,592 assertions in 25 namespaces, all passing, with zero
+reflection warnings (2026-09-27; JDK 25, FFmpeg 6.1.1 and a C compiler). A
 browser smoke test (`test/e2e/ui_smoke.py`, 20 checks in Chromium) covers the
-web UI end to end.
+web UI end to end, on the JVM and against the native binary, and
+`test/smoke/native.clj` checks built binaries and bundles on every OS (RUNBOOK,
+"Native binaries").
 
 | Area | What the tests cover |
 |---|---|
@@ -347,10 +356,13 @@ web UI end to end.
 | Engine lookup | Search order (`./`, then `./bin/`, then the install folder), the hardened order, explicit files and folders, unusable files reported in the diagnostic trail, ffprobe taken from ffmpeg's folder (and a warning when it isn't) |
 | FFmpeg compile | Escaping, German-locale numbers, argv per FFmpeg version, encoders and quality tiers, segment offsets, text never inside the graph, every emitted filter covered by the capability check |
 | Conformance | Real renders measured against the reference semantics, for clips starting at 0 s and at 0.5 s: logo within 1.35 px on every frame, text on exactly the scheduled frames |
-| Native engine | A C mock compiled by the test, driven through FFM and the unchanged job pipeline: handshake, probe errors, upcall progress from a native thread, cancel, capability refusal |
-| Jobs | A fake engine behind the protocol: publish on success, per-input failures, existing outputs never overwritten, capability gaps reported before rendering, cancel mid-render |
+| Native engine | A C mock compiled by the test, driven through FFM and the unchanged job pipeline: handshake, probe errors, upcall progress from a native thread, cancel, capability refusal, a non-ASCII path arriving as UTF-8 |
+| Jobs | A fake engine behind the protocol: publish on success, per-input failures, an engine that reports success but writes nothing, existing outputs never overwritten, capability gaps reported before rendering, cancel mid-render |
 | HTTP | A live server: 401, 421, cookie bootstrap, 403 for a foreign Origin, CRUD, stale `if-rev`, the doctor route, the built-in UI's protection, an external UI with SPA fallback, traversal |
 | Web UI | The official Datastar SDK wire-format cases; escaping of hostile names and texts; only numbers in `data-signals`; the page's CSP nonce; token and `Datastar-Request` checks; editing with revisions, live preview and validation messages; a render followed over the queue stream to "done" and the activity log |
 | Core API | Jobs are tenant-scoped: list, cancel and subscribe |
 | Sidecar | A server started with `--parent-pid` exits when its parent ends, including a parent that was gone before the watch began |
+| CLI and TUI | `run --help`; `wmark-tui` options and exit codes, and a scripted session against a live server |
+| FFmpeg discovery | `-filters`, `-encoders` and `-version` output from 6.1 and 9.0 builds (9.0 dropped a flag column) |
+| Build | The uberjar carries every component's resources; FFmpeg pins must be https with a SHA-256; licenses through parent POMs; the SDK's ABI tag matches the header |
 | Commercial editions | Tested in their own repository against this one, with the same harnesses (`testkit/`) |

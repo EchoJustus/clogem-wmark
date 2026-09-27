@@ -18,6 +18,8 @@
     :entitlements the active watermark.core.features/Entitlements"
   (:require [watermark.render.layout :as layout]))
 
+#?(:clj (set! *warn-on-reflection* true))
+
 (defonce ^:private registry (atom {}))
 
 (defn register!

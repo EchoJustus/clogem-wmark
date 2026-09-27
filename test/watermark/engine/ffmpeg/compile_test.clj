@@ -11,6 +11,8 @@
             [watermark.engine.ffmpeg.process :as process]
             [watermark.render :as render]))
 
+(set! *warn-on-reflection* true)
+
 (def media {:kind :video :width 1920 :height 1080 :fps-num 25 :fps-den 1 :frames 250
             :duration-s 10.0 :start-s 0.0 :vfr? false :has-audio? true})
 

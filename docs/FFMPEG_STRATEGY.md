@@ -73,6 +73,15 @@ and derives what it can render:
   `:unsupported` instead of failing mid-render. A 7.0.2 static build tested
   here lacked it. **Ship a full build next to the binary.**
 - **Codec families** come from the encoders present (see "Encoding").
+- **`perspective` is GPL-only.** FFmpeg builds it only with `--enable-gpl`, so
+  LGPL builds (BtbN's `lgpl` variants, for instance) can't draw the flip:
+  `doctor` reports *lacks required filters: perspective*. Release downloads
+  therefore carry pinned GPL builds for now
+  ([ADR 0001](adr/0001-ffmpeg-in-release-bundles.md)); render spec v2 removes
+  the need.
+- **FFmpeg 9 prints two flag columns** in `-filters` where earlier releases
+  printed three; the parser reads both (tested with lines from 6.1.1 and
+  9.0.1).
 
 Problems and warnings appear in `wmark doctor` and in `/api/v1/health`.
 
@@ -295,6 +304,9 @@ vectors in `kernel/test/golden/`.
 | FFmpeg 7.0.2 static build without `drawtext` | Reported by `doctor`; logo-only specs render within 1.35 px via `-/filter_complex`; text layers refused before any work |
 | Release bundle with `bin/ffmpeg`, PATH emptied, run from the bundle folder | Found via `./bin/`; a 60-frame render completed |
 | Hardened order, no FFmpeg in the install folder | `doctor` reports NOT READY and lists every place it looked |
+| BtbN's GPL `n9.0.1-11` build first on PATH (2026-09-27) | `doctor` ready; the conformance harness passes |
+| BtbN's LGPL `n9.0.1-11` build | NOT READY, with one honest problem: no `perspective` |
+| The pinned builds in a native bundle, hardened order, a clip in `vidéo 视频/` | Found in `bin/` (app-bin); the render keeps all 100 frames (`test/smoke/native.clj`) |
 
 **From Phase 1, not re-run here:** 6.1 `-filter_complex_script` and 7.0
 `-/filter_complex` gave bit-identical output; a rotated (90°) phone clip was

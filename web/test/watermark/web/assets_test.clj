@@ -9,6 +9,8 @@
             [clojure.test :refer [deftest is]])
   (:import (java.security MessageDigest)))
 
+(set! *warn-on-reflection* true)
+
 (defn- sha256 [resource]
   (with-open [in (io/input-stream (io/resource resource))]
     (let [md (MessageDigest/getInstance "SHA-256")]

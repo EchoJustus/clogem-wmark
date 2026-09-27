@@ -19,6 +19,8 @@
             [malli.json-schema :as mjs]
             [malli.transform :as mt]))
 
+#?(:clj (set! *warn-on-reflection* true))
+
 (def Anchor
   [:enum :top-left :top-center :top-right
    :center-left :center :center-right

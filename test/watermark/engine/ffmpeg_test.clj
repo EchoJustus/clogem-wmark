@@ -9,6 +9,8 @@
            (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)))
 
+(set! *warn-on-reflection* true)
+
 (defn- tmp [] (str (Files/createTempDirectory "wmark-ff" (make-array FileAttribute 0))))
 
 (defn- touch! ^File [dir rel]
