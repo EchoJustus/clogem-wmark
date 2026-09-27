@@ -252,14 +252,37 @@ Push a tag `vX.Y.Z` (or `vX.Y.Z-rc.N`) on `main`; `.github/workflows/release.yml
 does the rest and stops at a **draft** release:
 1. builds and smoke-tests the bundle on Linux x64, Windows x64, macOS arm64 and
    macOS x64 (and runs the browser suite against the Linux binary);
-2. signs in the protected `release` environment, once the owner has set it up:
-   Authenticode ([ADR 0002](adr/0002-windows-code-signing.md)); Developer ID and
-   notarization for every Mach-O ([ADR 0003](adr/0003-macos-signing-and-library-validation.md));
+2. would sign in the protected `release` environment, but **code signing is
+   deferred**: the owner rejected [ADR 0002](adr/0002-windows-code-signing.md)
+   (Authenticode) and [ADR 0003](adr/0003-macos-signing-and-library-validation.md)
+   (Developer ID, notarization) for now. Those jobs stay in the workflow,
+   frozen and skipped, so Windows and macOS bundles are unsigned;
 3. publishes `wmark-<version>-<platform>.zip|tar.gz`, `SHA256SUMS`, a keyless
    Sigstore signature of the checksums and build-provenance attestations
    ([ADR 0004](adr/0004-release-supply-chain.md)).
 
 The draft's notes say which bundles are signed and how to verify a download.
+
+### Unsigned downloads
+While signing is deferred, the operating system warns before the first run.
+Verify the download first (`sha256sum -c SHA256SUMS --ignore-missing`, and the
+Sigstore bundle as the release notes show), then:
+- **macOS.** Gatekeeper refuses the first launch. Either open System Settings
+  → Privacy & Security and click **Open Anyway** after trying once (Apple:
+  [Safely open apps on your Mac](https://support.apple.com/en-us/102445)); wmark
+  starts `bin/ffmpeg` and `bin/ffprobe` itself, so they may ask too. Or clear
+  the quarantine flag of the whole extracted folder in Terminal:
+  `xattr -dr com.apple.quarantine wmark-<version>-macos-arm64`.
+- **Windows.** SmartScreen shows "Windows protected your PC": click **More
+  info**, then **Run anyway**, or run `Unblock-File` in PowerShell on the
+  extracted files first. **Smart App Control** blocks unsigned programs with
+  no per-app exception
+  ([Microsoft's FAQ](https://support.microsoft.com/en-us/windows/security/threat-malware-protection/smart-app-control-frequently-asked-questions)):
+  where it is on, it has to be turned off in Windows Security → App & browser
+  control. Machines that allow only signed code can't run wmark until
+  releases are signed.
+- **Linux** has no OS-level code signing; the checksums and attestations are
+  the whole story.
 Tags `abi-vN` and `kernel-v*` publish the **engine SDK** (`bb sdk :name abi-v1`
 locally): the header, the mock, the JSON Schemas, the golden vectors, README and
 ENGINE.md. `abi-vN` must match `WMARK_ENGINE_ABI_VERSION`.
@@ -310,6 +333,7 @@ for the browser suite.
 
 **Not run yet:**
 - the release and SDK workflows (they run on tags);
-- signing and notarization: the certificates don't exist yet (ADRs 0002 and
-  0003);
+- signing and notarization: deferred by the owner (ADRs 0002 and 0003);
+- opening an unsigned download on a real, quarantined macOS or Windows
+  machine (the steps in "Unsigned downloads" follow the vendors' docs);
 - the OS encoders (Media Foundation, VideoToolbox) on real hardware.

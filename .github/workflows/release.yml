@@ -13,6 +13,10 @@
 # Until then those jobs are skipped and the draft says which bundles are
 # unsigned. Credentials never leave that environment; every other job runs
 # with read-only contents. Actions are pinned by commit SHA.
+#
+# FROZEN: the owner deferred code signing indefinitely (ADRs 0002 and 0003,
+# rejected for now), so the variables stay unset and the signing jobs stay
+# skipped. Don't enable, remove or extend them without the owner.
 name: release
 
 on:
@@ -256,6 +260,10 @@ jobs:
             echo
             echo "## Code signing"
             cat signing.txt
+            if grep -q UNSIGNED signing.txt; then
+              echo
+              echo "Windows and macOS warn before the first run of an unsigned build. How to open it: https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/RUNBOOK.md#unsigned-downloads"
+            fi
             echo
             echo "## Verify a download"
             echo '```'
