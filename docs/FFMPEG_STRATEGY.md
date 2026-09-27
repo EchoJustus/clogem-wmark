@@ -67,21 +67,28 @@ and derives what it can render:
 - **Required filters:** `split crop drawbox format scale colorchannelmixer
   setpts overlay perspective fps null`. A test checks this list against every
   filter the compiler can emit.
-- **Text needs `drawtext`,** which needs libfreetype, and libharfbuzz since
-  FFmpeg 7.0. Minimal builds often lack it. Without it the engine still
-  renders logo-only specs, and refuses text layers up front with
-  `:unsupported` instead of failing mid-render. A 7.0.2 static build tested
-  here lacked it. **Ship a full build next to the binary.**
+- **Text under render spec v1 needs `drawtext`,** which needs libfreetype,
+  and libharfbuzz since FFmpeg 7.0. Minimal builds often lack it (a 7.0.2
+  static build tested here did). Without it, the job pipeline gives specs
+  with text to render spec v2: wmark draws the text and FFmpeg composites
+  it with `overlay`. `doctor` notes this. Only a build without `overlay`
+  too refuses text layers, up front with `:unsupported`. **Ship a full
+  build next to the binary** all the same.
 - **Codec families** come from the encoders present (see "Encoding").
 - **`perspective` is GPL-only.** FFmpeg builds it only with `--enable-gpl`, so
   LGPL builds (BtbN's `lgpl` variants, for instance) can't draw the flip
-  themselves. Release downloads therefore carry pinned GPL builds for now
+  themselves. Release downloads carry pinned GPL builds for now
   ([ADR 0001](adr/0001-ffmpeg-in-release-bundles.md)).
 - **Render spec v2 needs only `overlay`** (plus `fps` and `null`:
-  `required-filters-v2`, tested like the v1 list). A build without
-  `perspective` is now a working engine that takes v2 specs only
-  (`:spec-versions #{2}`), and `doctor` says so. The CLI and UI don't
-  produce v2 yet ([ADR 0006](adr/0006-render-spec-v2-host-rendered-overlays.md)).
+  `required-filters-v2`, tested like the v1 list), and neither
+  `perspective` nor `drawtext`. A build without `perspective` is a complete
+  engine that takes v2 specs only (`:spec-versions #{2}`): wmark draws the
+  flip and the text itself, and the CLI, the UI and the API give such a
+  build v2 automatically. `doctor` notes it
+  ([ADR 0006](adr/0006-render-spec-v2-host-rendered-overlays.md)).
+- **The logo is decoded by FFmpeg** for v2 (`decode-still`: one
+  `-frames:v 1 -f rawvideo -pix_fmt rgba` call), so every image format
+  FFmpeg reads works, and wmark's host code needs no image library.
 - **FFmpeg 9 prints two flag columns** in `-filters` where earlier releases
   printed three; the parser reads both (tested with lines from 6.1.1 and
   9.0.1).
@@ -315,7 +322,12 @@ per draw. Each draw reads a still RGBA bitmap as a `rawvideo` input (one frame;
 
 Overlays run in `yuv444`, because `yuv420` rounds positions to even pixels (a
 square at x = 13 lands on column 12). At 1080p with a 30-frame flip, that is
-32 overlays and 7–18% more render time than v1 (ADR 0006).
+32 overlays and 7–18% more render time than v1, plus about half a second of
+host drawing per input (ADR 0006).
+
+`wmark --render-spec 2 run ...` forces v2 on a full build too (for
+comparison, or for text pixels that match every other engine); `1` forces
+v1, which a build without `perspective` refuses up front.
 
 ## Verification
 
@@ -329,7 +341,8 @@ square at x = 13 lands on column 12). At 1080p with a 30-frame flip, that is
 | Hardened order, no FFmpeg in the install folder | `doctor` reports NOT READY and lists every place it looked |
 | BtbN's GPL `n9.0.1-11` build first on PATH (2026-09-27) | `doctor` ready; the conformance harness passes |
 | BtbN's LGPL `n9.0.1-11` build, v1 | Refused up front: the build has no `perspective` |
-| The same build, pinned (`bb ffmpeg :variant :lgpl`), render spec v2 (2026-09-27) | Both conformance clips pass: logo width within 0.76 px, height within 1.11 px, axis within 0.45 px; text on exactly the scheduled frames ([ADR 0006](adr/0006-render-spec-v2-host-rendered-overlays.md)) |
+| The same build, pinned (`bb ffmpeg :variant :lgpl`), render spec v2 (2026-09-27) | Both conformance clips pass: logo width within 0.76 px, height within 1.11 px, axis within 0.45 px; text, drawn by the kernel's rasterizer, on exactly the scheduled frames ([ADR 0006](adr/0006-render-spec-v2-host-rendered-overlays.md)) |
+| `wmark run` with only the pinned LGPL build (2026-09-27) | v2 chosen automatically; 75 frames kept, non-ASCII paths, the scratch folder removed afterwards |
 | The pinned builds in a native bundle, hardened order, a clip in `vidéo 视频/` | Found in `bin/` (app-bin); the render keeps all 100 frames (`test/smoke/native.clj`) |
 
 **From Phase 1, not re-run here:** 6.1 `-filter_complex_script` and 7.0

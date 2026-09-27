@@ -38,10 +38,12 @@ tool (`build/`).
 the vendored `web/resources/public/datastar.js`. Playwright is test tooling;
 it brings its own driver.
 
-**FFmpeg.** Use a full **GPL** build. LGPL builds lack `perspective`, which the
-flip needs (FFmpeg builds it only with `--enable-gpl`), and minimal builds
-often lack `drawtext`, without which text layers are refused. Release
-downloads carry a pinned build (`bb ffmpeg`, below).
+**FFmpeg.** A full **GPL** build renders everything with FFmpeg's own filters
+(render spec v1). An **LGPL** build lacks `perspective`, which FFmpeg builds
+only with `--enable-gpl`; with one, wmark draws the flip and the text itself
+and FFmpeg only composites them (render spec v2, chosen automatically;
+docs/adr/0006). Minimal builds without `drawtext` get v2 for text the same
+way. Release downloads carry a pinned GPL build (`bb ffmpeg`, below).
 - Ubuntu 24.04: `apt install ffmpeg` (6.1.1, has everything; verified).
 - Windows: a "full" GPL build, e.g. from gyan.dev or BtbN. Put `ffmpeg.exe`
   and `ffprobe.exe` in `bin\` next to `wmark.exe`, or on PATH.
@@ -79,8 +81,20 @@ bb dev doctor          # which engine and FFmpeg were found, and from where
   working folder.
 - **Native engine.**
   - `--engine native --native-lib PATH` (or `WMARK_ENGINE_LIB`) loads a
-    library implementing `native/include/wmark_engine.h`.
+    library implementing `native/include/wmark_engine.h` (ABI 1 or 2).
   - `bb mock-engine` builds the mock (Linux).
+- **Render spec version.** wmark gives an engine v1 where it can draw the
+  whole spec, else v2 (wmark draws; the engine composites). `--render-spec 2`
+  (or `1`) insists on one, for comparisons; an engine that can't take it
+  refuses before any work. v2 bitmaps go to `<home>/work/v2-<uuid>/` and are
+  deleted when the render ends.
+- **Fonts.** Text layers use the bundled Fira Sans Bold (Latin, Greek,
+  Cyrillic; SIL OFL, `resources/fonts/`) unless a layer sets `font-path`.
+  FFmpeg reads it from `<home>/cache/wmark.ttf`, extracted on first use and
+  refreshed when a new version bundles another font. Render spec v2 needs a
+  TrueType-outline font (`glyf`); CFF (`.otf` with `OTTO`) fonts are refused
+  with a clear error, and v2 lays text out by advance widths (no kerning or
+  shaping, so not for Arabic or Indic scripts yet).
 - **REPL.** `clojure -M:dev` (or `bb clojure -M:dev`) has every source and
   test path. A server you can reload against:
   ```clojure
@@ -133,10 +147,12 @@ tools are missing:
 |---|---|---|
 | FFmpeg conformance (real renders measured against the reference semantics) | `ffmpeg` on PATH, a TrueType font (DejaVu on Linux) | install FFmpeg |
 | v2 conformance on the pinned LGPL FFmpeg (M2's exit test) | `target/ffmpeg/linux-x64-lgpl/bin`, or `WMARK_FFMPEG_LGPL` | `bb ffmpeg :variant :lgpl`; CI sets `WMARK_REQUIRE_LGPL=1`, so it can't skip there |
-| Native engine (C mock through Java's FFM API) | `cc` | install a C compiler |
+| Native engine (C mock through Java's FFM API, ABI 1 to 3 builds, v2 frames) | `cc` | install a C compiler |
+| v2 conformance on the C mock | `cc` and `ffmpeg` | both of the above |
 
 **Golden vectors.** `kernel/test/golden/*.edn` pin the kernel's outputs
-(PRNG, seeds, render specs). They are
+(PRNG, seeds, render specs, and render spec v2 down to every bitmap's
+SHA-256). They are
 what a Dart or Swift port must reproduce. After an intentional change,
 regenerate them with `WMARK_UPDATE_GOLDEN=1 bb test` and review the diff like
 code.
@@ -289,8 +305,9 @@ Sigstore bundle as the release notes show), then:
   releases are signed.
 - **Linux** has no OS-level code signing; the checksums and attestations are
   the whole story.
-Tags `abi-vN` and `kernel-v*` publish the **engine SDK** (`bb sdk :name abi-v1`
-locally): the header, the mock, the JSON Schemas, the golden vectors, README and
+Tags `abi-vN` and `kernel-v*` publish the **engine SDK** (`bb sdk :name abi-v2`
+locally): the header, the mock, the JSON Schemas (render spec v1 and v2,
+settings), the golden vectors with the font render-v2 uses, README and
 ENGINE.md. `abi-vN` must match `WMARK_ENGINE_ABI_VERSION`.
 
 ## 6. Troubleshooting
@@ -299,7 +316,7 @@ ENGINE.md. `abi-vN` must match `WMARK_ENGINE_ABI_VERSION`.
 |---|---|
 | UI says "This browser isn't signed in" | Open the exact URL the engine printed (it carries the token), or restart it |
 | `doctor` says NOT READY | FFmpeg not found: see the trail it prints; put `ffmpeg`/`ffprobe` in `bin/` next to wmark |
-| "text layers are unavailable" | This FFmpeg build has no `drawtext`: install a full build |
+| "text layers are unavailable" | This FFmpeg build has neither `drawtext` nor `overlay`: install a full build. (A build without only `drawtext` works: wmark draws the text itself, render spec v2) |
 | `doctor` warns ffprobe comes from another folder | Ship both binaries together in `bin/` |
 | Save says the profile "changed since it was loaded" | Another window, the CLI or the API saved first: click the profile to reload it |
 | Stream stops updating after sleep | It reconnects by itself (and on tab focus); reload if the engine was restarted with a new token |
