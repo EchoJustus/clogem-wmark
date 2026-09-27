@@ -178,6 +178,15 @@
 
 (defn clean [_] ((tb 'delete) {:path "target"}))
 
+(defn project-dirs
+  "The project's own folders in `basis`: its :paths and the :extra-paths of
+  the aliases in play, sorted. (:paths basis) alone misses the second kind,
+  which is where components keep their assets and native-image metadata
+  (web/resources, desktop/resources, an edition's resources). Libraries,
+  local ones included, reach the uberjar through tools.build's `uber`."
+  [basis]
+  (vec (sort (for [[path {:keys [path-key]}] (:classpath basis) :when path-key] path))))
+
 (defn uber
   "AOT-compiled, direct-linked uberjar for a target and edition."
   [opts]
@@ -186,7 +195,7 @@
         class-dir (str "target/classes/" artifact)
         jar       (str "target/" artifact ".jar")]
     ((tb 'delete) {:path class-dir})
-    ((tb 'copy-dir) {:src-dirs (:paths basis) :target-dir class-dir :include "**/{*.json,*.edn,*.html,*.css,*.js,*.der,*.ttf,*.png,*.svg,*.txt}"})
+    ((tb 'copy-dir) {:src-dirs (project-dirs basis) :target-dir class-dir :include "**/{*.json,*.edn,*.html,*.css,*.js,*.der,*.ttf,*.png,*.svg,*.txt}"})
     ((tb 'compile-clj) {:basis        basis
                         :class-dir    class-dir
                         :ns-compile   [main]            ; transitive: everything main requires
@@ -203,6 +212,19 @@
                  (fail! "Set GRAALVM_HOME to a GraalVM 25 (Community) installation."))]
     (str home (if (windows?) "\\bin\\native-image.cmd" "/bin/native-image"))))
 
+(defn- linux? [] (str/starts-with? (str/lower-case (System/getProperty "os.name")) "linux"))
+
+(defn native-image-env
+  "Environment for the native-image process. The image keeps the charset it
+  was built with for paths, arguments and the environment (sun.jnu.encoding,
+  oracle/graal#10237), and a JVM derives that charset from the locale: a Linux
+  build in a POSIX locale (containers, CI) makes a binary that can't open
+  `vidéo/clip.mp4` whatever the user's locale. So Linux builds run in
+  C.UTF-8. macOS always uses UTF-8; Windows is covered by CI's
+  non-ASCII smoke test."
+  []
+  (if (linux?) {"LC_ALL" "C.UTF-8"} {}))
+
 (defn native
   "Uberjar -> single native binary for the current OS/arch -> target/bin/."
   [opts]
@@ -211,7 +233,8 @@
         jar (uber opts)
         _   (.mkdirs (io/file "target/bin"))
         out (str "target/bin/" artifact)                ; native-image appends .exe on Windows
-        {:keys [exit]} ((tb 'process) {:command-args (concat [(native-image-bin) "-jar" jar "-o" out] native-image)})]
+        {:keys [exit]} ((tb 'process) {:command-args (concat [(native-image-bin) "-jar" jar "-o" out] native-image)
+                                       :env          (native-image-env)})]
     (when-not (zero? exit) (fail! "native-image failed" {:exit exit}))
     (println "Built" out)))
 
