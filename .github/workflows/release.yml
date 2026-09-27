@@ -53,17 +53,18 @@ jobs:
       fail-fast: true
       matrix:
         include:
-          - { os: ubuntu-24.04,   platform: linux-x64,   mock: "cc -shared -fPIC -O2 -pthread -o target/libwmark_engine.so native/mock/mock_engine.c", lib: target/libwmark_engine.so }
-          - { os: windows-2025,   platform: windows-x64, mock: "gcc -shared -O2 -static -o target/wmark_engine.dll native/mock/mock_engine.c", lib: target/wmark_engine.dll }
-          - { os: macos-15,       platform: macos-arm64, mock: "cc -dynamiclib -O2 -o target/libwmark_engine.dylib native/mock/mock_engine.c", lib: target/libwmark_engine.dylib }
-          - { os: macos-15-intel, platform: macos-x64,   mock: "", lib: "" }
+          - { os: ubuntu-24.04,   platform: linux-x64,   graalvm: "25",     mock: "cc -shared -fPIC -O2 -pthread -o target/libwmark_engine.so native/mock/mock_engine.c", lib: target/libwmark_engine.so }
+          - { os: windows-2025,   platform: windows-x64, graalvm: "25",     mock: "gcc -shared -O2 -static -o target/wmark_engine.dll native/mock/mock_engine.c", lib: target/wmark_engine.dll }
+          - { os: macos-15,       platform: macos-arm64, graalvm: "25",     mock: "cc -dynamiclib -O2 -o target/libwmark_engine.dylib native/mock/mock_engine.c", lib: target/libwmark_engine.dylib }
+          - { os: macos-15-intel, platform: macos-x64,   graalvm: "25.0.1", mock: "", lib: "" }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
       - uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1.6.6
         with:
-          java-version: "25"
+          # deps.edn :graalvm pins macOS x64 to 25.0.1 (25.0.2 dropped it; ADR 0007)
+          java-version: ${{ matrix.graalvm }}
           distribution: graalvm-community
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: DeLaGuardo/setup-clojure@6d46099eae24853c33c0482f2bb54edf4f1a4c74 # 13.7.0

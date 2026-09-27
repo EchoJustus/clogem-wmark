@@ -1,7 +1,8 @@
 ;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
 ;; SPDX-License-Identifier: EPL-2.0
 (ns wmark.build-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.edn :as edn]
+            [clojure.test :refer [deftest is]]
             [wmark.build :as build]))
 
 (set! *warn-on-reflection* true)
@@ -64,3 +65,15 @@
         manifest (slurp (subs input (count "-H:NativeLinkerOption=/MANIFESTINPUT:")))]
     (is (= "-H:NativeLinkerOption=/MANIFEST:EMBED" embed))
     (is (clojure.string/includes? manifest "<activeCodePage xmlns=\"http://schemas.microsoft.com/SMI/2019/WindowsSettings\">UTF-8</activeCodePage>"))))
+
+(deftest intel-macs-build-on-graalvm-25-0-1
+  (is (= "25.0.1" (build/graalvm-version "native-image 25.0.1 2025-10-21\nGraalVM Runtime Environment GraalVM CE 25.0.1+8.1")))
+  (is (= "25.0.2" (build/graalvm-version "native-image 25.0.2 2026-01-20\n")))
+  (is (nil? (build/graalvm-version "command not found")))
+  (let [pinned (get-in (edn/read-string (slurp "deps.edn")) [:wmark/build-matrix :graalvm :macos-x64])]
+    (is (= "25.0.1" pinned) "GraalVM 25.0.2 dropped macOS x64 (ADR 0007)")
+    (doseq [wf [".github/workflows/ci.yml" ".github/workflows/release.yml"]
+            :let [entries (re-seq #"platform: ([a-z0-9-]+), +graalvm: \"([0-9.]+)\"" (slurp wf))]]
+      (is (= 4 (count entries)) (str wf " builds four platforms, each naming its GraalVM"))
+      (is (= [pinned] (for [[_ p v] entries :when (= "macos-x64" p)] v))
+          (str wf ": the macos-x64 entry must name the release deps.edn pins")))))

@@ -122,6 +122,10 @@ its own matrix.
    - The signing jobs in `release.yml` stay frozen: skipped, neither enabled,
      removed nor extended without the owner.
    - Checksums, Sigstore and attestations (ADR 0004) continue.
+7. **Intel Macs stay supported, on GraalVM 25.0.1** (owner, 2026-09-27; ADR
+   0007). GraalVM 25.0.2 dropped macOS x64. `deps.edn` `:graalvm` pins it,
+   `bb native` enforces it, and the workflows' macos-x64 entries name the
+   same release (tested). The other platforms take the latest 25.x.
 
 ## 4. Invariants (enforced by tests where marked; never weaken one to make a test pass)
 
