@@ -6,6 +6,8 @@
             [watermark.core.api :as api]
             [watermark.core.jobs :as jobs]))
 
+(set! *warn-on-reflection* true)
+
 (defrecord ListQueue [items listeners cancelled]
   jobs/JobQueue
   (submit! [_ job] job)

@@ -109,17 +109,30 @@
 (def options
   [[nil "--url URL" "Server URL (default: discovered from the runtime file)"]
    [nil "--token TOKEN" "API token (default: discovered)"]
-   [nil "--home DIR" "wmark data directory, to find the runtime file"]])
+   [nil "--home DIR" "wmark data directory, to find the runtime file"]
+   ["-h" "--help" "Show this help"]])
+
+(defn run
+  "Parse `args` and run the shell; returns the exit code."
+  [args]
+  (let [{:keys [options errors summary]} (cli/parse-opts args options)]
+    (cond
+      errors          (do (println (str/join "\n" errors)) 2)
+      (:help options) (do (println (str "Usage: wmark-tui [options]\n\n"
+                                        "A terminal client of a running wmark engine.\n\n" summary))
+                          0)
+      :else
+      (if-let [conn (discover options)]
+        (try (repl conn) 0
+             (catch java.io.IOException _
+               ;; also covers a stale runtime file left by a crashed server
+               (println (str "Can't reach the wmark server at " (:url conn)
+                             ". Is it running? Start it with `wmark serve`."))
+               1))
+        (do (println "No running wmark server found. Start one with `wmark serve` (or `wmark`), or pass --url and --token.")
+            1)))))
 
 (defn -main [& args]
-  (let [{:keys [options errors]} (cli/parse-opts args options)
-        conn (discover options)]
-    (cond
-      errors (println (str/join "\n" errors))
-      (nil? conn) (println "No running wmark server found. Start one with `wmark serve` (or `wmark`), or pass --url and --token.")
-      :else (try (repl conn)
-                 (catch java.io.IOException _
-                   ;; also covers a stale runtime file left by a crashed server
-                   (println (str "Can't reach the wmark server at " (:url conn)
-                                 ". Is it running? Start it with `wmark serve`.")))))
-    (shutdown-agents)))
+  (let [code (run args)]
+    (shutdown-agents)
+    (System/exit (int code))))

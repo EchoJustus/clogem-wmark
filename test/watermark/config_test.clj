@@ -9,6 +9,8 @@
   (:import (java.nio.file Files LinkOption Path)
            (java.nio.file.attribute FileAttribute)))
 
+(set! *warn-on-reflection* true)
+
 (def ^:dynamic *store* nil)
 (def ^:dynamic ^Path *home* nil)
 

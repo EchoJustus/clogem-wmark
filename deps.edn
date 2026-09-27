@@ -56,7 +56,7 @@
 
   ;; -- Development -----------------------------------------------------------
   ;; A C compiler enables the native-engine tests; ffmpeg enables conformance.
-  :dev      {:extra-paths ["testkit/src" "kernel/test" "test" "web/test" "desktop/test"
+  :dev      {:extra-paths ["testkit/src" "build/src" "kernel/test" "test" "web/test" "desktop/test"
                            "web/src" "web/resources" "desktop/src" "desktop/resources" "tui/src"]
              :extra-deps  {http-kit/http-kit                {:mvn/version "2.8.1"}
                            org.clojure/tools.cli            {:mvn/version "1.4.256"}
@@ -87,8 +87,9 @@
             :artifact     {:community "wmark"}
             :native-image ["--no-fallback"
                            "-march=compatibility"      ; default x86-64-v3 crashes on older CPUs
+                           ;; shutdown hooks on Ctrl+C need no flag: GraalVM 25 installs
+                           ;; exit handlers in executables by default
                            "--features=clj_easy.graal_build_time.InitClojureClasses"
-                           "--install-exit-handlers"   ; shutdown hooks on Ctrl+C
                            "--enable-native-access=ALL-UNNAMED" ; native engines (FFM)
                            "-H:+ReportExceptionStackTraces"]}
    :tui    {:doc          "Terminal client of a running engine (one edition: goes into every bundle)"
@@ -98,8 +99,7 @@
             :main         {:community watermark.tui.main}
             :artifact     {:community "wmark-tui"}
             :native-image ["--no-fallback" "-march=compatibility"
-                           "--features=clj_easy.graal_build_time.InitClojureClasses"
-                           "--install-exit-handlers"]}}
+                           "--features=clj_easy.graal_build_time.InitClojureClasses"]}}
 
   :bundles
   {:desktop-server {:doc       "Engine + TUI + FFmpeg sidecar, unzip and run"
@@ -108,4 +108,41 @@
                     :sidecars  [:ffmpeg :ffprobe]}}
 
   :stages
-  {1 {:name "WebServer + TUI for Windows, then macOS" :bundles [:desktop-server]}}}}
+  {1 {:name "WebServer + TUI for Windows, then macOS" :bundles [:desktop-server]}}
+
+  ;; -- FFmpeg for the bundles ------------------------------------------------
+  ;; Exact archives per platform, by URL and SHA-256; never "latest".
+  ;; `clojure -T:build ffmpeg` fetches and verifies them for this platform, and
+  ;; `bundle` adds FFmpeg's license and source notes. GPL builds: the flip
+  ;; needs `perspective`, which FFmpeg builds only with --enable-gpl
+  ;; (docs/adr/0001-ffmpeg-in-release-bundles.md). BtbN keeps month-end
+  ;; autobuilds; martin-riedl.de keeps its releases.
+  :ffmpeg
+  {:license   {:spdx "GPL-3.0-or-later"
+               :text {:url    "https://raw.githubusercontent.com/FFmpeg/FFmpeg/n9.0.1/COPYING.GPLv3"
+                      :sha256 "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"}}
+   :platforms
+   {:linux-x64   {:version  "n9.0.1-11-ge47273f4d9"
+                  :archives [{:url    "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/ffmpeg-n9.0.1-11-ge47273f4d9-linux64-gpl-9.0.tar.xz"
+                              :sha256 "182c1b509720e939bb47bfb47dc29cc0c298640401128e3dce8627d10707eb5a"}]
+                  :source   ["FFmpeg: https://github.com/FFmpeg/FFmpeg/commit/e47273f4d9 (release/9.0 branch)"
+                             "Build scripts and library versions: https://github.com/BtbN/FFmpeg-Builds/tree/autobuild-2026-08-31-13-27"]}
+    :windows-x64 {:version  "n9.0.1-11-ge47273f4d9"
+                  :archives [{:url    "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/ffmpeg-n9.0.1-11-ge47273f4d9-win64-gpl-9.0.zip"
+                              :sha256 "ec9db2cda1f5894ab95446076ad8bf49379db4b53c02e778ad3b49adf91fec83"}]
+                  :source   ["FFmpeg: https://github.com/FFmpeg/FFmpeg/commit/e47273f4d9 (release/9.0 branch)"
+                             "Build scripts and library versions: https://github.com/BtbN/FFmpeg-Builds/tree/autobuild-2026-08-31-13-27"]}
+    :macos-arm64 {:version  "9.0.2"
+                  :archives [{:url    "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffmpeg.zip"
+                              :sha256 "c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924"}
+                             {:url    "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffprobe.zip"
+                              :sha256 "fcbe839537485eaee7a7a8bc5cbc0f90d53617e80943e8a5b2e31cb851197ea6"}]
+                  :source   ["FFmpeg: https://github.com/FFmpeg/FFmpeg/tree/n9.0.2"
+                             "Build script and library versions: https://git.martin-riedl.de/ffmpeg/build-script and https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/versions.txt"]}
+    :macos-x64   {:version  "9.0.2"
+                  :archives [{:url    "https://ffmpeg.martin-riedl.de/download/macos/amd64/1789931006_9.0.2/ffmpeg.zip"
+                              :sha256 "7c6b4125b191cbf773832dc51f424cf2b6bb7da43007d1e066f95909e47cacd4"}
+                             {:url    "https://ffmpeg.martin-riedl.de/download/macos/amd64/1789931006_9.0.2/ffprobe.zip"
+                              :sha256 "2322438ed2f6319a691291b247d09c69dcaa3a982460d1f269a7e1af335cfdfd"}]
+                  :source   ["FFmpeg: https://github.com/FFmpeg/FFmpeg/tree/n9.0.2"
+                             "Build script and library versions: https://git.martin-riedl.de/ffmpeg/build-script and https://ffmpeg.martin-riedl.de/download/macos/amd64/1789931006_9.0.2/versions.txt"]}}}}}

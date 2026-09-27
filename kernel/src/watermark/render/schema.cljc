@@ -11,6 +11,8 @@
             [malli.error :as me]
             [malli.json-schema :as mjs]))
 
+#?(:clj (set! *warn-on-reflection* true))
+
 (def ^:private Frame [:int {:min 0}])
 
 (def Window [:map {:closed true} [:start Frame] [:end Frame]])

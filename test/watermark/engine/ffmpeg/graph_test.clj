@@ -6,6 +6,8 @@
             [watermark.engine.ffmpeg.graph :as g])
   (:import (java.util Locale)))
 
+(set! *warn-on-reflection* true)
+
 (defn- unescape-level
   "One level of FFmpeg's av_get_token unescaping (for strings without quotes)."
   [s]

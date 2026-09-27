@@ -20,6 +20,8 @@
            (java.nio.file.attribute FileAttribute)
            (java.util.stream Stream)))
 
+(set! *warn-on-reflection* true)
+
 (defrecord FakeHandle [result]
   engine/RenderHandle
   (cancel! [_] nil)

@@ -13,6 +13,8 @@
   until the Stage 3 spike -- see docs/ROADMAP.md."
   #?(:cljd (:require ["dart:math" :as math])))
 
+#?(:clj (set! *warn-on-reflection* true))
+
 (def pi #?(:clj Math/PI :cljs js/Math.PI :cljd math/pi))
 
 (defn cos [x] #?(:clj (Math/cos (double x)) :cljs (js/Math.cos x) :cljd (math/cos x)))

@@ -5,6 +5,8 @@
   (:require [clojure.data.json :as json]
             [watermark.engine.ffmpeg.process :as process]))
 
+(set! *warn-on-reflection* true)
+
 (defn args [input]
   ["-v" "error"
    "-show_entries" (str "stream=index,codec_type,width,height,r_frame_rate,avg_frame_rate,nb_frames,start_time"

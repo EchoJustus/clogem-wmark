@@ -8,6 +8,8 @@
   merges them and records which layer won each field. It is host-independent,
   so an in-process GUI (Stage 3/4) resolves settings exactly like the engine.")
 
+#?(:clj (set! *warn-on-reflection* true))
+
 (defn prune-nils
   "Drop nil-valued entries recursively: nil means \"not specified\", which is
   what lets a missing CLI flag or JSON null fall through to the layer below."

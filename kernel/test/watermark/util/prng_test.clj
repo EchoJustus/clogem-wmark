@@ -6,6 +6,8 @@
             [watermark.util.prng :as prng])
   (:import (java.util SplittableRandom)))
 
+(set! *warn-on-reflection* true)
+
 (deftest matches-splittable-random-draw-for-draw
   (doseq [seed (concat [0 1 -1 42 Long/MAX_VALUE Long/MIN_VALUE]
                        (let [r (java.util.Random. 7)] (repeatedly 300 #(.nextLong r))))]

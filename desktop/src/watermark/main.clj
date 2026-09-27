@@ -7,6 +7,8 @@
             [watermark.core.features :as features])
   (:gen-class))
 
+(set! *warn-on-reflection* true)
+
 (defn -main [& args]
   (let [code (app/run-cli {:edition         :community
                            :entitlements-fn (fn [_home] (features/community))}

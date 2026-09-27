@@ -6,6 +6,8 @@
             [watermark.web.html :as h]
             [watermark.web.views :as v]))
 
+(set! *warn-on-reflection* true)
+
 (def hostile "x')\" data-on:click=\"@post('/ui/stream')\" <script>alert(1)</script>")
 
 (deftest user-text-never-becomes-code
