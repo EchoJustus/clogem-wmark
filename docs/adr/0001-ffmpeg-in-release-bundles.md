@@ -38,7 +38,9 @@ system's encoders suffice.
    | macOS arm64, macOS x64 | `9.0.2`, LGPL | Built from FFmpeg's release source by `clojure -T:build ffmpeg`: the tarball pinned by URL and SHA-256 (its signature checked against the FFmpeg release key `FCF9 86EA 15E6 E293 A564 4F10 B432 2F04 D676 58D8`), and a configure recipe in `deps.edn` |
 
    - **The macOS recipe:** `--enable-version3 --disable-autodetect`, plus
-     VideoToolbox, AudioToolbox, zlib, bzip2 and iconv, all part of macOS.
+     VideoToolbox, AudioToolbox, zlib and bzip2, all part of macOS. (No
+     iconv: macOS keeps it in a separate libiconv that FFmpeg's configure
+     doesn't link, and wmark needs no subtitle charset conversion.)
      Nothing outside FFmpeg and the OS is linked. H.264 and HEVC come from
      VideoToolbox, with Apple's software encoder allowed where there is no
      hardware one. It needs macOS 11 or later, and Intel Macs need `nasm`
