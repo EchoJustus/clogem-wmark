@@ -1,17 +1,22 @@
 # SPDX-FileCopyrightText: 2026 The clogem-wmark authors
 # SPDX-License-Identifier: EPL-2.0
 #
-# Tests on every push to main and every pull request; native binaries per OS
-# on version tags (or by hand). native-image can't cross-compile, so every OS
-# builds its own; the Windows runner provides MSVC, which setup-graalvm wires
-# up for native-image. Public repository: standard runners cost nothing.
+# test:    every push to main and every pull request.
+# e2e:     the browser smoke test of the web UI, on the JVM.
+# native:  native binaries on every OS, by hand (workflow_dispatch) or on a
+#          pull request labelled `native`; releases build them in release.yml.
+#          Each binary is smoke-tested for real: doctor, a render of a clip in
+#          a non-ASCII folder with the pinned FFmpeg, the web UI's assets, a
+#          wmark-tui session, the C ABI through the mock engine, the assembled
+#          bundle, and (Linux) the browser suite against the native binary.
+# Actions are pinned by commit SHA; Dependabot keeps the pins current.
 name: ci
 
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
 
 permissions:
@@ -19,9 +24,9 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Open-core guard (nothing from the commercial repository)
         # The patterns are written so this file doesn't match itself.
         run: |
@@ -34,40 +39,98 @@ jobs:
           for p in pro saas gui dev secrets docs/COMMERCIAL.md docs/REPO_STRATEGY.md; do
             if [ -e "$p" ]; then echo "::error::$p must not exist in this repository"; bad=1; fi; done
           exit $bad
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with: { distribution: temurin, java-version: "25" }
-      - uses: DeLaGuardo/setup-clojure@12.5      # Dependabot keeps this current
+      - uses: DeLaGuardo/setup-clojure@6d46099eae24853c33c0482f2bb54edf4f1a4c74 # 13.7.0
         with: { cli: latest, bb: latest }
       - name: Test prerequisites (FFmpeg and a font for the conformance tests)
         run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
       - run: bb lint
-      - run: bb test
+      - name: bb test (fails on any reflection warning)
+        run: |
+          set -o pipefail
+          bb test 2>&1 | tee test.log
+          if grep -q 'Reflection warning' test.log; then echo "::error::reflection warnings"; exit 1; fi
+
+  e2e:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with: { distribution: temurin, java-version: "25" }
+      - uses: DeLaGuardo/setup-clojure@6d46099eae24853c33c0482f2bb54edf4f1a4c74 # 13.7.0
+        with: { cli: latest, bb: latest }
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with: { python-version: "3.13" }
+      - name: Test tooling (FFmpeg, Python Playwright and its Chromium)
+        run: |
+          sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
+          pip install playwright==1.56.0
+          python -m playwright install --with-deps chromium
+      - run: bb e2e
 
   native:
     needs: test
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'native'))
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
-        target: [engine, tui]
+        include:
+          - { os: ubuntu-24.04,   platform: linux-x64,   mock: "cc -shared -fPIC -O2 -pthread -o target/libwmark_engine.so native/mock/mock_engine.c", lib: target/libwmark_engine.so }
+          - { os: windows-2025,   platform: windows-x64, mock: "gcc -shared -O2 -static -o target/wmark_engine.dll native/mock/mock_engine.c", lib: target/wmark_engine.dll }
+          - { os: macos-15,       platform: macos-arm64, mock: "cc -dynamiclib -O2 -o target/libwmark_engine.dylib native/mock/mock_engine.c", lib: target/libwmark_engine.dylib }
+          # GraalVM has no FFM support on Intel macOS: no native engines there
+          - { os: macos-15-intel, platform: macos-x64,   mock: "", lib: "" }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: graalvm/setup-graalvm@v1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1.6.6
         with:
           java-version: "25"
           distribution: graalvm-community
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: DeLaGuardo/setup-clojure@12.5
+      - uses: DeLaGuardo/setup-clojure@6d46099eae24853c33c0482f2bb54edf4f1a4c74 # 13.7.0
         with: { cli: latest, bb: latest }
-      - run: clojure -T:build native :target :${{ matrix.target }}
-      - name: Smoke-test the binary
+      - run: clojure -T:build native :target :engine
+      - run: clojure -T:build native :target :tui
+      - name: Pinned FFmpeg for this platform (SHA-256 verified)
+        run: clojure -T:build ffmpeg
+      - name: Mock native engine (the C ABI test double)
+        if: matrix.mock != ''
         shell: bash
-        run: ./target/bin/wmark* --help
-      # Next: sign (Authenticode / notarization), `bb bundle :bundle
-      # :desktop-server :ffmpeg-dir ...` with a full FFmpeg build, attach to the release.
-      - uses: actions/upload-artifact@v4
+        run: ${{ matrix.mock }}
+      - name: Smoke test the binaries
+        shell: bash
+        run: |
+          mock=()
+          if [ -n "${{ matrix.lib }}" ]; then mock=(--mock "${{ matrix.lib }}"); fi
+          bb test/smoke/native.clj --bin target/bin --ffmpeg target/ffmpeg/${{ matrix.platform }}/bin "${mock[@]}"
+      - name: Assemble the bundle
+        run: clojure -T:build bundle :bundle :desktop-server :ffmpeg-dir target/ffmpeg/${{ matrix.platform }}
+      - name: Smoke test the bundle (bundled FFmpeg, hardened search order)
+        shell: bash
+        run: bb test/smoke/native.clj --bin dist/desktop-server --ffmpeg dist/desktop-server/bin --bundled true
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: matrix.platform == 'linux-x64'
+        with: { python-version: "3.13" }
+      - name: Browser suite against the native binary
+        if: matrix.platform == 'linux-x64'
+        run: |
+          pip install playwright==1.56.0
+          python3 -m playwright install --with-deps chromium
+          python3 test/e2e/ui_smoke.py target/bin/wmark --home "$RUNNER_TEMP/e2e-home" serve --announce json
+      - name: Hardened runtime check (ad-hoc signature; evidence for docs/adr/0003)
+        if: matrix.platform == 'macos-arm64'
+        continue-on-error: true
+        shell: bash
+        run: |
+          cp -R dist/desktop-server "$RUNNER_TEMP/hardened"
+          codesign --force --options runtime --sign - "$RUNNER_TEMP/hardened/wmark" "$RUNNER_TEMP/hardened/wmark-tui"
+          codesign --display --verbose=2 "$RUNNER_TEMP/hardened/wmark" 2>&1 | grep -i flags || true
+          bb test/smoke/native.clj --bin "$RUNNER_TEMP/hardened" --ffmpeg "$RUNNER_TEMP/hardened/bin" --bundled true --mock "${{ matrix.lib }}"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: wmark-${{ matrix.target }}-${{ runner.os }}-${{ runner.arch }}
-          path: target/bin/
+          name: wmark-desktop-server-${{ matrix.platform }}
+          path: dist/desktop-server/
