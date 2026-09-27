@@ -12,6 +12,7 @@
   Expressions here contain only literals and `path-segment` output."
   (:require [clojure.data.json :as json]
             [clojure.string :as str]
+            [watermark.core.features :as features]
             [watermark.server.routes :as routes])
   (:import (java.net URLEncoder)
            (java.nio.charset StandardCharsets)))
@@ -46,9 +47,10 @@
       :else (json/write-str x :escape-slash false :escape-unicode false))))
 
 (defn settings-text
-  "Settings as the pretty JSON the editor shows."
+  "Settings as the pretty JSON the editor shows. Text modes appear by their
+  display names (\"canary\"); saving resolves them back to wire ids."
   [settings]
-  (str (pretty (routes/jsonable (or settings {})) 0) "\n"))
+  (str (pretty (routes/jsonable (features/display-settings (or settings {}))) 0) "\n"))
 
 ;; ---------------------------------------------------------------------------
 ;; Header
@@ -166,7 +168,7 @@
     [:table
      [:thead [:tr [:th {:scope "col"} "Setting"] [:th {:scope "col"} "Value"] [:th {:scope "col"} "From"]]]
      [:tbody
-      (for [[path v] (leaves (:settings r))
+      (for [[path v] (leaves (features/display-settings (:settings r)))
             :let [label (source-label r path preview?)]]
         [:tr {:class (when (not= "default" label) "set")}
          [:td (str/join ".​" (map name path))]      ; line breaks only after dots

@@ -22,7 +22,9 @@ Per video, it adds:
 Be honest about the threat model in code, docs and UI copy:
 - visible marks raise the cost of removal; they don't make it impossible;
 - canary frames prove ownership; they don't prevent copying;
-- never market anything as "subliminal".
+- never market anything as "subliminal". The canary mode's wire id stays
+  `subliminal`, because the keyed seed hashes it; everything users see or
+  type says "canary" (ADR 0005, `features/mode-display-names`).
 
 **This repository is the open core** (EPL-2.0): the logo, continuous and
 scheduled text, the UIs, the CLI, profiles, the engines, the kernel and the C

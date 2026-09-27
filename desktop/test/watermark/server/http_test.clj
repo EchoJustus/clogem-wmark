@@ -129,7 +129,15 @@
       (is (= 402 (:status j)) "locked features never reach the queue")
       (is (= ["text.mode/subliminal"] (get-in j [:body :features]))))
     (is (some #(and (= "text.mode/random" (:id %)) (false? (:entitled %)))
-              (get-in (call "GET" "/api/v1/features") [:body :features])))))
+              (get-in (call "GET" "/api/v1/features") [:body :features])))
+    (testing "the API takes the canary alias and answers with the wire id"
+      (let [r (call "POST" "/api/v1/resolve" :body {:settings {:texts [(assoc pro-layer :mode "canary")]}})]
+        (is (= 200 (:status r)))
+        (is (= "subliminal" (get-in r [:body :settings :texts 0 :mode])))
+        (is (= ["text.mode/subliminal"] (get-in r [:body :locked]))))
+      (is (some #(and (= "text.mode/subliminal" (:id %)) (= "canary" (:display-name %)))
+                (get-in (call "GET" "/api/v1/features") [:body :features]))
+          "clients learn the display name from the catalog"))))
 
 (deftest built-in-ui-and-static-assets
   (is (= 401 (:status (call "GET" "/" :auth nil))) "the built-in UI's page carries data: token required")

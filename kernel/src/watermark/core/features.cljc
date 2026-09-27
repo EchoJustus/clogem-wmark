@@ -18,14 +18,64 @@
 #?(:clj (set! *warn-on-reflection* true))
 
 (def catalog
-  "Every gateable capability. Keep ids stable: they appear in license payloads."
+  "Every gateable capability. Keep ids stable: they appear in license payloads.
+
+  A text mode's id is :text.mode/<wire id>. :display-name is what users type
+  and see for a mode whose wire id reads differently: the canary mode's wire
+  id stays `subliminal` because it is part of the keyed seed (see
+  `mode-aliases`), but wmark never shows that word (docs/adr/0005)."
   {:logo/static          {:tier :community :title "Static logo"}
    :logo/flip            {:tier :community :title "Periodic logo flip"}
    :text.mode/continuous {:tier :community :title "Continuous text"}
    :text.mode/scheduled  {:tier :community :title "Scheduled text"}
-   :text.mode/subliminal {:tier :pro       :title "Flash-frame canaries"}
+   :text.mode/subliminal {:tier :pro       :title "Flash-frame canaries" :display-name "canary"}
    :text.mode/random     {:tier :pro       :title "Randomized text"}
    :jobs/parallel        {:tier :pro       :title "Parallel encodes"}})
+
+;; ---------------------------------------------------------------------------
+;; Text-mode names: the wire id travels, the display name is shown
+
+(def mode-display-names
+  "Wire id -> display name, for the text modes that have one."
+  (into {} (for [[id {:keys [display-name]}] catalog
+                 :when (and display-name (= "text.mode" (namespace id)))]
+             [(keyword (name id)) display-name])))
+
+(def mode-aliases
+  "Display name -> wire id. Settings, profiles, the REST API and render specs
+  carry the wire id, and watermark.core.seeds hashes it into every keyed
+  schedule, so it never changes: renaming it would move every existing
+  schedule. Users type the display name instead, and it resolves here."
+  (into {} (for [[wire shown] mode-display-names] [(keyword shown) wire])))
+
+(defn canonical-mode
+  "The wire id of a mode as typed (keyword or string); aliases resolve."
+  [mode]
+  (let [k (if (string? mode) (keyword mode) mode)]
+    (get mode-aliases k k)))
+
+(defn mode-display-name
+  "The name users see for a mode, given its wire id or an alias."
+  [mode]
+  (let [k (canonical-mode mode)]
+    (get mode-display-names k (if (keyword? k) (name k) (str k)))))
+
+(defn- update-modes [settings f]
+  (let [texts (:texts settings)]
+    (if (sequential? texts)
+      (assoc settings :texts (mapv #(if (and (map? %) (contains? % :mode)) (update % :mode f) %) texts))
+      settings)))
+
+(defn canonical-settings
+  "Settings whose text layers name their modes by wire id. Every entry point
+  applies this before validation, planning or seeding."
+  [settings]
+  (update-modes settings canonical-mode))
+
+(defn display-settings
+  "Settings as users read them: text modes by their display names."
+  [settings]
+  (update-modes settings (comp keyword mode-display-name)))
 
 (defn tier [feature-id] (get-in catalog [feature-id :tier]))
 
@@ -49,7 +99,7 @@
     (cond-> #{}
       (and (:enabled logo true) (:path logo))                 (conj :logo/static)
       (= :flip-y (get-in logo [:animation :type]))            (conj :logo/flip)
-      true (into (map #(keyword "text.mode" (name (:mode %)))) (:texts settings)))))
+      true (into (map #(keyword "text.mode" (name (canonical-mode (:mode %))))) (:texts settings)))))
 
 (defn check!
   "Throw :feature-locked (HTTP 402) if `settings` need anything not entitled."

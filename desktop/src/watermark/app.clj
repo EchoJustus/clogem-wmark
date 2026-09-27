@@ -113,7 +113,7 @@
    [nil "--text TEXT" "Add a warning-text layer (replaces the profile's text layers)"]
    [nil "--text-file PATH" "Like --text, read as UTF-8 from a file (safe in any terminal locale)"
     :parse-fn #(slurp % :encoding "UTF-8")]
-   [nil "--text-mode MODE" "continuous | scheduled | subliminal (Pro) | random (Pro)"
+   [nil "--text-mode MODE" "continuous | scheduled | canary (Pro) | random (Pro)"
     :parse-fn keyword :default :continuous]
    [nil "--text-at SECONDS" "Comma-separated start times (scheduled mode)"
     :parse-fn (fn [s] (mapv parse-double (str/split s #",")))]
@@ -319,7 +319,8 @@
       (println (str "Error: " (ex-message e)))
       (when errors (pprint/pprint errors))
       (when (= kind :feature-locked)
-        (println (str "Locked features: " (str/join ", " (map #(subs (str %) 1) features))
+        (println (str "Locked features: "
+                      (str/join ", " (map #(get-in features/catalog [% :title] (subs (str %) 1)) features))
                       " -- see `wmark license`."))))
     1))
 

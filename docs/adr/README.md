@@ -11,6 +11,7 @@ owner first (CLAUDE.md, "Decisions").
 | [0002](0002-windows-code-signing.md) | Windows Authenticode through a hardware-backed signing service | Rejected for now: signing deferred |
 | [0003](0003-macos-signing-and-library-validation.md) | Developer ID, notarization, and keeping library validation on | Rejected for now: signing deferred |
 | [0004](0004-release-supply-chain.md) | Release supply chain: tags from main, a protected environment, pinned actions, checksums, Sigstore, attestations | Accepted |
+| [0005](0005-canary-display-name.md) | The canary mode keeps its wire id `subliminal`; users see "canary" | Accepted |
 
 New records copy this shape: **Status**, **Context**, **Decision**,
 **Consequences**, **Alternatives**, **Sources** (with the date facts were
