@@ -58,3 +58,9 @@
     (is (clojure.string/includes? text "License: EPL-2.0"))
     (is (clojure.string/includes? text "Source: https://github.com/EchoJustus/clogem-wmark/tree/a3b74780f1357b33cd7f8a33c61b68a19c6aa082")
         "EPL-2.0 3.1: where to get the source of the exact commit")))
+
+(deftest windows-binaries-embed-the-utf8-manifest
+  (let [[embed input] (build/windows-link-options)
+        manifest (slurp (subs input (count "-H:NativeLinkerOption=/MANIFESTINPUT:")))]
+    (is (= "-H:NativeLinkerOption=/MANIFEST:EMBED" embed))
+    (is (clojure.string/includes? manifest "<activeCodePage xmlns=\"http://schemas.microsoft.com/SMI/2019/WindowsSettings\">UTF-8</activeCodePage>"))))
