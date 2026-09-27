@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 The clogem-wmark authors
+# SPDX-License-Identifier: EPL-2.0
+#
+# Keeps the actions in .github/workflows current. Dependabot also updates
+# actions pinned by commit SHA, and the version comment on the same line
+# (`uses: owner/action@<sha> # v1.2.3`).
+#
+# deps.edn isn't covered: Dependabot has no tools.deps ecosystem. JVM
+# dependencies are bumped by hand, with the reason in the pull request.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
