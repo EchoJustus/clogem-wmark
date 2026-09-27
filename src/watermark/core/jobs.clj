@@ -85,7 +85,9 @@
               (do (media/discard! media ctx output)
                   {:state :failed :input (str input) :error (get-in outcome [:error :message])})))))
       (catch ExceptionInfo e
-        {:state :failed :input (str input) :error (ex-message e) :kind (:wmark/error (ex-data e))}))))
+        {:state :failed :input (str input) :error (ex-message e) :kind (:wmark/error (ex-data e))})
+      (catch Exception e                  ; I/O while publishing, say: still this input's failure
+        {:state :failed :input (str input) :error (str (.getSimpleName (class e)) ": " (ex-message e))}))))
 
 (defn run-job!
   "Render every input of a job in order. One failure doesn't stop the batch;

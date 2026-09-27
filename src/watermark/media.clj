@@ -25,5 +25,6 @@
     "{:final where the result will live, :temp local path the engine writes,
       :container \"mp4\"}. Fails early (:conflict) if the result exists and
       overwriting is off, before any encoding time is spent.")
-  (commit!     [io ctx output] "Publish :temp as :final; returns the final location.")
+  (commit!     [io ctx output] "Publish :temp as :final; returns the final location. A missing
+                               :temp is an ex-info with :wmark/error :failed.")
   (discard!    [io ctx output] "Remove :temp after a failed or cancelled render."))
