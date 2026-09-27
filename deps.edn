@@ -145,4 +145,22 @@
                              {:url    "https://ffmpeg.martin-riedl.de/download/macos/amd64/1789931006_9.0.2/ffprobe.zip"
                               :sha256 "2322438ed2f6319a691291b247d09c69dcaa3a982460d1f269a7e1af335cfdfd"}]
                   :source   ["FFmpeg: https://github.com/FFmpeg/FFmpeg/tree/n9.0.2"
-                             "Build script and library versions: https://git.martin-riedl.de/ffmpeg/build-script and https://ffmpeg.martin-riedl.de/download/macos/amd64/1789931006_9.0.2/versions.txt"]}}}}}
+                             "Build script and library versions: https://git.martin-riedl.de/ffmpeg/build-script and https://ffmpeg.martin-riedl.de/download/macos/amd64/1789931006_9.0.2/versions.txt"]}}
+   ;; LGPL builds lack the GPL-only `perspective` filter, so they need render
+   ;; spec v2 (the host draws, FFmpeg only composites). Pinned for M2's exit
+   ;; test (`bb ffmpeg :variant :lgpl`, v2 conformance); not bundled until
+   ;; ADR 0001 is revisited. The same BtbN build as the GPL pin, LGPL flavour.
+   :variants
+   {:lgpl {:license   {:spdx  "LGPL-3.0-or-later"
+                       :texts [{:file   "COPYING.LGPLv3"
+                                :url    "https://raw.githubusercontent.com/FFmpeg/FFmpeg/n9.0.1/COPYING.LGPLv3"
+                                :sha256 "da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768"}
+                               ;; the LGPLv3 is a set of additional permissions on the GPLv3
+                               {:file   "COPYING.GPLv3"
+                                :url    "https://raw.githubusercontent.com/FFmpeg/FFmpeg/n9.0.1/COPYING.GPLv3"
+                                :sha256 "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"}]}
+           :platforms {:linux-x64 {:version  "n9.0.1-11-ge47273f4d9"
+                                   :archives [{:url    "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/ffmpeg-n9.0.1-11-ge47273f4d9-linux64-lgpl-9.0.tar.xz"
+                                               :sha256 "204fc02692b11249c3e688ad18538ce2939129a1fc6abc32a6b2638a024496cf"}]
+                                   :source   ["FFmpeg: https://github.com/FFmpeg/FFmpeg/commit/e47273f4d9 (release/9.0 branch)"
+                                              "Build scripts and library versions: https://github.com/BtbN/FFmpeg-Builds/tree/autobuild-2026-08-31-13-27"]}}}}}}}

@@ -1,7 +1,7 @@
 ;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
 ;; SPDX-License-Identifier: EPL-2.0
 (ns wmark.build-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.test :refer [deftest is testing]]
             [wmark.build :as build]))
 
 (set! *warn-on-reflection* true)
@@ -32,7 +32,15 @@
         "plain http is not a pin")
     (is (seq (build/ffmpeg-pin-problems (assoc-in ok [:ffmpeg :platforms :linux-x64 :archives 0 :sha256] "latest"))))
     (is (seq (build/ffmpeg-pin-problems (update-in ok [:ffmpeg :platforms :linux-x64] dissoc :source))))
-    (is (seq (build/ffmpeg-pin-problems (dissoc ok :ffmpeg))) "bundles with sidecars need pins")))
+    (is (seq (build/ffmpeg-pin-problems (dissoc ok :ffmpeg))) "bundles with sidecars need pins")
+    (testing "variants (the LGPL build) are pinned the same way, license texts included"
+      (let [lgpl {:license   {:texts [{:file "COPYING.LGPLv3" :url "https://example.org/L" :sha256 (apply str (repeat 64 "c"))}]}
+                  :platforms {:linux-x64 pin}}]
+        (is (empty? (build/ffmpeg-pin-problems (assoc-in ok [:ffmpeg :variants :lgpl] lgpl))))
+        (is (seq (build/ffmpeg-pin-problems (assoc-in ok [:ffmpeg :variants :lgpl]
+                                                     (assoc-in lgpl [:platforms :linux-x64 :archives 0 :sha256] "latest")))))
+        (is (seq (build/ffmpeg-pin-problems (assoc-in ok [:ffmpeg :variants :lgpl]
+                                                     (assoc-in lgpl [:license :texts 0 :url] "http://example.org/L")))))))))
 
 (deftest licenses-come-from-the-pom-or-its-parents
   (let [repo  (.toFile (java.nio.file.Files/createTempDirectory "m2" (make-array java.nio.file.attribute.FileAttribute 0)))
