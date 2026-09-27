@@ -46,7 +46,11 @@ jobs:
       - name: Test prerequisites (FFmpeg and a font for the conformance tests)
         run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
       - run: bb lint
+      - name: The pinned LGPL FFmpeg (M2's exit test is v2 conformance on it)
+        run: bb ffmpeg :variant :lgpl
       - name: bb test (fails on any reflection warning)
+        env:
+          WMARK_REQUIRE_LGPL: "1"
         run: |
           set -o pipefail
           bb test 2>&1 | tee test.log

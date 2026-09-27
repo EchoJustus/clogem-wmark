@@ -15,6 +15,10 @@
     :entitlements  a watermark.core.features/Entitlements
     :secret-for    (fn [ctx] studio-secret-bytes) -- per tenant in the SaaS
     :font          default font path (or a delay of one)
+    :rasterizer    a watermark.raster/Rasterizer, for render spec v2
+    :spec-version  1 or 2 to insist on one; by default v1 where the engine
+                   can render the spec that way, else v2 (host-drawn
+                   bitmaps, docs/adr/0006)
 
   JobQueue is the port for queueing: watermark.core.jobs.local runs jobs on
   an in-process executor; a serverless deployment implements the same
@@ -23,6 +27,7 @@
   (:require [watermark.core.seeds :as seeds]
             [watermark.engine :as engine]
             [watermark.media :as media]
+            [watermark.raster :as raster]
             [watermark.render :as render])
   (:import (clojure.lang ExceptionInfo)))
 
@@ -36,10 +41,43 @@
   (unsubscribe! [q k])
   (shutdown!    [q]))
 
+(def ^:private drawing-capabilities
+  "What a spec version changes: v2 needs none of these from the engine."
+  #{:layers :animations :timing :placement})
+
+(defn spec-version
+  "The render spec version to give an engine for the v1 `spec`: `wanted` if
+  set; else 1 where the engine takes v1 and can draw all of it; else 2 where
+  it takes v2 (the host then draws what it couldn't, exactly, which is no
+  approximation); else 1, whose refusal names what's missing. Engines that
+  don't list :spec-versions take 1."
+  [{:keys [capabilities]} spec wanted]
+  (let [vs      (:spec-versions capabilities #{1})
+        v1-gaps (filter (comp drawing-capabilities first) (engine/missing capabilities {:spec spec}))]
+    (or wanted
+        (cond (and (contains? vs 1) (empty? v1-gaps)) 1
+              (contains? vs 2)                        2
+              :else                                   1))))
+
+(defn release!
+  "Delete what planning stored for a render (a v2 spec's bitmaps)."
+  [{:keys [rasterizer]} {:keys [spec]}]
+  (when (and rasterizer (= 2 (:spec/version spec)))
+    (raster/release! rasterizer spec)))
+
+(defn- host-render
+  "The v2 spec of a v1 spec, drawn by the host's rasterizer."
+  [{:keys [engine rasterizer]} spec]
+  (when-not rasterizer
+    (throw (ex-info "This engine takes host-drawn specs (render spec v2), and no rasterizer is configured."
+                    {:wmark/error :unsupported})))
+  (raster/realize! rasterizer engine spec))
+
 (defn plan-input
   "Everything up to (not including) rendering, for one input: probe, render
-  spec, output location, engine plan. Also what dry runs show."
-  [{:keys [engine media entitlements secret-for font]} ctx settings input]
+  spec, output location, engine plan. Also what dry runs show. A v2 plan
+  holds bitmaps on disk until `release!`."
+  [{:keys [engine media entitlements secret-for font] :as env} ctx settings input]
   (let [src       (media/open-input media ctx input)
         info      (engine/probe engine (:location src))
         _         (when (not= :video (:kind info))
@@ -53,13 +91,20 @@
                                  :seed-fn      (seeds/seed-fn (secret-for ctx) (:fingerprint src))
                                  :entitlements entitlements
                                  :font         (force font)})
+        spec      (if (= 2 (spec-version (engine/info engine) spec (:spec-version env)))
+                    (host-render env spec)
+                    spec)
         out       (media/open-output media ctx input settings)
-        plan      (engine/prepare engine {:spec            spec
-                                          :source          (:location src)
-                                          :media           info
-                                          :output          {:path (:temp out) :container (:container out)}
-                                          :encode          (:encode settings)
-                                          :strip-metadata? (get-in settings [:output :strip-metadata] true)})]
+        plan      (try
+                    (engine/prepare engine {:spec            spec
+                                            :source          (:location src)
+                                            :media           info
+                                            :output          {:path (:temp out) :container (:container out)}
+                                            :encode          (:encode settings)
+                                            :strip-metadata? (get-in settings [:output :strip-metadata] true)})
+                    (catch Throwable t
+                      (release! env {:spec spec})
+                      (throw t)))]
     {:input (str input) :media info :spec spec :output out :plan plan}))
 
 (defn render-input!
@@ -69,21 +114,23 @@
   (let [on-event   (or on-event (fn [_]))
         cancelled? (or cancelled? (constantly false))]
     (try
-      (let [{:keys [output plan]} (plan-input env ctx settings input)
+      (let [{:keys [output plan] :as planned} (plan-input env ctx settings input)
             {:keys [media engine]} env]
-        (on-event {:type :started :input (str input) :output (:final output)})
-        (if (cancelled?)
-          {:state :cancelled :input (str input)}
-          (let [handle  (engine/execute! engine plan
-                                         (fn [e] (on-event (assoc e :type :progress :input (str input)))))
-                _       (when on-handle (on-handle handle))
-                outcome (deref (engine/outcome handle))]
-            (case (:status outcome)
-              :done      {:state :done :input (str input) :output (media/commit! media ctx output)}
-              :cancelled (do (media/discard! media ctx output)
-                             {:state :cancelled :input (str input)})
-              (do (media/discard! media ctx output)
-                  {:state :failed :input (str input) :error (get-in outcome [:error :message])})))))
+        (try
+          (on-event {:type :started :input (str input) :output (:final output)})
+          (if (cancelled?)
+            {:state :cancelled :input (str input)}
+            (let [handle  (engine/execute! engine plan
+                                           (fn [e] (on-event (assoc e :type :progress :input (str input)))))
+                  _       (when on-handle (on-handle handle))
+                  outcome (deref (engine/outcome handle))]
+              (case (:status outcome)
+                :done      {:state :done :input (str input) :output (media/commit! media ctx output)}
+                :cancelled (do (media/discard! media ctx output)
+                               {:state :cancelled :input (str input)})
+                (do (media/discard! media ctx output)
+                    {:state :failed :input (str input) :error (get-in outcome [:error :message])}))))
+          (finally (release! env planned))))
       (catch ExceptionInfo e
         {:state :failed :input (str input) :error (ex-message e) :kind (:wmark/error (ex-data e))})
       (catch Exception e                  ; I/O while publishing, say: still this input's failure

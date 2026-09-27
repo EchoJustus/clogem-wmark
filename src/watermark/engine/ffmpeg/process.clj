@@ -21,6 +21,11 @@
   #{"perspective" "overlay" "colorchannelmixer" "scale" "format" "fps" "null" "setpts"
     "split" "crop" "drawbox"})
 
+(def required-filters-v2
+  "Filters a render spec v2 plan may use: host-rendered bitmaps only need
+  compositing, which LGPL builds (no `perspective`) have."
+  #{"overlay" "fps" "null"})
+
 (defn exec
   "Run to completion, capturing stdout and stderr as UTF-8. Short commands only."
   [argv]

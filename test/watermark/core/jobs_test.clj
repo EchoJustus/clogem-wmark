@@ -12,7 +12,8 @@
             [watermark.core.resolve :as resolve]
             [watermark.core.schema :as schema]
             [watermark.engine :as engine]
-            [watermark.media.local :as media])
+            [watermark.media.local :as media]
+            [watermark.raster.local :as raster-local])
   (:import (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)))
 
@@ -135,3 +136,56 @@
     (is (= :cancelled (:state (first (jobs/list-jobs q)))))
     (is (not (.exists (io/file *dir* "a_wm.mp4"))) "nothing published")
     (jobs/shutdown! q)))
+
+;; ---------------------------------------------------------------------------
+;; Render spec v2: the host draws, the engine composites
+
+(defrecord V2Engine [calls]
+  engine/VideoEngine
+  (info [_] {:engine/id :fake-v2 :available? true
+             :capabilities {:spec-versions #{2} :layers #{:flipbook :bitmap} :timing #{:always :windows :periodic}
+                            :placement #{:fixed} :codecs #{:h264} :containers #{"mp4"} :audio #{:copy :none}}})
+  (probe [_ source]
+    (if (.endsWith (str source) ".png")
+      {:kind :image :width 8 :height 4}
+      {:kind :video :width 320 :height 180 :fps-num 30 :fps-den 1 :frames 60 :duration-s 2.0 :start-s 0.0}))
+  (prepare [this request]
+    (engine/check! (engine/info this) request)
+    {:output (get-in request [:output :path]) :spec (:spec request)})
+  (execute! [_ plan _listener]
+    (swap! calls conj [:bitmaps-on-disk (every? #(.isFile (io/file (:path %))) (vals (get-in plan [:spec :bitmaps])))])
+    (spit (:output plan) "frames")
+    (->FakeHandle (doto (promise) (deliver {:status :done})) (atom false)))
+  engine/StillDecoder
+  (decode-still [_ _] {:width 8 :height 4 :px (byte-array (take 128 (cycle (map unchecked-byte [30 60 200 255]))))}))
+
+(deftest a-v2-engine-gets-host-drawn-bitmaps
+  (let [calls (atom [])
+        env   {:engine       (->V2Engine calls)
+               :media        (media/local-media)
+               :entitlements (features/community)
+               :secret-for   (constantly (byte-array 32))
+               :font         (delay "resources/fonts/wmark.ttf")
+               :rasterizer   (raster-local/local-rasterizer {:work-root (str *dir* "/work")})}
+        s     (settings {:logo {:animation {:type :flip-y :every-s 1.0 :duration-s 0.2}}})]
+    (let [spec    {:spec/version 1
+                   :layers [{:kind :image :timing {:type :always} :animation {:type :flip-y}}
+                            {:kind :text :timing {:type :always} :placement {:type :fixed}}]}
+          full    {:spec-versions #{1 2} :layers #{:image :text :flipbook :bitmap} :animations #{:flip-y}
+                   :timing #{:always} :placement #{:fixed}}
+          no-text (update full :layers disj :text)]
+      (is (= 2 (jobs/spec-version (engine/info (:engine env)) spec nil)) "an engine without v1 gets v2")
+      (is (= 1 (jobs/spec-version {:capabilities full} spec nil)) "v1 where the engine can draw it all")
+      (is (= 2 (jobs/spec-version {:capabilities no-text} spec nil))
+          "v2 where it can't (an FFmpeg with perspective but no drawtext): the host draws the text")
+      (is (= 1 (jobs/spec-version {:capabilities (update no-text :spec-versions disj 2)} spec nil))
+          "v1 where there's no v2 to fall back to, so the refusal names the gap")
+      (is (= 1 (jobs/spec-version {:capabilities {}} spec nil)) "engines that don't say take v1")
+      (is (= 2 (jobs/spec-version {:capabilities full} spec 2)) "unless the host insists"))
+    (let [[r] (jobs/run-job! env {:ctx {} :settings s :inputs [(input! "a.mp4")]} {})]
+      (is (= :done (:state r)) (pr-str r))
+      (is (= [[:bitmaps-on-disk true]] @calls) "the bitmaps exist while the engine renders")
+      (is (empty? (rest (file-seq (io/file *dir* "work")))) "and are deleted afterwards"))
+    (testing "without a rasterizer, a v2-only engine is refused up front"
+      (let [[r] (jobs/run-job! (dissoc env :rasterizer) {:ctx {} :settings s :inputs [(input! "b.mp4")]} {})]
+        (is (= [:failed :unsupported] [(:state r) (:kind r)]))))))

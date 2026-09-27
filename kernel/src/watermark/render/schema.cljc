@@ -3,8 +3,9 @@
 (ns watermark.render.schema
   "Schema of the render spec -- the contract between planning and engines.
 
-  `json-schema` is exported to native/render-spec.schema.json so engine
-  authors working in Swift, Kotlin or Rust (behind the C ABI in
+  `json-schema` is exported to native/render-spec.schema.json (version 1)
+  and native/render-spec-v2.schema.json (version 2) so engine authors
+  working in Swift, Kotlin or Rust (behind the C ABI in
   native/include/wmark_engine.h) validate against the same definition. Kept
   apart from watermark.render so hosts without malli can still plan renders."
   (:require [malli.core :as m]
@@ -92,16 +93,68 @@
                       [:image ImageLayer]
                       [:text TextLayer]]]]])
 
-(def ^:private validator (m/validator Spec))
-(def ^:private explainer (m/explainer Spec))
+;; ---------------------------------------------------------------------------
+;; Render spec v2: host-drawn bitmaps (watermark.render.v2, docs/adr/0006)
+
+(def ^:private BitmapId                                     ; SHA-256 of size and pixels
+  [:re {:json-schema/pattern "^[0-9a-f]{64}$"} #"^[0-9a-f]{64}$"])
+
+(def ^:private Placed
+  [:map {:closed true} [:bitmap BitmapId] [:x :int] [:y :int]])
+
+(def FlipbookLayer
+  [:map {:closed true}
+   [:id :string]
+   [:kind [:= :flipbook]]
+   [:timing Timing]
+   [:rest Placed]
+   [:cycle {:optional true}
+    [:map {:closed true}
+     [:start Frame]
+     [:period [:int {:min 1}]]
+     [:frames [:vector {:min 1} Placed]]]]])
+
+(def BitmapLayer
+  [:map {:closed true}
+   [:id :string]
+   [:kind [:= :bitmap]]
+   [:bitmap BitmapId]
+   [:placement Placement]
+   [:timing Timing]])
+
+(def SpecV2
+  [:map {:closed true}
+   [:spec/version [:= 2]]
+   [:canvas [:map {:closed true} [:width pos-int?] [:height pos-int?]]]
+   [:timebase [:map {:closed true}
+               [:fps-num pos-int?] [:fps-den pos-int?]
+               [:frames [:int {:min 1}]] [:first-frame Frame]]]
+   [:bitmaps [:map-of {:json-schema/propertyNames {:pattern "^[0-9a-f]{64}$"}}
+              BitmapId
+              [:map {:closed true}                                    ; straight RGBA8, row-major
+               [:width pos-int?] [:height pos-int?] [:path [:string {:min 1}]]]]]
+   [:layers [:vector [:multi {:dispatch :kind}
+                      [:flipbook FlipbookLayer]
+                      [:bitmap BitmapLayer]]]]])
+
+(def ^:private validators {1 (m/validator Spec) 2 (m/validator SpecV2)})
+(def ^:private explainers {1 (m/explainer Spec) 2 (m/explainer SpecV2)})
 
 (defn validate!
-  "The spec, or an :invalid error saying which part is malformed."
+  "The spec (version 1 or 2), or an :invalid error saying which part is
+  malformed."
   [spec]
-  (if (validator spec)
-    spec
-    (throw (ex-info "Malformed render spec."
-                    {:wmark/error :invalid
-                     :errors      (me/humanize (explainer spec))}))))
+  (let [v (:spec/version spec)]
+    (if ((validators v (constantly false)) spec)
+      spec
+      (throw (ex-info "Malformed render spec."
+                      {:wmark/error :invalid
+                       :errors      (if-let [e (explainers v)]
+                                      (me/humanize (e spec))
+                                      {:spec/version [(str "should be 1 or 2, not " (pr-str v))]})})))))
 
-(defn json-schema [] (mjs/transform Spec))
+(defn json-schema
+  "JSON Schema of render spec `version` (default 1): native/render-spec.schema.json
+  and native/render-spec-v2.schema.json."
+  ([] (json-schema 1))
+  ([version] (mjs/transform (if (= 2 version) SpecV2 Spec))))

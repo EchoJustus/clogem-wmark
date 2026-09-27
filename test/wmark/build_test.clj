@@ -2,7 +2,7 @@
 ;; SPDX-License-Identifier: EPL-2.0
 (ns wmark.build-test
   (:require [clojure.edn :as edn]
-            [clojure.test :refer [deftest is]]
+            [clojure.test :refer [deftest is testing]]
             [wmark.build :as build]))
 
 (set! *warn-on-reflection* true)
@@ -33,7 +33,15 @@
         "plain http is not a pin")
     (is (seq (build/ffmpeg-pin-problems (assoc-in ok [:ffmpeg :platforms :linux-x64 :archives 0 :sha256] "latest"))))
     (is (seq (build/ffmpeg-pin-problems (update-in ok [:ffmpeg :platforms :linux-x64] dissoc :source))))
-    (is (seq (build/ffmpeg-pin-problems (dissoc ok :ffmpeg))) "bundles with sidecars need pins")))
+    (is (seq (build/ffmpeg-pin-problems (dissoc ok :ffmpeg))) "bundles with sidecars need pins")
+    (testing "variants (the LGPL build) are pinned the same way, license texts included"
+      (let [lgpl {:license   {:texts [{:file "COPYING.LGPLv3" :url "https://example.org/L" :sha256 (apply str (repeat 64 "c"))}]}
+                  :platforms {:linux-x64 pin}}]
+        (is (empty? (build/ffmpeg-pin-problems (assoc-in ok [:ffmpeg :variants :lgpl] lgpl))))
+        (is (seq (build/ffmpeg-pin-problems (assoc-in ok [:ffmpeg :variants :lgpl]
+                                                     (assoc-in lgpl [:platforms :linux-x64 :archives 0 :sha256] "latest")))))
+        (is (seq (build/ffmpeg-pin-problems (assoc-in ok [:ffmpeg :variants :lgpl]
+                                                     (assoc-in lgpl [:license :texts 0 :url] "http://example.org/L")))))))))
 
 (deftest licenses-come-from-the-pom-or-its-parents
   (let [repo  (.toFile (java.nio.file.Files/createTempDirectory "m2" (make-array java.nio.file.attribute.FileAttribute 0)))
@@ -45,7 +53,7 @@
     (is (= [{:name "EPL-1.0" :url "https://e.org/epl"}] (build/pom-licenses repo child)))))
 
 (deftest the-sdk-names-the-abi-it-carries
-  (is (= 1 (build/abi-version)) "read from native/include/wmark_engine.h")
+  (is (= 2 (build/abi-version)) "read from native/include/wmark_engine.h")
   (is (thrown-with-msg? clojure.lang.ExceptionInfo #"doesn't match WMARK_ENGINE_ABI_VERSION"
                         (build/sdk {:name "abi-v99"})))
   (is (every? #(.isFile (clojure.java.io/file (first %))) build/sdk-files) "every SDK input exists"))

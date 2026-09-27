@@ -51,7 +51,7 @@ shells (sidecar mode) and hosted APIs built on the same core.
 
 | Directory | Role | Language / runs on |
 |---|---|---|
-| `kernel/` | Portable domain kernel: settings schema and resolution, render spec and reference semantics, keyed seeds, SplitMix64 PRNG, text-mode registry, `VideoEngine` protocol, feature catalog | `.cljc` only: JVM now, ClojureDart later |
+| `kernel/` | Portable domain kernel: settings schema and resolution, render spec (v1, v2) and reference semantics, the v2 rasterizer (TrueType, text, warp), keyed seeds, SplitMix64 PRNG, text-mode registry, `VideoEngine` protocol, feature catalog | `.cljc` only: JVM now, ClojureDart later |
 | `src/` | Host core: profile rules, store/media/queue ports and local adapters, job pipeline, Core API, FFmpeg and native engines, REST routes | JVM |
 | `web/` | Built-in web UI: server-rendered HTML plus Datastar over SSE (vendored `datastar.js`, no npm) | JVM |
 | `desktop/` | CLI, http-kit server, loopback security, sidecar mode, native-image metadata | JVM / GraalVM |
@@ -93,10 +93,16 @@ its own matrix.
    - JSON REST `/api/v1` stays the contract for the TUI, GUIs, scripts and
      external UIs (`--ui-dir`).
 2. **No jank for now.**
-   - Keep the native surface small instead, with render spec v2: the kernel
-     computes the geometry, and the host pre-renders every pixel to draw.
-     That means the logo warped for each flip phase and every text layer,
-     as bitmaps.
+   - Keep the native surface small instead, with render spec v2 (ADR 0006):
+     the kernel computes the geometry and draws every pixel: the logo warped
+     for each flip phase and every text layer, as bitmaps.
+   - The kernel draws with portable arithmetic of its own (a TrueType
+     reader and rasterizer, the warp), so every host, ClojureDart included,
+     produces the same pixels. No AWT, Java2D or image library (owner,
+     2026-09-27).
+   - The engine decodes stills (the logo) for the host
+     (`engine/StillDecoder`; `wmark_engine_decode_still` in ABI 2), so image
+     formats stay the engine's business (owner, 2026-09-27).
    - Engines, FFmpeg included, then only composite bitmaps at given
      positions and frames, in their native APIs (Swift/AVFoundation,
      Kotlin/Media3; FFmpeg's `overlay`). No engine warps or typesets, so an
@@ -159,7 +165,12 @@ its own matrix.
 **Rendering**
 - **The render spec is engine-neutral.** Engines never re-read settings or
   re-derive schedules. What an engine draws at frame n is defined by
-  `watermark.render/active?`, `logo-corners` and `text-origin`.
+  `watermark.render/active?`, `logo-corners` and `text-origin`, and for v2
+  by `watermark.render.v2/draw-at`.
+- **v2 pixels are the kernel's.** `watermark.raster.*` rounds only through
+  `watermark.util.num` and uses no platform graphics; `render-v2.edn` pins
+  every bitmap by SHA-256. v1 stays until every engine migrates; the job
+  pipeline gives an engine v1 where it can draw the whole spec, else v2.
 - Engines report honest capabilities (`engine/check!` runs before any work). A
   gap is a clear `:unsupported` error, never an approximation.
 - Frame-exact output:
@@ -292,7 +303,7 @@ bb native        # GraalVM binary for this OS (GRAALVM_HOME)  bb native :target 
 bb ffmpeg        # the pinned FFmpeg for this OS -> target/ffmpeg/<platform> (SHA-256 verified)
 bb bundle :bundle :desktop-server :ffmpeg-dir target/ffmpeg/<platform>
 bb smoke --bin target/bin --ffmpeg target/ffmpeg/<platform>/bin [--mock LIB] [--bundled true]
-bb sdk :name abi-v1   # engine SDK archive (header, mock, schemas, golden vectors)
+bb sdk :name abi-v2   # engine SDK archive (header, mock, schemas, golden vectors)
 clojure -M:dev:test -n watermark.web.sse-test               # one namespace
 ```
 
@@ -330,28 +341,22 @@ with its exit criteria met, the docs updated and a short status report.
      macOS arm64 and Linux x64, each smoke-tested on a clean runner. The
      owner pushes the tag.
 2. **M2 · Render spec v2: the host renders, engines composite**
-   (ENGINE.md, "Planned: render spec v2"; decision 2).
-   - Additive: `:spec/version 2` is chosen by capability negotiation, and v1
-     stays until every engine migrates.
-   - The kernel computes geometry (a flip's quads per frame, placements,
-     half-open windows) and stays graphics-free.
-   - A host port in `src/` rasterizes deterministically: Java2D with fixed
-     interpolation, antialiasing, colour space and alpha policy, and a
-     bundled OFL font for text. It produces the logo warped for each frame of
-     a flip (a static pose otherwise) and every text layer.
-   - The spec stays periodic (flip period, phase, one bitmap per frame within
-     a flip), never per-video-frame arrays. Bitmaps are referenced by content
-     hash and pixel size.
-   - FFmpeg only composites, with `overlay`: no `perspective`, no `drawtext`.
-     `required-filters` stays exact.
-   - First prototype one overlay per flip phase and measure it with the
-     conformance harness, before optimising (sprite sheets, deduplication,
-     caching).
-   - The C ABI version is bumped under a written compatibility rule,
-     `render-spec.schema.json` is updated, and the C mock consumes v2.
-   - New golden vectors (diff reviewed).
-   - Exit: a pinned LGPL FFmpeg build passes v2 conformance on real frames,
-     and so does the C mock.
+   (ENGINE.md, "Render spec v2"; decision 2; ADR 0006, accepted). Built in
+   PR #5:
+   - the kernel's `watermark.render.v2` (what to draw, `assemble`,
+     `draw-at`) and `watermark.raster.*` (TrueType, text, colours, the
+     warp; `bitmap-id`), the `Rasterizer` port and its local adapter, the
+     bundled Fira Sans Bold (OFL);
+   - FFmpeg composites with `overlay` only (`required-filters-v2`), decodes
+     stills, and an LGPL build is a complete engine; the job pipeline and
+     `--render-spec` choose the version;
+   - `native/render-spec-v2.schema.json`, `kernel/test/golden/render-v2.edn`;
+   - the C ABI 2 under a written compatibility rule; the C mock composites
+     v2;
+   - Exit met: the pinned LGPL FFmpeg and the C mock pass v2 conformance on
+     real frames.
+   - Still open: LGPL pins for Windows and macOS, and ADR 0001 revisited
+     (bundling LGPL builds).
 3. **M3 · The kernel under ClojureDart.** It compiles and passes
    `kernel/test/golden/*.edn` in Dart: the `util/num` `:cljd` branches,
    HMAC-SHA256 through `package:crypto`, and malli or the schema fallback.

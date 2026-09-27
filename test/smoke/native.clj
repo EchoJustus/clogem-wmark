@@ -8,6 +8,7 @@
     bb test/smoke/native.clj --bin dist/desktop-server --ffmpeg dist/desktop-server/bin --bundled true
 
   It checks what a user's first minutes need: --help, doctor, a real render
+  (render spec v1, and v2 drawn by wmark itself)
   of a clip in a non-ASCII folder, the web UI's assets and the API behind the
   token, a wmark-tui session, and (with --mock) a render through the C ABI.
   Exits 1 if any check fails."
@@ -86,6 +87,17 @@
       (when (fs/exists? result)
         (check "render: every frame kept" (= 100 (frames ffprobe result)) (str (frames ffprobe result) " frames"))))
 
+    ;; render spec v2: the kernel's TrueType reader, text rasterizer and warp run
+    ;; inside the binary, the bundled font included; FFmpeg decodes the logo
+    (let [out2 (str (fs/path work "out v2"))
+          {:keys [exit out err]} (apply run wmark (concat base ["--render-spec" "2" "run" "--logo" logo
+                                                                 "--text" "(c) Studio — ©" "-o" out2 clip]))
+          result (str (fs/path out2 "clip é_wm.mp4"))]
+      (check "render spec v2: wmark draws the flip and the text, FFmpeg composites"
+             (and (zero? exit) (fs/exists? result)) (str out err))
+      (when (fs/exists? result)
+        (check "render spec v2: every frame kept" (= 100 (frames ffprobe result)) (str (frames ffprobe result) " frames"))))
+
     (let [srv   (apply p/process {:err :string} wmark (concat base ["serve" "--announce" "json"]))
           line  (.readLine ^java.io.BufferedReader (io/reader (:out srv)))
           {:keys [url token]} (json/parse-string line true)
@@ -117,6 +129,17 @@
         (let [{:keys [exit out err]} (apply run wmark (concat lib ["run" "--logo" logo "-o" (str (fs/path work "mock-out")) clip]))]
           (check "native engine: render with progress upcalls, no exception"
                  (and (zero? exit) (str/includes? out "done") (not (str/includes? err "Exception")))
+                 (str out err)))
+        ;; ABI 2 inside the binary: planning a v2 render asks the library to
+        ;; decode the logo (PAM, the mock's one still format). The mock then
+        ;; declines to write v2 as MP4, which it only does after the decode
+        (let [pam (str (fs/path work "logo.pam"))
+              _   (run ffmpeg "-hide_banner" "-loglevel" "error" "-y" "-i" logo "-pix_fmt" "rgba" pam)
+              {:keys [out err]} (apply run wmark (concat lib ["--render-spec" "2" "run" "--logo" pam
+                                                              "-o" (str (fs/path work "mock-v2")) clip]))]
+          (check "native engine: ABI 2 decodes the logo for render spec v2 (then the mock declines MP4, as designed)"
+                 (and (str/includes? (str out err) "the mock writes render spec v2 as y4m only")
+                      (not (str/includes? err "Exception")))
                  (str out err)))))
 
     (let [failed (remove second @results)]

@@ -1,0 +1,611 @@
+{:requests
+ [{:key ["logo" :rest],
+   :card [154 62],
+   :size [154 62],
+   :box {:x 1096, :y 20, :width 154, :height 62},
+   :opacity 0.85,
+   :quad [[0.0 0.0] [154.0 0.0] [0.0 62.0] [154.0 62.0]]}
+  {:key ["logo" 0],
+   :card [154 62],
+   :size [154 62],
+   :box {:x 1096, :y 20, :width 154, :height 62},
+   :opacity 0.85,
+   :quad [[0.0 0.0] [154.0 0.0] [0.0 62.0] [154.0 62.0]]}
+  {:key ["logo" 1],
+   :card [154 62],
+   :size [155 64],
+   :box {:x 1096, :y 19, :width 155, :height 64},
+   :opacity 0.85,
+   :quad
+   [[0.439 1.166] [154.388 0.832] [0.439 62.834] [154.388 63.168]]}
+  {:key ["logo" 2],
+   :card [154 62],
+   :size [154 64],
+   :box {:x 1098, :y 19, :width 154, :height 64},
+   :opacity 0.85,
+   :quad
+   [[0.042 1.649] [153.231 0.323] [0.042 62.351] [153.231 63.677]]}
+  {:key ["logo" 3],
+   :card [154 62],
+   :size [151 66],
+   :box {:x 1101, :y 18, :width 151, :height 66},
+   :opacity 0.85,
+   :quad
+   [[0.575 3.402] [150.529 0.458] [0.575 62.598] [150.529 65.542]]}
+  {:key ["logo" 4],
+   :card [154 62],
+   :size [142 68],
+   :box {:x 1108, :y 17, :width 142, :height 68},
+   :opacity 0.85,
+   :quad
+   [[0.029 5.342] [141.534 0.241] [0.029 62.658] [141.534 67.759]]}
+  {:key ["logo" 5],
+   :card [154 62],
+   :size [125 72],
+   :box {:x 1118, :y 15, :width 125, :height 72},
+   :opacity 0.85,
+   :quad [[0.28 8.344] [124.772 0.736] [0.28 63.656] [124.772 71.264]]}
+  {:key ["logo" 6],
+   :card [154 62],
+   :size [97 74],
+   :box {:x 1132, :y 14, :width 97, :height 74},
+   :opacity 0.85,
+   :quad
+   [[0.764 10.256] [96.466 0.133] [0.764 63.744] [96.466 73.867]]}
+  {:key ["logo" 7],
+   :card [154 62],
+   :size [54 78],
+   :box {:x 1151, :y 12, :width 54, :height 78},
+   :opacity 0.85,
+   :quad [[0.29 12.915] [53.791 0.802] [0.29 65.085] [53.791 77.198]]}
+  {:key ["logo" 8],
+   :card [154 62],
+   :size [4 78],
+   :box {:x 1171, :y 12, :width 4, :height 78},
+   :opacity 0.85,
+   :quad [[0.717 13.167] [3.925 0.25] [0.717 64.833] [3.925 77.75]]}
+  {:key ["logo" 9],
+   :card [154 62],
+   :size [59 78],
+   :box {:x 1138, :y 12, :width 59, :height 78},
+   :opacity 0.85,
+   :quad [[58.379 12.874] [0.896 0.89] [58.379 65.126] [0.896 77.11]]}
+  {:key ["logo" 10],
+   :card [154 62],
+   :size [109 74],
+   :box {:x 1111, :y 14, :width 109, :height 74},
+   :opacity 0.85,
+   :quad
+   [[108.205 9.932] [0.087 0.731] [108.205 64.068] [0.087 73.269]]}
+  {:key ["logo" 11],
+   :card [154 62],
+   :size [143 68],
+   :box {:x 1096, :y 17, :width 143, :height 68},
+   :opacity 0.85,
+   :quad
+   [[142.402 5.289] [0.265 0.314] [142.402 62.711] [0.265 67.686]]}
+  {:key ["logo" 12],
+   :card [154 62],
+   :size [154 63],
+   :box {:x 1096, :y 19, :width 154, :height 63},
+   :opacity 0.85,
+   :quad [[154.0 1.0] [0.0 1.0] [154.0 63.0] [0.0 63.0]]}
+  {:key ["logo" 13],
+   :card [154 62],
+   :size [143 68],
+   :box {:x 1107, :y 17, :width 143, :height 68},
+   :opacity 0.85,
+   :quad
+   [[142.735 0.314] [0.598 5.289] [142.735 67.686] [0.598 62.711]]}
+  {:key ["logo" 14],
+   :card [154 62],
+   :size [109 74],
+   :box {:x 1126, :y 14, :width 109, :height 74},
+   :opacity 0.85,
+   :quad
+   [[108.913 0.731] [0.795 9.932] [108.913 73.269] [0.795 64.068]]}
+  {:key ["logo" 15],
+   :card [154 62],
+   :size [59 78],
+   :box {:x 1149, :y 12, :width 59, :height 78},
+   :opacity 0.85,
+   :quad [[58.104 0.89] [0.621 12.874] [58.104 77.11] [0.621 65.126]]}
+  {:key ["logo" 16],
+   :card [154 62],
+   :size [4 78],
+   :box {:x 1171, :y 12, :width 4, :height 78},
+   :opacity 0.85,
+   :quad [[3.925 0.25] [0.717 13.167] [3.925 77.75] [0.717 64.833]]}
+  {:key ["logo" 17],
+   :card [154 62],
+   :size [54 78],
+   :box {:x 1141, :y 12, :width 54, :height 78},
+   :opacity 0.85,
+   :quad [[0.209 0.802] [53.71 12.915] [0.209 77.198] [53.71 65.085]]}
+  {:key ["logo" 18],
+   :card [154 62],
+   :size [97 74],
+   :box {:x 1117, :y 14, :width 97, :height 74},
+   :opacity 0.85,
+   :quad
+   [[0.534 0.133] [96.236 10.256] [0.534 73.867] [96.236 63.744]]}
+  {:key ["logo" 19],
+   :card [154 62],
+   :size [125 72],
+   :box {:x 1103, :y 15, :width 125, :height 72},
+   :opacity 0.85,
+   :quad [[0.228 0.736] [124.72 8.344] [0.228 71.264] [124.72 63.656]]}
+  {:key ["logo" 20],
+   :card [154 62],
+   :size [142 68],
+   :box {:x 1096, :y 17, :width 142, :height 68},
+   :opacity 0.85,
+   :quad
+   [[0.466 0.241] [141.971 5.342] [0.466 67.759] [141.971 62.658]]}
+  {:key ["logo" 21],
+   :card [154 62],
+   :size [151 66],
+   :box {:x 1094, :y 18, :width 151, :height 66},
+   :opacity 0.85,
+   :quad
+   [[0.471 0.458] [150.425 3.402] [0.471 65.542] [150.425 62.598]]}
+  {:key ["logo" 22],
+   :card [154 62],
+   :size [154 64],
+   :box {:x 1094, :y 19, :width 154, :height 64},
+   :opacity 0.85,
+   :quad
+   [[0.769 0.323] [153.958 1.649] [0.769 63.677] [153.958 62.351]]}
+  {:key ["logo" 23],
+   :card [154 62],
+   :size [155 64],
+   :box {:x 1095, :y 19, :width 155, :height 64},
+   :opacity 0.85,
+   :quad
+   [[0.612 0.832] [154.561 1.166] [0.612 63.168] [154.561 62.834]]}
+  {:key ["text-0" :text], :text "(c) Studio"}
+  {:key ["text-1" :text], :text "Scheduled"}],
+ :spec
+ {:spec/version 2,
+  :canvas {:width 1280, :height 720},
+  :timebase
+  {:fps-num 30000, :fps-den 1001, :frames 5400, :first-frame 0},
+  :bitmaps
+  {"04e03788ace31a20c0f8e83ab723bb84b110ef886b95366e33a124f808f14acd"
+   {:width 127,
+    :height 28,
+    :path
+    "04e03788ace31a20c0f8e83ab723bb84b110ef886b95366e33a124f808f14acd.rgba"},
+   "0609266cb56e854657e505227f304034951f403038aba1e8fa81d17ac85aaeae"
+   {:width 4,
+    :height 78,
+    :path
+    "0609266cb56e854657e505227f304034951f403038aba1e8fa81d17ac85aaeae.rgba"},
+   "0a400287f08864d08372ec443af5763d24b262add04a62f2427b8e8f385866a7"
+   {:width 125,
+    :height 72,
+    :path
+    "0a400287f08864d08372ec443af5763d24b262add04a62f2427b8e8f385866a7.rgba"},
+   "0ae0535e45509d82dd3bd2c55e992e4030326eb1762bf88179e06fc182276e1e"
+   {:width 109,
+    :height 74,
+    :path
+    "0ae0535e45509d82dd3bd2c55e992e4030326eb1762bf88179e06fc182276e1e.rgba"},
+   "1274467b5152e49e6b8dc3482dde51a0349ea82c1ee458321955e1577c636de8"
+   {:width 54,
+    :height 78,
+    :path
+    "1274467b5152e49e6b8dc3482dde51a0349ea82c1ee458321955e1577c636de8.rgba"},
+   "18b4e15551fc7aeda806c9a0c2ae39488e24232367f5e58698bcdf61eaa6b1f1"
+   {:width 142,
+    :height 68,
+    :path
+    "18b4e15551fc7aeda806c9a0c2ae39488e24232367f5e58698bcdf61eaa6b1f1.rgba"},
+   "2597e5a2b0bfbd2d1bbd1b60d45a474eec7ead4a78713bae3fa34d8256b867d9"
+   {:width 142,
+    :height 68,
+    :path
+    "2597e5a2b0bfbd2d1bbd1b60d45a474eec7ead4a78713bae3fa34d8256b867d9.rgba"},
+   "2e2f8a25ad8e92c2b7cc1548803f56484b77c768a8bbba753d763f02f8dfa009"
+   {:width 97,
+    :height 74,
+    :path
+    "2e2f8a25ad8e92c2b7cc1548803f56484b77c768a8bbba753d763f02f8dfa009.rgba"},
+   "2fd19db2d3e87bba4b937588ce7dfa02fb637391a3077ea0a507c5ed10d05697"
+   {:width 143,
+    :height 68,
+    :path
+    "2fd19db2d3e87bba4b937588ce7dfa02fb637391a3077ea0a507c5ed10d05697.rgba"},
+   "3e62088d1fde0606e9bd38cfc3140ac02bfad29eb1cdb4a4393955b1991a788a"
+   {:width 154,
+    :height 64,
+    :path
+    "3e62088d1fde0606e9bd38cfc3140ac02bfad29eb1cdb4a4393955b1991a788a.rgba"},
+   "431aff30c226a6a3637a2206cbf0c9403b17e70dbd704403aa7df18b2b241a1c"
+   {:width 125,
+    :height 72,
+    :path
+    "431aff30c226a6a3637a2206cbf0c9403b17e70dbd704403aa7df18b2b241a1c.rgba"},
+   "46145ca56ccc403592a3caa75e8ff9695d557d53e574ab211ba5ab5126b6384e"
+   {:width 59,
+    :height 78,
+    :path
+    "46145ca56ccc403592a3caa75e8ff9695d557d53e574ab211ba5ab5126b6384e.rgba"},
+   "4a71fbcce7c9d2ddab1b24bf161c687fcef30a7486395a577e9b67a380c57683"
+   {:width 154,
+    :height 62,
+    :path
+    "4a71fbcce7c9d2ddab1b24bf161c687fcef30a7486395a577e9b67a380c57683.rgba"},
+   "4ddaefce28f4ca15372a2eb89fe4f137b7d9a2dbde09cacc6e36fb6107bcc679"
+   {:width 151,
+    :height 66,
+    :path
+    "4ddaefce28f4ca15372a2eb89fe4f137b7d9a2dbde09cacc6e36fb6107bcc679.rgba"},
+   "518687b611416988d3bddc2ebf5a7094d49338b7b181b66a4b028a46f9ef951c"
+   {:width 154,
+    :height 63,
+    :path
+    "518687b611416988d3bddc2ebf5a7094d49338b7b181b66a4b028a46f9ef951c.rgba"},
+   "7bb6c0443d5aa41cb95e860003e25896c249921f00e7d995d65295ea0108a343"
+   {:width 151,
+    :height 66,
+    :path
+    "7bb6c0443d5aa41cb95e860003e25896c249921f00e7d995d65295ea0108a343.rgba"},
+   "7fe0d320f25cef9816e02c7e35441fc40a1f532ff4f4f9be1f0eb67909af34b4"
+   {:width 143,
+    :height 68,
+    :path
+    "7fe0d320f25cef9816e02c7e35441fc40a1f532ff4f4f9be1f0eb67909af34b4.rgba"},
+   "8c54d6322dcf31bc2eb4a0404de239a2a7587084c7ab7e59635b25bcea5f61e9"
+   {:width 154,
+    :height 64,
+    :path
+    "8c54d6322dcf31bc2eb4a0404de239a2a7587084c7ab7e59635b25bcea5f61e9.rgba"},
+   "b9d049a3246ef3ab1aac0e31b0febaf0f17c79a638b95e47988338dc035d4dbc"
+   {:width 59,
+    :height 78,
+    :path
+    "b9d049a3246ef3ab1aac0e31b0febaf0f17c79a638b95e47988338dc035d4dbc.rgba"},
+   "c125e822b8ac507666ad43ec49bffeb00acdfc6cda8b39009556d90af37fa46a"
+   {:width 117,
+    :height 35,
+    :path
+    "c125e822b8ac507666ad43ec49bffeb00acdfc6cda8b39009556d90af37fa46a.rgba"},
+   "e1abfed906ec10c2553e83667d5d008d306b01ec65239798eee3d7317faab345"
+   {:width 54,
+    :height 78,
+    :path
+    "e1abfed906ec10c2553e83667d5d008d306b01ec65239798eee3d7317faab345.rgba"},
+   "e3da761886e2d2f90a073d993991b9279e2942e08044c1ac1c5ea47074a90c4c"
+   {:width 97,
+    :height 74,
+    :path
+    "e3da761886e2d2f90a073d993991b9279e2942e08044c1ac1c5ea47074a90c4c.rgba"},
+   "e5c265a1f7414b7c5b9283c7ebddd9be76dd15f3f5f86eceefccc934f1bcbdf7"
+   {:width 155,
+    :height 64,
+    :path
+    "e5c265a1f7414b7c5b9283c7ebddd9be76dd15f3f5f86eceefccc934f1bcbdf7.rgba"},
+   "ebcd86325e8aa7d6741085bf616844085810af2f0f3d298937dd2f41288ec464"
+   {:width 155,
+    :height 64,
+    :path
+    "ebcd86325e8aa7d6741085bf616844085810af2f0f3d298937dd2f41288ec464.rgba"},
+   "eea0ad6a6be3b2d2ec27aeda81b13a1e9a2250d0e8a87bbf1b9e723b105c0755"
+   {:width 4,
+    :height 78,
+    :path
+    "eea0ad6a6be3b2d2ec27aeda81b13a1e9a2250d0e8a87bbf1b9e723b105c0755.rgba"},
+   "f0ae481c6d5db1e27f3ff1227f6cf8ff9e8f3d1d2b52e743b2ffe6dfd4e70c72"
+   {:width 109,
+    :height 74,
+    :path
+    "f0ae481c6d5db1e27f3ff1227f6cf8ff9e8f3d1d2b52e743b2ffe6dfd4e70c72.rgba"}},
+  :layers
+  [{:id "logo",
+    :kind :flipbook,
+    :timing {:type :always},
+    :rest
+    {:bitmap
+     "4a71fbcce7c9d2ddab1b24bf161c687fcef30a7486395a577e9b67a380c57683",
+     :x 1096,
+     :y 20},
+    :cycle
+    {:start 150,
+     :period 150,
+     :frames
+     [{:bitmap
+       "4a71fbcce7c9d2ddab1b24bf161c687fcef30a7486395a577e9b67a380c57683",
+       :x 1096,
+       :y 20}
+      {:bitmap
+       "ebcd86325e8aa7d6741085bf616844085810af2f0f3d298937dd2f41288ec464",
+       :x 1096,
+       :y 19}
+      {:bitmap
+       "3e62088d1fde0606e9bd38cfc3140ac02bfad29eb1cdb4a4393955b1991a788a",
+       :x 1098,
+       :y 19}
+      {:bitmap
+       "7bb6c0443d5aa41cb95e860003e25896c249921f00e7d995d65295ea0108a343",
+       :x 1101,
+       :y 18}
+      {:bitmap
+       "2597e5a2b0bfbd2d1bbd1b60d45a474eec7ead4a78713bae3fa34d8256b867d9",
+       :x 1108,
+       :y 17}
+      {:bitmap
+       "431aff30c226a6a3637a2206cbf0c9403b17e70dbd704403aa7df18b2b241a1c",
+       :x 1118,
+       :y 15}
+      {:bitmap
+       "2e2f8a25ad8e92c2b7cc1548803f56484b77c768a8bbba753d763f02f8dfa009",
+       :x 1132,
+       :y 14}
+      {:bitmap
+       "1274467b5152e49e6b8dc3482dde51a0349ea82c1ee458321955e1577c636de8",
+       :x 1151,
+       :y 12}
+      {:bitmap
+       "eea0ad6a6be3b2d2ec27aeda81b13a1e9a2250d0e8a87bbf1b9e723b105c0755",
+       :x 1171,
+       :y 12}
+      {:bitmap
+       "46145ca56ccc403592a3caa75e8ff9695d557d53e574ab211ba5ab5126b6384e",
+       :x 1138,
+       :y 12}
+      {:bitmap
+       "f0ae481c6d5db1e27f3ff1227f6cf8ff9e8f3d1d2b52e743b2ffe6dfd4e70c72",
+       :x 1111,
+       :y 14}
+      {:bitmap
+       "7fe0d320f25cef9816e02c7e35441fc40a1f532ff4f4f9be1f0eb67909af34b4",
+       :x 1096,
+       :y 17}
+      {:bitmap
+       "518687b611416988d3bddc2ebf5a7094d49338b7b181b66a4b028a46f9ef951c",
+       :x 1096,
+       :y 19}
+      {:bitmap
+       "2fd19db2d3e87bba4b937588ce7dfa02fb637391a3077ea0a507c5ed10d05697",
+       :x 1107,
+       :y 17}
+      {:bitmap
+       "0ae0535e45509d82dd3bd2c55e992e4030326eb1762bf88179e06fc182276e1e",
+       :x 1126,
+       :y 14}
+      {:bitmap
+       "b9d049a3246ef3ab1aac0e31b0febaf0f17c79a638b95e47988338dc035d4dbc",
+       :x 1149,
+       :y 12}
+      {:bitmap
+       "0609266cb56e854657e505227f304034951f403038aba1e8fa81d17ac85aaeae",
+       :x 1171,
+       :y 12}
+      {:bitmap
+       "e1abfed906ec10c2553e83667d5d008d306b01ec65239798eee3d7317faab345",
+       :x 1141,
+       :y 12}
+      {:bitmap
+       "e3da761886e2d2f90a073d993991b9279e2942e08044c1ac1c5ea47074a90c4c",
+       :x 1117,
+       :y 14}
+      {:bitmap
+       "0a400287f08864d08372ec443af5763d24b262add04a62f2427b8e8f385866a7",
+       :x 1103,
+       :y 15}
+      {:bitmap
+       "18b4e15551fc7aeda806c9a0c2ae39488e24232367f5e58698bcdf61eaa6b1f1",
+       :x 1096,
+       :y 17}
+      {:bitmap
+       "4ddaefce28f4ca15372a2eb89fe4f137b7d9a2dbde09cacc6e36fb6107bcc679",
+       :x 1094,
+       :y 18}
+      {:bitmap
+       "8c54d6322dcf31bc2eb4a0404de239a2a7587084c7ab7e59635b25bcea5f61e9",
+       :x 1094,
+       :y 19}
+      {:bitmap
+       "e5c265a1f7414b7c5b9283c7ebddd9be76dd15f3f5f86eceefccc934f1bcbdf7",
+       :x 1095,
+       :y 19}]}}
+   {:id "text-0",
+    :kind :bitmap,
+    :bitmap
+    "c125e822b8ac507666ad43ec49bffeb00acdfc6cda8b39009556d90af37fa46a",
+    :placement {:type :fixed, :fx 0.5, :fy 1.0, :px 24, :py -24},
+    :timing {:type :always}}
+   {:id "text-1",
+    :kind :bitmap,
+    :bitmap
+    "04e03788ace31a20c0f8e83ab723bb84b110ef886b95366e33a124f808f14acd",
+    :placement {:type :fixed, :fx 0.0, :fy 1.0, :px 24, :py -24},
+    :timing
+    {:type :windows,
+     :windows [{:start 60, :end 104} {:start 2713, :end 2757}]}}]},
+ :draw-at
+ {0
+  {"logo"
+   {:bitmap
+    "4a71fbcce7c9d2ddab1b24bf161c687fcef30a7486395a577e9b67a380c57683",
+    :x 1096,
+    :y 20},
+   "text-0"
+   {:bitmap
+    "c125e822b8ac507666ad43ec49bffeb00acdfc6cda8b39009556d90af37fa46a",
+    :x 605,
+    :y 661}},
+  59
+  {"logo"
+   {:bitmap
+    "4a71fbcce7c9d2ddab1b24bf161c687fcef30a7486395a577e9b67a380c57683",
+    :x 1096,
+    :y 20},
+   "text-0"
+   {:bitmap
+    "c125e822b8ac507666ad43ec49bffeb00acdfc6cda8b39009556d90af37fa46a",
+    :x 605,
+    :y 661}},
+  60
+  {"logo"
+   {:bitmap
+    "4a71fbcce7c9d2ddab1b24bf161c687fcef30a7486395a577e9b67a380c57683",
+    :x 1096,
+    :y 20},
+   "text-0"
+   {:bitmap
+    "c125e822b8ac507666ad43ec49bffeb00acdfc6cda8b39009556d90af37fa46a",
+    :x 605,
+    :y 661},
+   "text-1"
+   {:bitmap
+    "04e03788ace31a20c0f8e83ab723bb84b110ef886b95366e33a124f808f14acd",
+    :x 24,
+    :y 668}},
+  103
+  {"logo"
+   {:bitmap
+    "4a71fbcce7c9d2ddab1b24bf161c687fcef30a7486395a577e9b67a380c57683",
+    :x 1096,
+    :y 20},
+   "text-0"
+   {:bitmap
+    "c125e822b8ac507666ad43ec49bffeb00acdfc6cda8b39009556d90af37fa46a",
+    :x 605,
+    :y 661},
+   "text-1"
+   {:bitmap
+    "04e03788ace31a20c0f8e83ab723bb84b110ef886b95366e33a124f808f14acd",
+    :x 24,
+    :y 668}},
+  104
+  {"logo"
+   {:bitmap
+    "4a71fbcce7c9d2ddab1b24bf161c687fcef30a7486395a577e9b67a380c57683",
+    :x 1096,
+    :y 20},
+   "text-0"
+   {:bitmap
+    "c125e822b8ac507666ad43ec49bffeb00acdfc6cda8b39009556d90af37fa46a",
+    :x 605,
+    :y 661},
+   "text-1"
+   {:bitmap
+    "04e03788ace31a20c0f8e83ab723bb84b110ef886b95366e33a124f808f14acd",
+    :x 24,
+    :y 668}},
+  149
+  {"logo"
+   {:bitmap
+    "4a71fbcce7c9d2ddab1b24bf161c687fcef30a7486395a577e9b67a380c57683",
+    :x 1096,
+    :y 20},
+   "text-0"
+   {:bitmap
+    "c125e822b8ac507666ad43ec49bffeb00acdfc6cda8b39009556d90af37fa46a",
+    :x 605,
+    :y 661}},
+  150
+  {"logo"
+   {:bitmap
+    "4a71fbcce7c9d2ddab1b24bf161c687fcef30a7486395a577e9b67a380c57683",
+    :x 1096,
+    :y 20},
+   "text-0"
+   {:bitmap
+    "c125e822b8ac507666ad43ec49bffeb00acdfc6cda8b39009556d90af37fa46a",
+    :x 605,
+    :y 661}},
+  151
+  {"logo"
+   {:bitmap
+    "ebcd86325e8aa7d6741085bf616844085810af2f0f3d298937dd2f41288ec464",
+    :x 1096,
+    :y 19},
+   "text-0"
+   {:bitmap
+    "c125e822b8ac507666ad43ec49bffeb00acdfc6cda8b39009556d90af37fa46a",
+    :x 605,
+    :y 661}},
+  160
+  {"logo"
+   {:bitmap
+    "f0ae481c6d5db1e27f3ff1227f6cf8ff9e8f3d1d2b52e743b2ffe6dfd4e70c72",
+    :x 1111,
+    :y 14},
+   "text-0"
+   {:bitmap
+    "c125e822b8ac507666ad43ec49bffeb00acdfc6cda8b39009556d90af37fa46a",
+    :x 605,
+    :y 661}},
+  173
+  {"logo"
+   {:bitmap
+    "e5c265a1f7414b7c5b9283c7ebddd9be76dd15f3f5f86eceefccc934f1bcbdf7",
+    :x 1095,
+    :y 19},
+   "text-0"
+   {:bitmap
+    "c125e822b8ac507666ad43ec49bffeb00acdfc6cda8b39009556d90af37fa46a",
+    :x 605,
+    :y 661}},
+  174
+  {"logo"
+   {:bitmap
+    "4a71fbcce7c9d2ddab1b24bf161c687fcef30a7486395a577e9b67a380c57683",
+    :x 1096,
+    :y 20},
+   "text-0"
+   {:bitmap
+    "c125e822b8ac507666ad43ec49bffeb00acdfc6cda8b39009556d90af37fa46a",
+    :x 605,
+    :y 661}},
+  2713
+  {"logo"
+   {:bitmap
+    "2fd19db2d3e87bba4b937588ce7dfa02fb637391a3077ea0a507c5ed10d05697",
+    :x 1107,
+    :y 17},
+   "text-0"
+   {:bitmap
+    "c125e822b8ac507666ad43ec49bffeb00acdfc6cda8b39009556d90af37fa46a",
+    :x 605,
+    :y 661},
+   "text-1"
+   {:bitmap
+    "04e03788ace31a20c0f8e83ab723bb84b110ef886b95366e33a124f808f14acd",
+    :x 24,
+    :y 668}},
+  2756
+  {"logo"
+   {:bitmap
+    "4a71fbcce7c9d2ddab1b24bf161c687fcef30a7486395a577e9b67a380c57683",
+    :x 1096,
+    :y 20},
+   "text-0"
+   {:bitmap
+    "c125e822b8ac507666ad43ec49bffeb00acdfc6cda8b39009556d90af37fa46a",
+    :x 605,
+    :y 661},
+   "text-1"
+   {:bitmap
+    "04e03788ace31a20c0f8e83ab723bb84b110ef886b95366e33a124f808f14acd",
+    :x 24,
+    :y 668}},
+  2757
+  {"logo"
+   {:bitmap
+    "4a71fbcce7c9d2ddab1b24bf161c687fcef30a7486395a577e9b67a380c57683",
+    :x 1096,
+    :y 20},
+   "text-0"
+   {:bitmap
+    "c125e822b8ac507666ad43ec49bffeb00acdfc6cda8b39009556d90af37fa46a",
+    :x 605,
+    :y 661},
+   "text-1"
+   {:bitmap
+    "04e03788ace31a20c0f8e83ab723bb84b110ef886b95366e33a124f808f14acd",
+    :x 24,
+    :y 668}}}}

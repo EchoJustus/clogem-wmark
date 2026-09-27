@@ -41,14 +41,16 @@
              "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf"]})
 
 (defn default-font
-  "A font file FFmpeg can open. Prefers `fonts/wmark.ttf` bundled in the binary
-  (extracted once to the cache dir -- FFmpeg can't read from inside our
-  executable), then common system fonts. Bundle an OFL font with CJK coverage
-  if warning texts may be non-Latin."
+  "A font file FFmpeg and the v2 rasterizer can open. Prefers `fonts/wmark.ttf`
+  bundled in the binary (Fira Sans Bold, OFL; extracted to the cache dir --
+  FFmpeg can't read from inside our executable, and re-extracted when the
+  bundled file changes), then common system fonts."
   [^Path cache-dir]
   (or (when-let [r (io/resource "fonts/wmark.ttf")]
-        (let [target (.resolve cache-dir "wmark.ttf")]
-          (when-not (Files/exists target (make-array LinkOption 0))
+        (let [target (.resolve cache-dir "wmark.ttf")
+              ^bytes bundled (with-open [^InputStream in (io/input-stream r)] (.readAllBytes in))]
+          (when-not (and (Files/exists target (make-array LinkOption 0))
+                         (java.util.Arrays/equals bundled (Files/readAllBytes target)))
             (Files/createDirectories cache-dir (make-array java.nio.file.attribute.FileAttribute 0))
             (with-open [^InputStream in (io/input-stream r)]
               (Files/copy in target ^"[Ljava.nio.file.CopyOption;"

@@ -65,6 +65,12 @@
   (cancel! [handle])
   (outcome [handle]))
 
+(defprotocol StillDecoder
+  (decode-still [engine source]
+    "A still image (the logo) decoded by the engine, as {:width :height :px}:
+    straight RGBA8 bytes, row-major. Hosts draw render spec v2's bitmaps
+    from it, so image formats stay the engine's business (docs/adr/0006)."))
+
 ;; ---------------------------------------------------------------------------
 ;; Capability negotiation
 
@@ -73,6 +79,8 @@
   [{:keys [spec encode output]}]
   (distinct
    (concat
+    ;; v1 is the baseline every engine takes; newer versions are negotiated
+    (when (not= 1 (:spec/version spec 1)) [[:spec-versions (:spec/version spec)]])
     (for [l (:layers spec)] [:layers (:kind l)])
     (for [l (:layers spec) :when (:animation l)] [:animations (get-in l [:animation :type])])
     (for [l (:layers spec)] [:timing (get-in l [:timing :type])])
