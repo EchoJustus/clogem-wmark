@@ -120,7 +120,9 @@ jobs:
         run: |
           pip install playwright==1.56.0
           python3 -m playwright install --with-deps chromium
-          python3 test/e2e/ui_smoke.py target/bin/wmark --home "$RUNNER_TEMP/e2e-home" serve --announce json
+          # the pinned FFmpeg makes the test clip and serves the engine (the runner has none)
+          PATH="$PWD/target/ffmpeg/linux-x64/bin:$PATH" \
+            python3 test/e2e/ui_smoke.py target/bin/wmark --home "$RUNNER_TEMP/e2e-home" serve --announce json
       - name: Hardened runtime check (ad-hoc signature; evidence for docs/adr/0003)
         if: matrix.platform == 'macos-arm64'
         continue-on-error: true

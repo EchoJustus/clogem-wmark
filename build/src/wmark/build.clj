@@ -252,6 +252,19 @@
   []
   (if (linux?) {"LC_ALL" "C.UTF-8"} {}))
 
+(defn windows-link-options
+  "Extra native-image options on Windows: embed wmark/utf8.manifest, which
+  makes UTF-8 the process code page. The C runtime passes arguments in the
+  process code page and the image decodes them as UTF-8, so without it a
+  Windows binary received `vidéo\\clip é.mp4` as `vid?o\\clip ?.mp4`
+  (Windows 10 1903 or later)."
+  []
+  (let [f (io/file "target/utf8.manifest")]
+    (io/make-parents f)
+    (spit f (slurp (io/resource "wmark/utf8.manifest")))
+    ["-H:NativeLinkerOption=/MANIFEST:EMBED"
+     (str "-H:NativeLinkerOption=/MANIFESTINPUT:" (.getAbsolutePath f))]))
+
 (defn native
   "Uberjar -> single native binary for the current OS/arch -> target/bin/."
   [opts]
@@ -260,7 +273,8 @@
         jar (uber opts)
         _   (.mkdirs (io/file "target/bin"))
         out (str "target/bin/" artifact)                ; native-image appends .exe on Windows
-        {:keys [exit]} ((tb 'process) {:command-args (concat [(native-image-bin) "-jar" jar "-o" out] native-image)
+        {:keys [exit]} ((tb 'process) {:command-args (concat [(native-image-bin) "-jar" jar "-o" out] native-image
+                                                             (when (windows?) (windows-link-options)))
                                        :env          (native-image-env)})]
     (when-not (zero? exit) (fail! "native-image failed" {:exit exit}))
     (println "Built" out)))

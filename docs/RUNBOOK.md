@@ -186,7 +186,13 @@ target/bin/wmark doctor
   [oracle/graal#10237](https://github.com/oracle/graal/issues/10237)). A Linux
   build in a POSIX locale made a binary that couldn't open `vidéo/clip é.mp4`,
   whatever the user's locale. `native` therefore runs native-image in
-  `C.UTF-8` on Linux; macOS always uses UTF-8; CI's smoke test checks Windows.
+  `C.UTF-8` on Linux, and macOS always uses UTF-8. On Windows the C runtime
+  passes arguments in the process code page while the image decodes them as
+  UTF-8: the first Windows build received `vidéo 视频\clip é.mp4` as
+  `vid?o ??\clip ?.mp4`. `native` therefore embeds a manifest
+  (`build/src/wmark/utf8.manifest`, `-H:NativeLinkerOption=/MANIFESTINPUT:...`)
+  that makes UTF-8 the process code page (Windows 10 1903 and later,
+  [Microsoft: use the UTF-8 code page](https://learn.microsoft.com/en-us/windows/apps/design/globalizing/use-utf8-code-page)).
 - Metadata (resources `public/**`, `fonts/**`; the FFM call shapes) comes from
   `desktop/resources/META-INF/native-image/clogem/wmark/reachability-metadata.json`.
   The tracing agent, run over the browser suite, a real render, the profile
@@ -289,16 +295,19 @@ GraalVM CE 25.0.2, FFmpeg 6.1.1 and the pinned 9.0.1, Chromium 141):
   binaries were run);
 - the FFmpeg conformance harness with FFmpeg 9.0.1.
 
-**Verified in CI before this change:** the native builds compile on Windows,
-macOS and Linux (their old smoke step only ran `--help`).
+**Verified in CI (2026-09-27, `native` job):**
+- macOS 15 arm64: the smoke test (17 checks, the FFM mock included), the
+  bundle (15), and an ad-hoc hardened-runtime signature (17);
+- macOS 15 Intel: the smoke test and the bundle (no native engines: GraalVM has
+  no FFM on Intel macOS);
+- Linux x64: the smoke test and the bundle;
+- Windows x64: 14 of 16 checks, the FFM mock included; the two with non-ASCII
+  arguments failed, which the UTF-8 manifest (above) addresses.
 
 **Not run yet:**
-- the new smoke test and bundle on Windows and macOS (CI's `native` job, first
-  run pending);
+- the Windows build with the manifest, and the browser suite against the Linux
+  native binary in CI (the first run lacked FFmpeg on PATH);
 - the release and SDK workflows (they run on tags);
 - signing and notarization: the certificates don't exist yet (ADRs 0002 and
   0003);
-- Windows paths outside the system code page, e.g. Chinese folder names on an
-  English Windows: the smoke test's non-ASCII render covers it on the first
-  Windows run;
 - the OS encoders (Media Foundation, VideoToolbox) on real hardware.

@@ -48,9 +48,15 @@ engine library, possibly a third party's.
 - Third-party native engines can't run in the signed macOS binary unless the
   studio signs them. If a marketplace of engines ever matters, revisit with
   a separately entitled "developer" build, never by weakening the release.
-- CI gathers evidence for points 3 and 4: the `native` job of `ci.yml` signs
-  the macOS arm64 bundle ad hoc with the hardened runtime and runs the smoke
-  test, including the unsigned mock engine (`continue-on-error`; read its log).
+- **Evidence for point 4 (CI, 2026-09-27, macOS 15 arm64):** the bundle signed
+  ad hoc with the hardened runtime (`flags=0x10002(adhoc,runtime)`) passes all
+  17 smoke checks, the render through the C mock with its FFM upcalls
+  included. No JIT entitlement is needed.
+- **Point 3 is not yet shown:** that run also loaded the *unsigned* mock
+  library, but an ad-hoc signature carries no Team ID, so library validation
+  doesn't apply the way it will under a Developer ID signature. The first
+  signed build must check that an unsigned `--native-lib` is refused and that
+  one signed with the studio's Team ID loads.
 
 ## Sources (checked 2026-09-27)
 

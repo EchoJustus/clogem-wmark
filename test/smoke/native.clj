@@ -4,7 +4,7 @@
   "Smoke test of built binaries, run by Babashka on every CI platform:
 
     bb test/smoke/native.clj --bin target/bin --ffmpeg target/ffmpeg/linux-x64/bin \\
-                             [--mock target/libwmark_engine.so] [--edition community]
+                             [--mock target/libwmark_engine.so] [--name wmark] [--edition community]
     bb test/smoke/native.clj --bin dist/desktop-server --ffmpeg dist/desktop-server/bin --bundled true
 
   It checks what a user's first minutes need: --help, doctor, a real render
@@ -42,7 +42,7 @@
 
 (defn -main [& args]
   (let [opts    (into {} (map (fn [[k v]] [(keyword (subs k 2)) v]) (partition 2 args)))
-        wmark   (exe (:bin opts "target/bin") "wmark")
+        wmark   (exe (:bin opts "target/bin") (:name opts "wmark"))
         tui     (exe (:bin opts "target/bin") "wmark-tui")
         ffdir   (str (fs/absolutize (or (:ffmpeg opts) (throw (ex-info "--ffmpeg DIR is required" {})))))
         ffmpeg  (exe ffdir "ffmpeg")
