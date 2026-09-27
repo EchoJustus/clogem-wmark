@@ -276,11 +276,14 @@
     ["-H:NativeLinkerOption=/MANIFEST:EMBED"
      (str "-H:NativeLinkerOption=/MANIFESTINPUT:" (.getAbsolutePath f))]))
 
+(declare check-graalvm!)
+
 (defn native
   "Uberjar -> single native binary for the current OS/arch -> target/bin/."
   [opts]
   (let [{:keys [artifact native-image] :as t} (resolve-target opts)
         _   (when-not native-image (fail! (str (:target t) " is not built as a native image")))
+        _   (check-graalvm!)
         jar (uber opts)
         _   (.mkdirs (io/file "target/bin"))
         out (str "target/bin/" artifact)                ; native-image appends .exe on Windows
@@ -312,6 +315,25 @@
                         (str/starts-with? os "mac")     "macos"
                         :else                           "linux")
                   (if (#{"aarch64" "arm64"} arch) "-arm64" "-x64")))))
+
+(defn graalvm-version
+  "The release `native-image --version` names, e.g. \"25.0.1\"."
+  [version-output]
+  (second (re-find #"(?m)^native-image\s+(\d+(?:\.\d+)*)" (str version-output))))
+
+(defn- check-graalvm!
+  "Fail unless GRAALVM_HOME is the release the matrix pins for this platform
+  (:graalvm, e.g. macOS x64 on 25.0.1). Unpinned platforms take any 25.x."
+  []
+  (when-let [want (get-in (matrix*) [:graalvm (platform)])]
+    (let [^java.util.List argv [(native-image-bin) "--version"]
+          p    (.start (doto (ProcessBuilder. argv) (.redirectErrorStream true)))
+          have (graalvm-version (slurp (.getInputStream p)))]
+      (.waitFor p)
+      (when-not (= want have)
+        (fail! (str "Native builds for " (name (platform)) " need GraalVM " want
+                    " (deps.edn :graalvm), but GRAALVM_HOME has " (or have "an unknown release")
+                    ". GraalVM 25.0.2 dropped macOS x64, so Intel Macs stay on 25.0.1."))))))
 
 (defn- exe-on [platform name]
   (if (str/starts-with? (clojure.core/name platform) "windows") (str name ".exe") name))

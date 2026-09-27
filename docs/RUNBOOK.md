@@ -216,6 +216,10 @@ target/bin/wmark doctor
   commands and the native mock engine, recorded exactly the six downcall and
   one upcall shapes listed there, and no resource or reflection the binary
   lacks (Clojure's namespaces are initialised at build time).
+- **Intel Macs build on GraalVM CE 25.0.1**, exactly: 25.0.2 dropped macOS x64
+  ([ADR 0007](adr/0007-intel-macs-on-graalvm-25-0-1.md)). `deps.edn` pins it
+  (`:graalvm {:macos-x64 "25.0.1"}`), and `bb native` refuses any other
+  release there. Every other platform takes the latest GraalVM 25.
 - **No cross-compilation.** Build the Linux binary on Linux (WSL2 is fine),
   the Mac binary on a Mac, and the `.exe` on Windows. On Windows, run from the
   "x64 Native Tools Command Prompt for VS 2022".

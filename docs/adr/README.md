@@ -13,6 +13,7 @@ owner first (CLAUDE.md, "Decisions").
 | [0004](0004-release-supply-chain.md) | Release supply chain: tags from main, a protected environment, pinned actions, checksums, Sigstore, attestations | Accepted |
 | [0005](0005-canary-display-name.md) | The canary mode keeps its wire id `subliminal`; users see "canary" | Accepted |
 | [0006](0006-render-spec-v2-host-rendered-overlays.md) | Render spec v2: the host renders, engines only composite | Accepted |
+| [0007](0007-intel-macs-on-graalvm-25-0-1.md) | Intel Macs stay supported, on GraalVM 25.0.1 | Accepted |
 
 New records copy this shape: **Status**, **Context**, **Decision**,
 **Consequences**, **Alternatives**, **Sources** (with the date facts were

@@ -107,6 +107,12 @@
   :stages
   {1 {:name "WebServer + TUI for Windows, then macOS" :bundles [:desktop-server]}}
 
+  ;; GraalVM releases native builds must use where the latest 25.x won't do.
+  ;; GraalVM 25.0.2 dropped macOS x64, and Intel Macs stay supported, so
+  ;; their builds are pinned to 25.0.1 (ADR 0007). `native` enforces this,
+  ;; and the workflows' macos-x64 matrix entries must name the same release.
+  :graalvm {:macos-x64 "25.0.1"}
+
   ;; -- FFmpeg for the bundles ------------------------------------------------
   ;; Exact archives per platform, by URL and SHA-256; never "latest".
   ;; `clojure -T:build ffmpeg` fetches and verifies them for this platform, and
