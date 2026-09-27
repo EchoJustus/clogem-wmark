@@ -218,6 +218,23 @@
     (is (str/includes? g "x='floor((W-w)+(-24))'"))
     (is (str/includes? g "y='floor((H-h)+(-24))'"))))
 
+(deftest v2-moving-text-counts-frames-the-way-overlay-does
+  ;; overlay's per-frame x/y see n one ahead of its enable timeline (framesync
+  ;; counts the frame as consumed first): positions use (n-1), enable uses n
+  (let [spec {:spec/version 2 :canvas {:width 640 :height 360}
+              :timebase {:fps-num 30 :fps-den 1 :frames 120 :first-frame 0}
+              :bitmaps {"b" {:width 100 :height 40 :path "/scratch/b.rgba"}}
+              :layers [{:id "t" :kind :bitmap :bitmap "b"
+                        :placement {:type :per-window :points [[0.25 0.5]]}
+                        :timing {:type :windows :windows [{:start 9 :end 30}]}}]}
+        g    (:graph (compile/compile-request-v2
+                      {:spec spec :source "/in/clip.mov" :media media
+                       :output {:path "/out/o.part.mp4" :container "mp4"} :encode {:codec :h264}}
+                      {:ffmpeg "/opt/wmark/bin/ffmpeg" :version {:major 9} :encoders x264-build :workdir "/tmp/job"}))]
+    (is (str/includes? g "x='floor((W-w)*(between((n-1),9,30)*0.25))'"))
+    (is (str/includes? g "enable='between(n,9,30)'"))
+    (is (str/includes? g "eval=frame"))))
+
 (deftest an-lgpl-build-encodes-with-its-software-encoders
   (testing "hardware encoders an LGPL build lists may be absent at run time"
     (is (= "libopenh264" (arg-after (:argv (plan {} :encoders #{"libopenh264" "h264_nvenc" "h264_qsv"})) "-c:v")))

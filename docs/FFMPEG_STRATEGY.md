@@ -336,7 +336,19 @@ per draw. Each draw reads a still RGBA bitmap as a `rawvideo` input (one frame;
   floored, with `eval=frame` when the position moves.
 
 Overlays run in `yuv444`, because `yuv420` rounds positions to even pixels (a
-square at x = 13 lands on column 12). At 1080p with a 30-frame flip, that is
+square at x = 13 lands on column 12).
+
+**overlay's per-frame x and y count frames from 1.** With `eval=frame`,
+`vf_overlay.c` sets `n` to the main link's `frame_count_out`, and framesync
+has already counted the frame being blended. The `enable` timeline is
+evaluated before that count and sees the 0-based `n`.
+- **Symptom:** text that moves per window jumped to the top-left corner on
+  each window's last frame. A burst that filled its whole period took the
+  next burst's place on its last frame.
+- **Fix:** positions use `(n-1)`, like `perspective`'s `(in-1)`.
+- **Tests:** a conformance test renders per-window and burst-scatter text on
+  real frames and checks every frame against `draw-at`
+  (`conformance/v2-layer-problems`). At 1080p with a 30-frame flip, that is
 32 overlays and 7–18% more render time than v1, plus about half a second of
 host drawing per input (ADR 0006).
 

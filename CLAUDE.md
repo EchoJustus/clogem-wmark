@@ -184,7 +184,8 @@ its own matrix.
 - Frame-exact output:
   - FFmpeg runs with `-fps_mode:v passthrough`;
   - the flip card is built from the video's own frames (no timestamp pairing);
-  - `perspective` counts frames from 1, hence `(in-1)`;
+  - `perspective` counts frames from 1, hence `(in-1)`; so does `overlay`'s
+    per-frame x and y (its `enable` counts from 0), hence `(n-1)` there;
   - scheduled times become half-open frame windows.
 
   Any rendering change needs the conformance harness

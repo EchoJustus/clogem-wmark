@@ -50,6 +50,44 @@
     (let [dir (c/tmp-dir)]
       (both-clips (ffmpeg/ffmpeg-engine {:work-root dir}) dir "the ffmpeg on PATH"))))
 
+(defn- moving-text
+  "Two text layers that move: keyed-looking windows with a place per window
+  (ending mid-clip, where overlay's frame counter once put them at 0,0), and
+  bursts at a place per burst."
+  [spec]
+  (let [[a b] (filter #(= :text (:kind %)) (:layers spec))
+        others (remove #(= :text (:kind %)) (:layers spec))]
+    (assoc spec :layers
+           (into (vec others)
+                 [(assoc a :timing {:type :windows :windows [{:start 9 :end 30} {:start 42 :end 59} {:start 69 :end 92}]}
+                           :placement {:type :per-window :points [[0.44 0.07] [0.34 0.21] [0.91 0.41]]})
+                  (assoc b :timing {:type :periodic :offset 5 :period 30 :length 30}
+                           :placement {:type :burst-scatter :margin 0.05 :modulus 997
+                                       :x {:a 331 :b 17} :y {:a 509 :b 101}})]))))
+
+(deftest moving-text-lands-where-draw-at-says
+  (if-not (c/ffmpeg-available?)
+    (println "  (skipped: ffmpeg not installed)")
+    (let [dir (c/tmp-dir)
+          {:keys [clip]} (c/make-media! dir {})]
+      (doseq [[label eng] (cond-> [["the ffmpeg on PATH" (ffmpeg/ffmpeg-engine {:work-root dir})]]
+                            (lgpl-bin) (conj ["the pinned LGPL build" (ffmpeg/ffmpeg-engine {:work-root dir :ffmpeg (lgpl-bin)})]))
+              keep-id [0 1]]
+        (let [only (fn [spec] (let [s (moving-text spec)
+                                    texts (filter #(= :text (:kind %)) (:layers s))]
+                                (assoc s :layers (vec (concat (remove #(= :text (:kind %)) (:layers s))
+                                                              [(nth texts keep-id)])))))
+              {:keys [v2 output outcome]} (c/render! eng {:logo {:enabled false}
+                                                          :texts [{:mode :continuous :content "PER WINDOW" :opacity 1.0}
+                                                                  {:mode :continuous :content "BURST" :opacity 1.0}]}
+                                                     clip {:out-dir dir :spec-version 2 :edit-spec only})
+              frames (c/gray-frames output 640 360)
+              layer  (first (:layers v2))]
+          (testing (str label ", " (name (get-in layer [:placement :type])))
+            (is (= {:status :done} outcome))
+            (is (= 120 (count frames)))
+            (is (= [] (c/v2-layer-problems v2 frames 640 (:id layer))))))))))
+
 (deftest an-lgpl-ffmpeg-passes-v2-conformance
   (if-not (and (c/ffmpeg-available?) (lgpl-bin))
     (if (System/getenv "WMARK_REQUIRE_LGPL")

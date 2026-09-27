@@ -14,7 +14,8 @@
             [watermark.engine :as engine]
             [watermark.raster :as raster]
             [watermark.raster.local :as raster-local]
-            [watermark.render :as render])
+            [watermark.render :as render]
+            [watermark.render.v2 :as v2])
   (:import (java.io DataInputStream File)
            (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)))
@@ -77,17 +78,20 @@
   also decodes the logo, gets the v2 spec, returned as
   :v2; :spec stays the v1 spec, whose reference geometry the frames are
   measured against. The output is lossless H.264 in MP4 with the audio
-  copied, unless :container, :codec and :audio say otherwise."
-  [eng settings input {:keys [entitlements seed-fn out-dir spec-version container codec audio]
-                       :or   {container "mp4" codec :h264 audio :copy}}]
+  copied, unless :container, :codec and :audio say otherwise. :edit-spec
+  (a fn of the v1 spec) changes the planned spec before rendering, e.g. to
+  give a layer a placement no community mode plans."
+  [eng settings input {:keys [entitlements seed-fn out-dir spec-version container codec audio edit-spec]
+                       :or   {container "mp4" codec :h264 audio :copy edit-spec identity}}]
   (let [media  (engine/probe eng input)
         logo   (get-in settings [:logo :path])
-        spec   (render/build {:settings     (resolve/deep-merge schema/defaults settings)
-                              :media        media
-                              :logo-media   (when logo (engine/probe eng logo))
-                              :seed-fn      (or seed-fn (constantly 42))
-                              :entitlements (or entitlements (features/community))
-                              :font         (font)})
+        spec   (edit-spec
+                (render/build {:settings     (resolve/deep-merge schema/defaults settings)
+                               :media        media
+                               :logo-media   (when logo (engine/probe eng logo))
+                               :seed-fn      (or seed-fn (constantly 42))
+                               :entitlements (or entitlements (features/community))
+                               :font         (font)}))
         v2     (when (= 2 spec-version)
                  (raster/realize! (raster-local/local-rasterizer {:work-root out-dir}) eng spec))
         out    (str (io/file out-dir (str (.getName (io/file input)) ".out." container)))
@@ -161,3 +165,32 @@
     ;; white text with a black@0.6 border on white (luma ~100): count border pixels
     {:measured  (vec (keep-indexed (fn [i f] (when (> (dark-count f w region 160) 15) (+ first-frame i))) frames))
      :reference (vec (filter #(render/active? (:timing layer) %) (range first-frame (+ first-frame (count frames)))))}))
+
+(defn v2-layer-problems
+  "Frames where a render spec v2 :bitmap layer isn't what the reference
+  (watermark.render.v2/draw-at) says, as strings (empty: it conforms):
+  ink on a frame it draws nothing on, none where it draws, or ink that
+  doesn't start within `slack` px of the placed bitmap's top-left (its own
+  padding) or runs outside it. Test clips are white; `frames` are luma."
+  [v2-spec frames w layer-id & {:keys [threshold slack] :or {threshold 160 slack 4}}]
+  (let [layer (first (filter #(= layer-id (:id %)) (:layers v2-spec)))
+        h     (quot (alength ^bytes (first frames)) w)
+        first-frame (get-in v2-spec [:timebase :first-frame])]
+    (vec (for [[i f] (map-indexed vector frames)
+               :let [n   (+ first-frame i)
+                     at  (v2/draw-at v2-spec layer n)
+                     box (bbox f w [0 0 w h] threshold)
+                     problem
+                     (if-not at
+                       (when (> (dark-count f w [0 0 w h] threshold) 15)
+                         (str "frame " n ": ink " box " where nothing is drawn"))
+                       (let [{:keys [x y bitmap]} at
+                             {bw :width bh :height} ((:bitmaps v2-spec) bitmap)]
+                         (cond
+                           (nil? box) (str "frame " n ": no ink, but the bitmap is drawn at " [x y])
+                           (not (and (<= x (box 0) (+ x slack)) (<= y (box 1) (+ y slack))))
+                           (str "frame " n ": ink starts at " (subvec box 0 2) ", the bitmap at " [x y])
+                           (not (and (< (box 2) (+ x bw)) (< (box 3) (+ y bh))))
+                           (str "frame " n ": ink " box " leaves the " bw "x" bh " bitmap at " [x y]))))]
+               :when problem]
+           problem))))
