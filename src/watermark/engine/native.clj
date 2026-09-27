@@ -28,6 +28,7 @@
   (:import (java.lang.foreign AddressLayout Arena FunctionDescriptor Linker Linker$Option
                               MemoryLayout MemorySegment SymbolLookup ValueLayout)
            (java.lang.invoke MethodHandle MethodHandles MethodType)
+           (java.lang.ref Reference)
            (java.nio.file Path Paths)))
 
 (set! *warn-on-reflection* true)
@@ -194,7 +195,11 @@
   (execute! [_ plan listener]
     (let [{:keys [fns engine]} (force (:loaded state))
           result (promise)
-          arena  (Arena/ofShared)                  ; lives until the render is released
+          ;; Automatic, not shared: the render's argument and its upcall stub
+          ;; stay valid while the release thread below holds the arena, and
+          ;; the GC frees them once it is gone. Native Image 25 supports
+          ;; Arena/ofShared only behind an expert flag (-H:+SharedArenaSupport).
+          arena  (Arena/ofAuto)
           stub   (event-stub arena
                              (fn [_user ^MemorySegment json-seg]
                                (let [e (<-json (.getString (.reinterpret json-seg Long/MAX_VALUE) 0))]
@@ -203,15 +208,13 @@
                                                      (:error e) (assoc :error (:error e))))
                                    (when listener (listener (update e :event keyword)))))
                                nil))
-          render (try (call-checked fns "wmark_render_start" engine
-                                    (string-arg arena (:native-plan plan)) stub MemorySegment/NULL)
-                      (catch Throwable t
-                        (.close arena)
-                        (throw t)))]
-      ;; free the native render and the upcall stub once the final event is in
+          render (call-checked fns "wmark_render_start" engine
+                               (string-arg arena (:native-plan plan)) stub MemorySegment/NULL)]
+      ;; free the native render once the final event is in; no callback can
+      ;; arrive after wmark_render_release, so the stub may go with the arena
       (doto (Thread. ^Runnable (fn [] (deref result)
                                  (call fns "wmark_render_release" render)
-                                 (.close arena))
+                                 (Reference/reachabilityFence arena))
                      "wmark-native-release")
         (.setDaemon true)
         (.start))
