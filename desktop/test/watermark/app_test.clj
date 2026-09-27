@@ -1,10 +1,14 @@
 ;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
 ;; SPDX-License-Identifier: EPL-2.0
 (ns watermark.app-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.string :as str]
+            [clojure.test :refer [deftest is testing]]
             [watermark.app :as app]
+            [watermark.core.features :as features]
             [watermark.util.os :as os])
   (:import (java.lang ProcessBuilder)
+           (java.nio.file Files)
+           (java.nio.file.attribute FileAttribute)
            (java.util List)))
 
 (set! *warn-on-reflection* true)
@@ -24,3 +28,11 @@
       (.waitFor parent)
       (app/watch-parent! (.pid parent) #(deliver ended :ended))
       (is (= :ended (deref ended 1000 :timeout))))))
+
+(deftest run-help-is-what-the-main-help-promises
+  (let [home    (str (Files/createTempDirectory "wmark-cli" (make-array FileAttribute 0)))
+        edition {:edition :community :entitlements-fn (fn [_] (features/community))}
+        out     (with-out-str
+                  (is (= 0 (app/run-cli edition ["--home" home "run" "--help"]))))]
+    (is (str/includes? out "Usage: wmark run [options] INPUT..."))
+    (is (str/includes? out "--dry-run"))))
