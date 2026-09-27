@@ -132,6 +132,14 @@ its own matrix.
    0007). GraalVM 25.0.2 dropped macOS x64. `deps.edn` `:graalvm` pins it,
    `bb native` enforces it, and the workflows' macos-x64 entries name the
    same release (tested). The other platforms take the latest 25.x.
+8. **The downloads bundle LGPL FFmpeg builds** (owner, 2026-09-27; ADR 0001).
+   - BtbN's LGPL builds on Linux and Windows.
+   - On macOS, FFmpeg's signed source release built by `bb ffmpeg` with
+     the recipe in `deps.edn`; no maintained macOS LGPL build exists.
+   - `bb ffmpeg` checks every binary against its pin (the license it
+     states, no GPL or nonfree parts, no library outside macOS), and a test
+     keeps every release platform on an LGPL pin.
+   - GPL builds are only a development variant (`:variant :gpl`).
 
 ## 4. Invariants (enforced by tests where marked; never weaken one to make a test pass)
 
@@ -176,7 +184,8 @@ its own matrix.
 - Frame-exact output:
   - FFmpeg runs with `-fps_mode:v passthrough`;
   - the flip card is built from the video's own frames (no timestamp pairing);
-  - `perspective` counts frames from 1, hence `(in-1)`;
+  - `perspective` counts frames from 1, hence `(in-1)`; so does `overlay`'s
+    per-frame x and y (its `enable` counts from 0), hence `(n-1)` there;
   - scheduled times become half-open frame windows.
 
   Any rendering change needs the conformance harness
@@ -339,7 +348,8 @@ with its exit criteria met, the docs updated and a short status report.
    - Exit: a `vX.Y.Z-rc` tag on `main` produces a draft release with unsigned,
      checksummed, Sigstore-signed and attested bundles for Windows x64,
      macOS arm64 and Linux x64, each smoke-tested on a clean runner. The
-     owner pushes the tag.
+     owner starts it: a pushed tag, or **Run workflow** on the `release`
+     workflow in the web UI, which tags `main` itself (RUNBOOK, "Releases").
 2. **M2 · Render spec v2: the host renders, engines composite**
    (ENGINE.md, "Render spec v2"; decision 2; ADR 0006, accepted). Built in
    PR #5:
@@ -355,9 +365,10 @@ with its exit criteria met, the docs updated and a short status report.
      v2;
    - Exit met: the pinned LGPL FFmpeg and the C mock pass v2 conformance on
      real frames.
-   - Still open: LGPL pins for Windows and macOS, and ADR 0001 revisited
-     (bundling LGPL builds).
-3. **M3 · The kernel under ClojureDart.** It compiles and passes
+   - The LGPL pins for every platform, and bundling them (ADR 0001), came
+     with the release preparation (decision 8).
+3. **M3 · The kernel under ClojureDart.** Paused (owner, 2026-09-27): a
+   Windows release comes first. It compiles and passes
    `kernel/test/golden/*.edn` in Dart: the `util/num` `:cljd` branches,
    HMAC-SHA256 through `package:crypto`, and malli or the schema fallback.
    GUI clients drive the engine as a sidecar

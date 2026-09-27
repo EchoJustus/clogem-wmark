@@ -10,6 +10,21 @@ Releases are built only by `.github/workflows/release.yml` (bundles) and
 
 1. **Tags from `main` only.** A guard job fails unless the tagged commit is an
    ancestor of `origin/main`.
+   - **From the web UI (added 2026-09-27, at the owner's request):** the
+     `release` workflow also runs by **Run workflow** (`workflow_dispatch`)
+     with a version input.
+   - The guard accepts that only on `main`, and only for a version
+     `X.Y.Z` or `X.Y.Z-rc.N` whose tag doesn't exist yet; the input reaches
+     the shell as an environment variable, never spliced into a script.
+   - The publish job, which already holds `contents: write`, creates the tag
+     on the run's commit after every bundle is built and smoke-tested. It
+     uses the workflow's token, so the new tag starts no second run.
+   - Who may start it is who may push a tag: the owner, the only
+     collaborator with write access.
+   - Signing jobs, frozen today (ADRs 0002 and 0003), run in the `release`
+     environment, which accepts deployments only from `v*` tags. A run
+     started from the web UI runs on `main`, so enabling signing must
+     revisit this rule or sign from the tag.
 2. **A protected `release` environment** holds every signing credential. It
    requires a reviewer's approval for each run and accepts deployments only
    from `v*` tags. No other job can read those secrets.

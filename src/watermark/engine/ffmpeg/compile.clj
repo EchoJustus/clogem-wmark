@@ -10,7 +10,10 @@
 
   Frame indices: the spec counts frames globally (first-frame + i). drawtext
   exposes the local 0-based count as `n`; perspective exposes a 1-based `in`
-  (inlink->frame_count_out + 1 in FFmpeg 6.1, 7.1 and master), hence (in-1)."
+  (inlink->frame_count_out + 1 in FFmpeg 6.1, 7.1 and master), hence (in-1).
+  overlay's per-frame x and y see a 1-based `n` too (framesync counts the
+  main frame as consumed before the blend; vf_overlay.c, 9.0.2), hence (n-1)
+  there, while its `enable` timeline sees the 0-based `n`."
   (:require [clojure.string :as str]
             [watermark.engine.ffmpeg.graph :as g]
             [watermark.engine.ffmpeg.process :as process])
@@ -169,6 +172,21 @@
   [encoders]
   (set (for [[codec names] encoder-preference :when (some encoders names)] codec)))
 
+(defn usable-encoders
+  "`encoders` minus the ones that fail on this machine. A build lists what it
+  was compiled with, not what runs here: vendor hardware that isn't there,
+  Media Foundation on Windows N and Server editions, VideoToolbox's hardware
+  encoder in a VM. Per codec family, the listed encoders are tried in
+  preference order, `(works? codec encoder)`, until one works; later ones
+  are never picked, so they aren't tried."
+  [encoders works?]
+  (let [failed (reduce (fn [failed [codec names]]
+                         (into failed (reduce (fn [acc enc]
+                                                (if (works? codec enc) (reduced acc) (conj acc enc)))
+                                              [] (filter encoders names))))
+                       #{} encoder-preference)]
+    (reduce disj (set encoders) failed)))
+
 (defn video-args
   "Encoder arguments. Quality tiers map to CRF for x264/x265 and CQ for NVENC;
   other encoders get a bitrate target from the tier and the frame size."
@@ -185,7 +203,10 @@
 
       :else
       (let [bps (* (bits-per-pixel quality 0.12) width height fps (if (= codec :hevc) 0.6 1.0))]
-        ["-c:v" encoder "-b:v" (str (Math/round (double bps)))]))))
+        (cond-> ["-c:v" encoder "-b:v" (str (Math/round (double bps)))]
+          ;; the hardware encoder when there is one, else Apple's software
+          ;; encoder (FFmpeg otherwise demands hardware, which VMs lack)
+          (str/ends-with? encoder "_videotoolbox") (into ["-allow_sw" "1"]))))))
 
 (defn frame-sync-args
   "Pass frames through exactly as the filtergraph produced them. FFmpeg's
@@ -295,9 +316,10 @@
 
 (defn- bitmap-draw
   "Draw for a :bitmap layer: v1 placement with the bitmap as the text box,
-  floored to whole pixels (watermark.render.v2/bitmap-origin)."
-  [{:keys [bitmap placement timing] :as layer} n]
-  (let [[x y] (placement-exprs layer n ["(W-w)" "(H-h)"])]
+  floored to whole pixels (watermark.render.v2/bitmap-origin). `n` is the
+  frame for `enable`, `n-xy` the same frame as overlay's x and y count it."
+  [{:keys [bitmap placement timing] :as layer} n n-xy]
+  (let [[x y] (placement-exprs layer n-xy ["(W-w)" "(H-h)"])]
     {:bitmap bitmap
      :x (g/expr (str "floor(" x ")")) :y (g/expr (str "floor(" y ")"))
      :per-frame? (not= :fixed (:type placement))
@@ -313,10 +335,11 @@
         fps-str     (str (:fps-num timebase) "/" (:fps-den timebase))
         fps         (/ (double (:fps-num timebase)) (:fps-den timebase))
         n           (frame-var "n" first-frame)
+        n-xy        (frame-var "(n-1)" first-frame)
         draws       (vec (mapcat (fn [layer]
                                    (case (:kind layer)
                                      :flipbook (flipbook-draws layer n)
-                                     :bitmap   [(bitmap-draw layer n)]))
+                                     :bitmap   [(bitmap-draw layer n n-xy)]))
                                  layers))
         base        (if (:vfr? media) "base" "0:v")
         normalize   (when (:vfr? media) [(g/chain ["0:v"] [(g/f "fps" :fps fps-str)] ["base"])])

@@ -77,7 +77,9 @@ and derives what it can render:
 - **Codec families** come from the encoders present (see "Encoding").
 - **`perspective` is GPL-only.** FFmpeg builds it only with `--enable-gpl`, so
   LGPL builds (BtbN's `lgpl` variants, for instance) can't draw the flip
-  themselves. Release downloads carry pinned GPL builds for now
+  themselves. They don't need to: render spec v2 draws it on the host.
+  Release downloads carry pinned **LGPL** builds: BtbN's for Linux and
+  Windows, and on macOS FFmpeg's signed source built with a fixed recipe
   ([ADR 0001](adr/0001-ffmpeg-in-release-bundles.md)).
 - **Render spec v2 needs only `overlay`** (plus `fps` and `null`:
   `required-filters-v2`, tested like the v1 list), and neither
@@ -263,6 +265,19 @@ the hardware is there. BtbN's LGPL build lists NVENC, QSV and AMF, and on a
 machine without them every render failed until the software encoders it
 also has (OpenH264, Kvazaar) were ranked first.
 
+**A listed encoder is tried before it is trusted.** A build lists what it
+was compiled with, not what runs on this machine:
+- Media Foundation is missing on Windows N editions and optional on Windows
+  Server;
+- VideoToolbox's hardware encoder is absent in VMs.
+
+So discovery runs a five-frame trial encode down each codec's preference
+list (`compile/usable-encoders`, `process/trial-encode?`) and uses the
+first that works. `doctor` names the encoders that failed. VideoToolbox runs
+with `-allow_sw 1`: the hardware encoder where there is one, else Apple's
+software encoder. Without it, FFmpeg demands hardware
+(`videotoolboxenc.c`, 9.0.2).
+
 | Quality | x264 CRF | x265 CRF | Other encoders (bits per pixel per frame) |
 |---|---|---|---|
 | archival | 14 | 19 | 0.20 |
@@ -273,10 +288,10 @@ also has (OpenH264, Kvazaar) were ranked first.
 - **NVENC** gets `-rc vbr -cq` with the CRF value for its codec.
 - **HEVC** bitrate targets are 60% of the H.264 ones.
 - **libx265 output is tagged `hvc1`,** so it plays in QuickTime and on iOS.
-- **LGPL-only FFmpeg builds** have no x264. They fall back to the operating
-  system's encoder (Media Foundation on Windows, VideoToolbox on macOS) with
-  a bitrate target. This is unit-tested on the argv only; those encoders need
-  Windows or macOS to render.
+- **LGPL-only FFmpeg builds** (what the downloads ship) have no x264. They
+  use the operating system's encoder (Media Foundation on Windows,
+  VideoToolbox on macOS) or OpenH264, with a bitrate target. The native CI
+  job renders with them on each OS.
 
 ## Keyed schedules
 
@@ -321,7 +336,19 @@ per draw. Each draw reads a still RGBA bitmap as a `rawvideo` input (one frame;
   floored, with `eval=frame` when the position moves.
 
 Overlays run in `yuv444`, because `yuv420` rounds positions to even pixels (a
-square at x = 13 lands on column 12). At 1080p with a 30-frame flip, that is
+square at x = 13 lands on column 12).
+
+**overlay's per-frame x and y count frames from 1.** With `eval=frame`,
+`vf_overlay.c` sets `n` to the main link's `frame_count_out`, and framesync
+has already counted the frame being blended. The `enable` timeline is
+evaluated before that count and sees the 0-based `n`.
+- **Symptom:** text that moves per window jumped to the top-left corner on
+  each window's last frame. A burst that filled its whole period took the
+  next burst's place on its last frame.
+- **Fix:** positions use `(n-1)`, like `perspective`'s `(in-1)`.
+- **Tests:** a conformance test renders per-window and burst-scatter text on
+  real frames and checks every frame against `draw-at`
+  (`conformance/v2-layer-problems`). At 1080p with a 30-frame flip, that is
 32 overlays and 7–18% more render time than v1, plus about half a second of
 host drawing per input (ADR 0006).
 

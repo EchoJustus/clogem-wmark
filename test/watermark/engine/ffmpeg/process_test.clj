@@ -3,7 +3,8 @@
 (ns watermark.engine.ffmpeg.process-test
   "Parsing what `ffmpeg -version`, `-filters` and `-encoders` print, with lines
   copied from real builds."
-  (:require [clojure.string :as str]
+  (:require [clojure.java.shell :as sh]
+            [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [watermark.engine.ffmpeg.process :as process]))
 
@@ -59,3 +60,11 @@
                                           [:major :minor])))
   (is (nil? (:major (process/parse-version "ffmpeg version N-126342-gf88b741dbf-20260831 Copyright")))
       "nightly builds have no release number"))
+
+(deftest a-trial-encode-tells-a-working-encoder-from-a-listed-one
+  (if-let [ffmpeg (try (let [{:keys [exit out]} (sh/sh "sh" "-c" "command -v ffmpeg")]
+                         (when (zero? exit) (str/trim out)))
+                       (catch Exception _ nil))]
+    (do (is (process/trial-encode? ffmpeg ["-c:v" "mpeg4"]) "FFmpeg's own encoder always works")
+        (is (not (process/trial-encode? ffmpeg ["-c:v" "no_such_encoder"]))))
+    (println "  (skipped: ffmpeg not installed)")))

@@ -34,6 +34,21 @@
         out (slurp (.getInputStream p) :encoding "UTF-8")]
     {:exit (.waitFor p) :out out :err @err}))
 
+(defn trial-encode?
+  "Does `ffmpeg` encode a few frames of a test pattern with the encoder
+  arguments `video-args`? For encoders a build lists but a machine may not
+  run. Gives up after 30 s."
+  [ffmpeg video-args]
+  (let [argv (concat [ffmpeg "-hide_banner" "-v" "error" "-nostdin"
+                      "-f" "lavfi" "-i" "color=c=gray:s=256x144:r=30" "-frames:v" "5"]
+                     video-args ["-f" "null" "-"])
+        p    (.start (doto (ProcessBuilder. ^java.util.List (mapv str argv))
+                       (.redirectErrorStream true)
+                       (.redirectOutput ProcessBuilder$Redirect/DISCARD)))]
+    (if (.waitFor p 30 TimeUnit/SECONDS)
+      (zero? (.exitValue p))
+      (do (.destroyForcibly p) false))))
+
 (defn parse-version
   "\"ffmpeg version 6.1.1-3ubuntu5 ...\" -> {:major 6 :minor 1}. Nightly builds
   (\"N-118896-g...\", \"2026-09-01-git-...\") have no release number: :major nil,

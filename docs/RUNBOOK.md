@@ -28,7 +28,7 @@ tool (`build/`).
 | JDK | 25 (e.g. Temurin 25) | everything | `java -version` |
 | Babashka | recent | the task runner (`bb ...`); its built-in `bb clojure` replaces the Clojure CLI | `bb --version` |
 | Clojure CLI | 1.12+ (optional with bb) | `clojure -M...` / `-T:build` directly | `clojure --version` |
-| FFmpeg | a GPL build, 5.1+ (6.1.1, 7.0.2 and 9.0.1 tested) with `perspective`, `drawtext`, `libx264` | rendering; the conformance tests | `ffmpeg -hide_banner -filters \| grep -E 'perspective\|drawtext'` |
+| FFmpeg | 5.1+ (6.1.1, 7.0.2, 9.0.1 and 9.0.2 tested); a GPL build (`perspective`, `drawtext`, `libx264`) for the v1 conformance tests, any build with `overlay` to render | rendering; the conformance tests | `wmark doctor` |
 | GraalVM Community | 25 (for JDK 25), `GRAALVM_HOME` set | native binaries | `$GRAALVM_HOME/bin/native-image --version` |
 | C toolchain for native-image | Linux: `gcc`, zlib headers; macOS: Xcode Command Line Tools; Windows: Visual Studio 2022 Build Tools ("Desktop development with C++") | native binaries | |
 | C compiler (`cc`) | any | native-engine tests (optional) | `cc --version` |
@@ -43,7 +43,8 @@ it brings its own driver.
 only with `--enable-gpl`; with one, wmark draws the flip and the text itself
 and FFmpeg only composites them (render spec v2, chosen automatically;
 docs/adr/0006). Minimal builds without `drawtext` get v2 for text the same
-way. Release downloads carry a pinned GPL build (`bb ffmpeg`, below).
+way. Release downloads carry a pinned **LGPL** build (`bb ffmpeg`, below;
+[ADR 0001](adr/0001-ffmpeg-in-release-bundles.md)).
 - Ubuntu 24.04: `apt install ffmpeg` (6.1.1, has everything; verified).
 - Windows: a "full" GPL build, e.g. from gyan.dev or BtbN. Put `ffmpeg.exe`
   and `ffprobe.exe` in `bin\` next to `wmark.exe`, or on PATH.
@@ -146,7 +147,7 @@ tools are missing:
 | Group | Needs | Enable with |
 |---|---|---|
 | FFmpeg conformance (real renders measured against the reference semantics) | `ffmpeg` on PATH, a TrueType font (DejaVu on Linux) | install FFmpeg |
-| v2 conformance on the pinned LGPL FFmpeg (M2's exit test) | `target/ffmpeg/linux-x64-lgpl/bin`, or `WMARK_FFMPEG_LGPL` | `bb ffmpeg :variant :lgpl`; CI sets `WMARK_REQUIRE_LGPL=1`, so it can't skip there |
+| v2 conformance on the pinned LGPL FFmpeg the downloads ship (M2's exit test) | `target/ffmpeg/linux-x64/` from `bb ffmpeg`, or `WMARK_FFMPEG_LGPL` | `bb ffmpeg`; CI sets `WMARK_REQUIRE_LGPL=1`, so it can't skip there |
 | Native engine (C mock through Java's FFM API, ABI 1 to 3 builds, v2 frames) | `cc` | install a C compiler |
 | v2 conformance on the C mock | `cc` and `ffmpeg` | both of the above |
 
@@ -241,18 +242,33 @@ target/bin/wmark doctor
 ```bash
 bb ffmpeg                       # this OS;  bb ffmpeg :platform :windows-x64  for another
 ```
-The builds are pinned in `deps.edn` (`:wmark/build-matrix` → `:ffmpeg`): exact
-archives by URL and SHA-256, never "latest"
-([ADR 0001](adr/0001-ffmpeg-in-release-bundles.md)). A changed or missing file
-fails the task. It writes `target/ffmpeg/<platform>/bin/{ffmpeg,ffprobe}` and
-`licenses/{COPYING.GPLv3,SOURCE.txt}`; downloads are cached in
+The builds are pinned in `deps.edn` (`:wmark/build-matrix` → `:ffmpeg`), never
+"latest" ([ADR 0001](adr/0001-ffmpeg-in-release-bundles.md)). They are **LGPL**
+builds (LGPL-3.0-or-later):
+- **Linux x64 and Windows x64:** BtbN's LGPL build, an archive by URL and
+  SHA-256.
+- **macOS arm64 and x64:** no maintained LGPL build exists, so the task
+  builds FFmpeg's signed 9.0.2 source release (pinned by URL and SHA-256)
+  with the configure recipe in `deps.edn`, on the Mac itself. That takes a
+  few minutes once; the result is cached per recipe. It needs the Xcode
+  command-line tools, and on Intel Macs `nasm` (`brew install nasm`; a build
+  tool, not shipped). The recipe links nothing outside FFmpeg and macOS, and
+  needs macOS 11 or later.
+
+A changed or missing file fails the task. It writes
+`target/ffmpeg/<platform>/bin/{ffmpeg,ffprobe}` and
+`licenses/{COPYING.LGPLv3,COPYING.GPLv3,SOURCE.txt}` (the LGPLv3 adds
+permissions to the GPLv3, so both texts ship). On this machine's platform it
+then checks the binary against its pin: the license `ffmpeg -L` states, no
+`--enable-gpl` or `--enable-nonfree` in an LGPL build, and on macOS no
+library outside the OS. Downloads and builds are cached in
 `target/downloads/`. To move a pin, change the URL and SHA-256 together, run
 `bb lint` (it rejects unpinned or plain-http archives) and the smoke test.
 
-`bb ffmpeg :variant :lgpl` fetches the pinned LGPL build instead (Linux x64
-only, for now) into `target/ffmpeg/linux-x64-lgpl/`, with `COPYING.LGPLv3`
-and `COPYING.GPLv3`. It has no `perspective`, so it renders only render
-spec v2 (ADR 0006). The tests use it; bundles don't ship it yet.
+`bb ffmpeg :variant :gpl` fetches the pinned GPL builds instead (BtbN for
+Linux and Windows, martin-riedl.de for macOS) into
+`target/ffmpeg/<platform>-gpl/`. They add x264, x265 and `perspective`, for
+comparisons and render spec v1; the downloads don't ship them.
 
 ### The download (Stage 1)
 ```bash
@@ -266,16 +282,26 @@ This writes `dist/desktop-server/` with:
 - `licenses/`: this repository's `LICENSE` and `NOTICE`,
   `THIRD-PARTY-wmark.txt` and `THIRD-PARTY-wmark-tui.txt` (every library in
   the binary with its declared license and the license files it ships,
-  generated from the resolved dependencies), and `ffmpeg/COPYING.GPLv3` and
-  `ffmpeg/SOURCE.txt`;
+  generated from the resolved dependencies), and FFmpeg's
+  `ffmpeg/COPYING.LGPLv3`, `ffmpeg/COPYING.GPLv3` and `ffmpeg/SOURCE.txt`;
 - `SHA256SUMS` and `README.txt`.
 
 `--bundled true` makes the smoke test find FFmpeg the way a download does:
 in `bin/` next to wmark, under the hardened search order.
 
 ### Releases
-Push a tag `vX.Y.Z` (or `vX.Y.Z-rc.N`) on `main`; `.github/workflows/release.yml`
-does the rest and stops at a **draft** release:
+Start `.github/workflows/release.yml` on `main` in one of two ways:
+- **From the GitHub web UI:** open **Actions**, pick the **release**
+  workflow, then **Run workflow**. Keep the branch on `main` and enter the
+  version without the `v` (e.g. `0.1.0-rc.1`). The run checks the version
+  (`X.Y.Z` or `X.Y.Z-rc.N`, not taken yet). Once every bundle is built and
+  smoke-tested, it tags `main`'s commit `v<version>` itself.
+- **From git:** push a tag `vX.Y.Z` (or `vX.Y.Z-rc.N`) on a commit of `main`.
+
+Either way it stamps the version into the binaries
+(`desktop/resources/wmark/version.txt`, which `wmark version`, `doctor` and
+the API report; development builds say `0.2.0-SNAPSHOT`), checks that they
+report it, and stops at a **draft** release:
 1. builds and smoke-tests the bundle on Linux x64, Windows x64, macOS arm64 and
    macOS x64 (and runs the browser suite against the Linux binary);
 2. would sign in the protected `release` environment, but **code signing is
