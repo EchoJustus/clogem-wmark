@@ -138,8 +138,8 @@ bb lint        # build matrix vs repository
 bb e2e         # browser smoke test of the web UI (ffmpeg + Python Playwright)
 ```
 
-`bb test` runs 86 tests (10,592 assertions) in 25 namespaces (**verified**,
-2026-09-27). CI fails on any `Reflection warning` in its output.
+`bb test` runs 120 tests (11,081 assertions) in 34 namespaces (**verified**,
+2026-09-27, with `WMARK_REQUIRE_LGPL=1`). CI fails on any `Reflection warning` in its output.
 Two groups need extra tools and **skip themselves, saying so**, when those
 tools are missing:
 
@@ -333,8 +333,11 @@ ENGINE.md. `abi-vN` must match `WMARK_ENGINE_ABI_VERSION`.
 **Verified on 2026-09-27** (a Linux x64 cloud session: OpenJDK 25.0.4.1,
 GraalVM CE 25.0.2, FFmpeg 6.1.1 and the pinned 9.0.1, Chromium 141):
 - native builds of the engine (about 2 minutes) and the TUI;
-- the smoke test (17 checks) on both binaries, including the C mock through FFM,
-  and on the assembled Linux bundle with its bundled FFmpeg (15 checks);
+- the smoke test (20 checks) on both binaries, including render spec v2 and
+  the C mock through FFM (ABI 2's still decoding included), and on the
+  assembled Linux bundle with its bundled FFmpeg (15 checks);
+- the smoke test with only the pinned LGPL FFmpeg: the default render picks
+  render spec v2 and keeps every frame (17 checks);
 - the browser suite (20 checks) against the native binary and on the JVM;
 - the tracing agent over those flows (see "Native binaries");
 - `bb ffmpeg` for all four platforms (downloads and checksums; only the Linux
