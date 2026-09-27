@@ -129,6 +129,17 @@
         (let [{:keys [exit out err]} (apply run wmark (concat lib ["run" "--logo" logo "-o" (str (fs/path work "mock-out")) clip]))]
           (check "native engine: render with progress upcalls, no exception"
                  (and (zero? exit) (str/includes? out "done") (not (str/includes? err "Exception")))
+                 (str out err)))
+        ;; ABI 2 inside the binary: planning a v2 render asks the library to
+        ;; decode the logo (PAM, the mock's one still format). The mock then
+        ;; declines to write v2 as MP4, which it only does after the decode
+        (let [pam (str (fs/path work "logo.pam"))
+              _   (run ffmpeg "-hide_banner" "-loglevel" "error" "-y" "-i" logo "-pix_fmt" "rgba" pam)
+              {:keys [out err]} (apply run wmark (concat lib ["--render-spec" "2" "run" "--logo" pam
+                                                              "-o" (str (fs/path work "mock-v2")) clip]))]
+          (check "native engine: ABI 2 decodes the logo for render spec v2 (then the mock declines MP4, as designed)"
+                 (and (str/includes? (str out err) "the mock writes render spec v2 as y4m only")
+                      (not (str/includes? err "Exception")))
                  (str out err)))))
 
     (let [failed (remove second @results)]

@@ -13,6 +13,10 @@
   tell this engine from FFmpeg: same protocol, same capability negotiation,
   same events.
 
+  ABI versions: this host speaks 1 and 2 (the compatibility rule is in the
+  header). An ABI 2 library also decodes stills (engine/StillDecoder), so
+  the host can draw render spec v2 for it; an ABI 1 library takes v1 only.
+
   Status: the binding is complete and tested against native/mock (a C test
   double); no production engine library exists yet. With no library found,
   `info` reports the engine as unavailable instead of throwing.
@@ -29,11 +33,14 @@
                               MemoryLayout MemorySegment SymbolLookup ValueLayout)
            (java.lang.invoke MethodHandle MethodHandles MethodType)
            (java.lang.ref Reference)
-           (java.nio.file Path Paths)))
+           (java.nio.file Files Path Paths)
+           (java.nio.file.attribute FileAttribute)))
 
 (set! *warn-on-reflection* true)
 
-(def abi-version 1)
+(def abi-versions
+  "ABI versions this host accepts: every one from 1 to its own."
+  #{1 2})
 
 (defn library-name []
   (let [os (str/lower-case (System/getProperty "os.name" ""))]
@@ -45,17 +52,19 @@
 ;; FFM plumbing (everything created at run time, never at image build time)
 
 (def ^:private signatures
-  "C function -> [return & params]; :void, :int, :ptr."
-  {"wmark_abi_version"    [:int]
-   "wmark_engine_open"    [:ptr :ptr :ptr]
-   "wmark_engine_close"   [:void :ptr]
-   "wmark_engine_info"    [:ptr :ptr]
-   "wmark_engine_probe"   [:ptr :ptr :ptr :ptr]
-   "wmark_engine_prepare" [:ptr :ptr :ptr :ptr]
-   "wmark_render_start"   [:ptr :ptr :ptr :ptr :ptr :ptr]
-   "wmark_render_cancel"  [:void :ptr]
-   "wmark_render_release" [:void :ptr]
-   "wmark_free"           [:void :ptr]})
+  "C function -> [the ABI version that added it, return & params]; :void,
+  :int, :ptr. A new shape needs registering in the reachability metadata."
+  {"wmark_abi_version"         [1 :int]
+   "wmark_engine_open"         [1 :ptr :ptr :ptr]
+   "wmark_engine_close"        [1 :void :ptr]
+   "wmark_engine_info"         [1 :ptr :ptr]
+   "wmark_engine_probe"        [1 :ptr :ptr :ptr :ptr]
+   "wmark_engine_prepare"      [1 :ptr :ptr :ptr :ptr]
+   "wmark_render_start"        [1 :ptr :ptr :ptr :ptr :ptr :ptr]
+   "wmark_render_cancel"       [1 :void :ptr]
+   "wmark_render_release"      [1 :void :ptr]
+   "wmark_free"                [1 :void :ptr]
+   "wmark_engine_decode_still" [2 :ptr :ptr :ptr :ptr]})
 
 (defn- layout ^MemoryLayout [k]
   (case k :int ValueLayout/JAVA_INT :ptr ValueLayout/ADDRESS))
@@ -64,14 +73,19 @@
   (let [ps (into-array MemoryLayout (map layout params))]
     (if (= ret :void) (FunctionDescriptor/ofVoid ps) (FunctionDescriptor/of (layout ret) ps))))
 
-(defn- bind-library
-  "Map of C name -> MethodHandle for every ABI function."
-  [^Path lib]
-  (let [linker (Linker/nativeLinker)
-        lookup (SymbolLookup/libraryLookup lib (Arena/global))]
-    (into {} (for [[name sig] signatures]
-               (let [^MemorySegment addr (.orElseThrow (.find lookup name))]
-                 [name (.downcallHandle linker addr (descriptor sig) (make-array Linker$Option 0))])))))
+(defn- bind
+  "Map of C name -> MethodHandle for the functions `names` of a library."
+  [^SymbolLookup lookup names]
+  (let [linker (Linker/nativeLinker)]
+    (into {} (for [name names
+                   :let [[_ & sig] (signatures name)
+                         ^MemorySegment addr (.orElseThrow (.find lookup name))]]
+               [name (.downcallHandle linker addr (descriptor sig) (make-array Linker$Option 0))]))))
+
+(defn- functions-of
+  "The ABI functions of version `abi`."
+  [abi]
+  (for [[name [since]] signatures :when (<= since abi)] name))
 
 (defn- call [fns name & args]
   (.invokeWithArguments ^MethodHandle (get fns name) ^java.util.List (vec args)))
@@ -131,12 +145,17 @@
 
 (def ^:private keyword-caps #{:layers :animations :timing :placement :codecs :audio :sources})
 
-(defn- normalize-info [info]
+(defn- normalize-info
+  "An ABI 1 library takes render spec 1 only, whatever it says: v2 needs
+  wmark_engine_decode_still."
+  [info abi]
   (-> info
       (update :engine/id #(some-> % keyword))
       (update :capabilities
               (fn [caps] (into {} (for [[k v] caps]
-                                    [k (if (keyword-caps k) (set (map keyword v)) (set v))]))))))
+                                    [k (if (keyword-caps k) (set (map keyword v)) (set v))]))))
+      (update-in [:capabilities :spec-versions] #(if (and % (>= abi 2)) % #{1}))
+      (assoc-in [:details :abi] abi)))
 
 (defn- normalize-media [m] (update m :kind keyword))
 
@@ -151,14 +170,18 @@
       {:located found
        :problems [(str "No native engine library (" (library-name) ") found. Pass --native-lib or set WMARK_ENGINE_LIB.")]}
       (try
-        (let [fns (bind-library (Paths/get ^String (:path found) (make-array String 0)))
-              v   (call fns "wmark_abi_version")]
-          (if (not= abi-version v)
-            {:located found :problems [(str "Native engine speaks ABI " v "; this wmark needs " abi-version ".")]}
-            (let [handle (with-open [arena (Arena/ofConfined)]
+        (let [lookup (SymbolLookup/libraryLookup (Paths/get ^String (:path found) (make-array String 0))
+                                                 (Arena/global))
+              v      (call (bind lookup ["wmark_abi_version"]) "wmark_abi_version")]
+          (if-not (abi-versions v)
+            {:located found
+             :problems [(str "Native engine speaks ABI " v "; this wmark takes ABI "
+                             (str/join " or " (sort abi-versions)) ".")]}
+            (let [fns    (bind lookup (functions-of v))
+                  handle (with-open [arena (Arena/ofConfined)]
                            (call-checked fns "wmark_engine_open" (string-arg arena (->json (or config {})))))]
-              {:located found :fns fns :engine handle
-               :info (normalize-info (<-json (c-string fns (call fns "wmark_engine_info" handle))))})))
+              {:located found :fns fns :engine handle :abi v
+               :info (normalize-info (<-json (c-string fns (call fns "wmark_engine_info" handle))) v)})))
         (catch Throwable t
           {:located found :problems [(str "Could not load " (:path found) ": " (ex-message t))]})))))
 
@@ -167,7 +190,36 @@
   (cancel! [_] (when-not (realized? result) (call fns "wmark_render_cancel" render)))
   (outcome [_] result))
 
+(defn- decode-with
+  "A still decoded by an ABI 2 library into a scratch file, read back."
+  [{:keys [fns engine abi]} source]
+  (when (< abi 2)
+    (throw (ex-info (str "This native engine speaks ABI " abi ", which can't decode images; "
+                         "host rendering (render spec v2) needs ABI 2.")
+                    {:wmark/error :unsupported :engine :native})))
+  (let [tmp (Files/createTempFile "wmark-still" ".rgba" (make-array FileAttribute 0))]
+    (try
+      (let [{:keys [width height]}
+            (with-open [arena (Arena/ofConfined)]
+              (<-json (c-string fns (call-checked fns "wmark_engine_decode_still" engine
+                                                  (string-arg arena (->json {:source (str source)
+                                                                             :output (str tmp)}))))))
+            px (Files/readAllBytes tmp)]
+        (when-not (and (pos-int? width) (pos-int? height) (= (alength px) (* 4 width height)))
+          (throw (ex-info (str "The native engine decoded " source " into " (alength px) " bytes, not "
+                               width " x " height " RGBA pixels.")
+                          {:wmark/error :failed :engine :native})))
+        {:width width :height height :px px})
+      (finally (Files/deleteIfExists tmp)))))
+
 (defrecord NativeFFIProcessor [opts state]
+  engine/StillDecoder
+  (decode-still [this source]
+    (let [loaded (force (:loaded state))]
+      (when-not (:engine loaded)
+        (throw (ex-info (first (:problems (engine/info this))) {:wmark/error :unavailable})))
+      (decode-with loaded source)))
+
   engine/VideoEngine
   (info [_]
     (let [{:keys [info problems located]} (force (:loaded state))]

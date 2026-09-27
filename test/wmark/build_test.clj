@@ -52,7 +52,7 @@
     (is (= [{:name "EPL-1.0" :url "https://e.org/epl"}] (build/pom-licenses repo child)))))
 
 (deftest the-sdk-names-the-abi-it-carries
-  (is (= 1 (build/abi-version)) "read from native/include/wmark_engine.h")
+  (is (= 2 (build/abi-version)) "read from native/include/wmark_engine.h")
   (is (thrown-with-msg? clojure.lang.ExceptionInfo #"doesn't match WMARK_ENGINE_ABI_VERSION"
                         (build/sdk {:name "abi-v99"})))
   (is (every? #(.isFile (clojure.java.io/file (first %))) build/sdk-files) "every SDK input exists"))
