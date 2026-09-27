@@ -72,15 +72,18 @@
          :available?     (and (or v1? v2?) (seq codecs) true)
          :problems       (cond-> []
                            (not (or v1? v2?)) (conj (str "This FFmpeg build lacks required filters: " (str/join ", " missing)))
-                           (and v1? (not text?)) (conj "This FFmpeg build has no drawtext filter (needs libfreetype/libharfbuzz): text layers are unavailable.")
+                           (and v1? (not text?) (not v2?)) (conj "This FFmpeg build has no drawtext filter (needs libfreetype/libharfbuzz): text layers are unavailable.")
                            (empty? codecs) (conj "This FFmpeg build has no H.264 or HEVC encoder."))
          :warnings       (vec (concat (keep locate/working-dir-warning [ffmpeg ffprobe])
                                       (some-> (split-build-warning bins) vector)
+                                      (when (and v1? v2? (not text?))
+                                        ;; information: the job pipeline gives text to v2
+                                        ["This FFmpeg build has no drawtext filter, so wmark draws text layers itself (render spec v2)."])
                                       (when (and v2? (not v1?))
-                                        ;; M2 in progress: the job pipeline doesn't produce v2 yet
+                                        ;; information, not a fault: the job pipeline gives it v2
                                         [(str "This FFmpeg build lacks " (str/join ", " missing)
-                                              " (an LGPL build?). It can only composite host-drawn bitmaps (render spec v2), which"
-                                              " wmark's CLI and UI don't produce yet: a logo flip or text needs an FFmpeg with perspective until then.")])))
+                                              " (an LGPL build?), so wmark draws the logo flip and the text itself"
+                                              " and FFmpeg only composites them (render spec v2).")])))
          :binaries       bins
          :version        version
          :encoders       encoders

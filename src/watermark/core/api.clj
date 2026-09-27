@@ -102,8 +102,9 @@
 
 (defn plan-batch
   "Dry run: resolution plus, per input, the render spec and the engine's
-  plan (for FFmpeg: the exact argv and filtergraph). Nothing is written, and
-  `latest` is left alone -- a dry run is not an execution."
+  plan (for FFmpeg: the exact argv and filtergraph). No output is written
+  (a v2 plan's bitmaps are drawn, then deleted), and `latest` is left alone
+  -- a dry run is not an execution."
   [sys ctx req]
   (let [r (prepare! sys ctx req)]
     (assoc r :plans (mapv (fn [input]

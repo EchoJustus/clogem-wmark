@@ -43,8 +43,20 @@
 
 (defn draw
   "One raster request as a straight RGBA8 image {:width :height :px}.
-  `decoded`: (fn [path] image) for stills; `font`: (fn [path] parsed font)."
-  [{:keys [kind source style text] :as request} {:keys [decoded font]}]
+  `decoded`: (fn [path] image) for stills; `font`: (fn [path] parsed font);
+  optionally `scaled`: (fn [path card-size] scaled card), which `draw-all`
+  shares between requests."
+  [{:keys [kind source style text card] :as request} {:keys [decoded font scaled]}]
   (case kind
-    :image (image/card request (decoded (:path source)))
+    :image (image/card request (if scaled
+                                 (scaled (:path source) card)
+                                 (image/scale-card (decoded (:path source)) card)))
     :text  (text/render (font (:font style)) style text)))
+
+(defn draw-all
+  "Every raster request drawn, in order. The frames of a flip share one
+  scaled card (area scaling is most of the work), so this draws exactly
+  what `draw` draws, faster."
+  [requests {:keys [decoded] :as sources}]
+  (let [scaled (memoize (fn [path size] (image/scale-card (decoded path) size)))]
+    (mapv #(draw % (assoc sources :scaled scaled)) requests)))

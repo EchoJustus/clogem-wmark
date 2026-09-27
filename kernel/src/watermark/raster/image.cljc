@@ -148,14 +148,18 @@
           (u8! px (+ o 3) (q8 (* a opacity))))))
     {:width w :height h :px px}))
 
+(defn scale-card
+  "A decoded source area-scaled to the card size [cw ch], premultiplied."
+  [decoded [cw ch]]
+  (area-scale (premultiply decoded) (:width decoded) (:height decoded) cw ch))
+
 (defn card
-  "One image raster request (watermark.render.v2/image-requests) as RGBA8:
-  the decoded source area-scaled to the card's size, warped onto the
+  "One image raster request (watermark.render.v2/image-requests) as RGBA8,
+  from its source scaled to the card's size (`scale-card`): warped onto the
   request's quad when it isn't the flat box, with the layer's opacity."
-  [{:keys [card size quad opacity]} decoded]
+  [{:keys [card size quad opacity]} scaled]
   (let [[cw ch] card
-        [dw dh] size
-        scaled  (area-scale (premultiply decoded) (:width decoded) (:height decoded) cw ch)]
+        [dw dh] size]
     (if (= quad [[0 0] [cw 0] [0 ch] [cw ch]])
       (to-rgba8 scaled dw dh opacity)
       (to-rgba8 (warp scaled cw ch dw dh quad) dw dh opacity))))

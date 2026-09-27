@@ -76,7 +76,10 @@
                                      id  (raster/bitmap-id img)]]
                            [(:key req) {:bitmap id :width (:width img) :height (:height img)
                                         :path (str id ".rgba")}]))
-        s2      (spec-schema/validate! (v2/assemble spec results))]
+        s2      (spec-schema/validate! (v2/assemble spec results))
+        shared  (raster/draw-all reqs {:decoded (constantly logo) :font (constantly @font)})]
+    (is (= (map (comp :bitmap results :key) reqs) (map raster/bitmap-id shared))
+        "draw-all, which shares a flip's scaled card, draws exactly what draw does")
     (is (= (:spec (edn/read-string (slurp "kernel/test/golden/render-basic.edn"))) spec)
         "the same v1 spec as render-basic")
     (golden/check "render-v2"

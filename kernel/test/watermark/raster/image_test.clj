@@ -48,9 +48,10 @@
 
 (deftest a-card-request-is-the-flat-box-or-its-warp
   (let [logo (solid 8 4 [10 20 30 255])
-        flat (image/card {:card [4 2] :size [4 2] :quad [[0 0] [4 0] [0 2] [4 2]] :opacity 1.0} logo)]
+        flat (image/card {:card [4 2] :size [4 2] :quad [[0 0] [4 0] [0 2] [4 2]] :opacity 1.0}
+                         (image/scale-card logo [4 2]))]
     (is (= (apply concat (repeat 8 [10 20 30 255])) (channels flat)) "the rest pose is the box, scaled"))
   (let [flip (image/card {:card [4 2] :size [6 4] :quad [[1.0 0.5] [5.0 1.0] [1.0 3.5] [5.0 3.0]] :opacity 1.0}
-                         (solid 8 4 [10 20 30 255]))]
+                         (image/scale-card (solid 8 4 [10 20 30 255]) [4 2]))]
     (is (= [6 4] [(:width flip) (:height flip)]))
     (is (zero? (nth (channels flip) 3)) "outside the card stays transparent")))

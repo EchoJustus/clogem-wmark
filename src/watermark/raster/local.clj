@@ -34,12 +34,11 @@
   against the published v2 schema before any engine sees it.
   `decode`: (fn [path] image), normally the engine's decode-still."
   [spec ^File dir decode]
-  (let [stills (memoize decode)
-        fonts  (memoize read-font)
+  (let [requests (v2/raster-requests spec)
+        images   (raster/draw-all requests {:decoded (memoize decode) :font (memoize read-font)})
         results (into {}
-                      (for [req (v2/raster-requests spec)
-                            :let [img (raster/draw req {:decoded stills :font fonts})
-                                  id  (raster/bitmap-id img)
+                      (for [[req img] (map vector requests images)
+                            :let [id  (raster/bitmap-id img)
                                   f   (io/file dir (str id ".rgba"))]]
                         (do (when-not (.exists f)
                               (io/make-parents f)

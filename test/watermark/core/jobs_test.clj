@@ -168,10 +168,20 @@
                :font         (delay "resources/fonts/wmark.ttf")
                :rasterizer   (raster-local/local-rasterizer {:work-root (str *dir* "/work")})}
         s     (settings {:logo {:animation {:type :flip-y :every-s 1.0 :duration-s 0.2}}})]
-    (is (= 2 (jobs/spec-version (engine/info (:engine env)) nil)) "an engine without v1 gets v2")
-    (is (= 1 (jobs/spec-version {:capabilities {:spec-versions #{1 2}}} nil)) "v1 where the engine takes it")
-    (is (= 1 (jobs/spec-version {:capabilities {}} nil)) "engines that don't say take v1")
-    (is (= 2 (jobs/spec-version {:capabilities {:spec-versions #{1 2}}} 2)) "unless the host insists")
+    (let [spec    {:spec/version 1
+                   :layers [{:kind :image :timing {:type :always} :animation {:type :flip-y}}
+                            {:kind :text :timing {:type :always} :placement {:type :fixed}}]}
+          full    {:spec-versions #{1 2} :layers #{:image :text :flipbook :bitmap} :animations #{:flip-y}
+                   :timing #{:always} :placement #{:fixed}}
+          no-text (update full :layers disj :text)]
+      (is (= 2 (jobs/spec-version (engine/info (:engine env)) spec nil)) "an engine without v1 gets v2")
+      (is (= 1 (jobs/spec-version {:capabilities full} spec nil)) "v1 where the engine can draw it all")
+      (is (= 2 (jobs/spec-version {:capabilities no-text} spec nil))
+          "v2 where it can't (an FFmpeg with perspective but no drawtext): the host draws the text")
+      (is (= 1 (jobs/spec-version {:capabilities (update no-text :spec-versions disj 2)} spec nil))
+          "v1 where there's no v2 to fall back to, so the refusal names the gap")
+      (is (= 1 (jobs/spec-version {:capabilities {}} spec nil)) "engines that don't say take v1")
+      (is (= 2 (jobs/spec-version {:capabilities full} spec 2)) "unless the host insists"))
     (let [[r] (jobs/run-job! env {:ctx {} :settings s :inputs [(input! "a.mp4")]} {})]
       (is (= :done (:state r)) (pr-str r))
       (is (= [[:bitmaps-on-disk true]] @calls) "the bitmaps exist while the engine renders")

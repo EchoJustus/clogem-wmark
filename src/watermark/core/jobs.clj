@@ -17,7 +17,8 @@
     :font          default font path (or a delay of one)
     :rasterizer    a watermark.raster/Rasterizer, for render spec v2
     :spec-version  1 or 2 to insist on one; by default v1 where the engine
-                   takes it, else v2 (host-drawn bitmaps, docs/adr/0006)
+                   can render the spec that way, else v2 (host-drawn
+                   bitmaps, docs/adr/0006)
 
   JobQueue is the port for queueing: watermark.core.jobs.local runs jobs on
   an in-process executor; a serverless deployment implements the same
@@ -40,12 +41,23 @@
   (unsubscribe! [q k])
   (shutdown!    [q]))
 
+(def ^:private drawing-capabilities
+  "What a spec version changes: v2 needs none of these from the engine."
+  #{:layers :animations :timing :placement})
+
 (defn spec-version
-  "The render spec version to give an engine: `wanted` if set, else 1 where
-  the engine takes it, else 2. Engines that don't list :spec-versions take 1."
-  [engine-info wanted]
-  (let [vs (get-in engine-info [:capabilities :spec-versions] #{1})]
-    (or wanted (if (or (contains? vs 1) (not (contains? vs 2))) 1 2))))
+  "The render spec version to give an engine for the v1 `spec`: `wanted` if
+  set; else 1 where the engine takes v1 and can draw all of it; else 2 where
+  it takes v2 (the host then draws what it couldn't, exactly, which is no
+  approximation); else 1, whose refusal names what's missing. Engines that
+  don't list :spec-versions take 1."
+  [{:keys [capabilities]} spec wanted]
+  (let [vs      (:spec-versions capabilities #{1})
+        v1-gaps (filter (comp drawing-capabilities first) (engine/missing capabilities {:spec spec}))]
+    (or wanted
+        (cond (and (contains? vs 1) (empty? v1-gaps)) 1
+              (contains? vs 2)                        2
+              :else                                   1))))
 
 (defn release!
   "Delete what planning stored for a render (a v2 spec's bitmaps)."
@@ -79,7 +91,7 @@
                                  :seed-fn      (seeds/seed-fn (secret-for ctx) (:fingerprint src))
                                  :entitlements entitlements
                                  :font         (force font)})
-        spec      (if (= 2 (spec-version (engine/info engine) (:spec-version env)))
+        spec      (if (= 2 (spec-version (engine/info engine) spec (:spec-version env)))
                     (host-render env spec)
                     spec)
         out       (media/open-output media ctx input settings)

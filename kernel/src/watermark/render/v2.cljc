@@ -1,8 +1,8 @@
 ;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
 ;; SPDX-License-Identifier: EPL-2.0
 (ns watermark.render.v2
-  "Render spec v2 (M2 prototype): the host renders every pixel, engines only
-  composite bitmaps.
+  "Render spec v2: the host renders every pixel, engines only composite
+  bitmaps (docs/adr/0006).
 
   A v1 spec asks engines to warp the logo (the flip) and to typeset text.
   v2 moves both to the host, so an engine needs nothing but \"draw bitmap B
@@ -13,9 +13,9 @@
   The kernel stays graphics-free. It decides *what* the host draws and
   *where*: one bitmap per frame of a flip (the card's quad from the
   reference `watermark.render/logo-corners`, in the bitmap's own pixel
-  frame), the static pose, and each text layer. The host
-  (watermark.raster) fills in the pixels, and `assemble` builds the v2 spec
-  from its answers.
+  frame), the static pose, and each text layer. watermark.raster draws the
+  pixels, the host stores them, and `assemble` builds the v2 spec from its
+  answers.
 
     {:spec/version 2
      :canvas   {...} :timebase {...}                     ; as in v1

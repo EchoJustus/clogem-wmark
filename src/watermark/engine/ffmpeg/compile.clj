@@ -271,7 +271,7 @@
                             [(str (:path output))]))}))
 
 ;; ---------------------------------------------------------------------------
-;; Render spec v2: composite host-rendered bitmaps with overlay only (M2 prototype)
+;; Render spec v2: composite host-rendered bitmaps with overlay only (docs/adr/0006)
 
 (defn- all-of
   "Product of enable expressions (nil = always)."
