@@ -25,7 +25,8 @@
 
   Frame n is the global 0-based frame index. Timings are inclusive frame
   windows; positions are pixels with the origin at the top-left."
-  (:require [watermark.core.modes :as modes]
+  (:require [watermark.core.features :as features]
+            [watermark.core.modes :as modes]
             [watermark.render.layout :as layout]
             [watermark.util.num :as num]))
 
@@ -63,8 +64,11 @@
      :layers       (vec (concat
                          (when logo? [(layout/logo-layer ctx logo logo-media)])
                          (map-indexed (fn [i layer]
-                                        (modes/layer-spec (assoc ctx :index i :seed (seed-fn i layer))
-                                                          layer))
+                                        ;; the seed hashes the wire id, so an alias
+                                        ;; must resolve before it is computed
+                                        (let [layer (update layer :mode features/canonical-mode)]
+                                          (modes/layer-spec (assoc ctx :index i :seed (seed-fn i layer))
+                                                            layer)))
                                       texts)))}))
 
 ;; ---------------------------------------------------------------------------

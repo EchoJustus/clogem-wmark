@@ -50,8 +50,8 @@ names or requires them.
   engine serves on loopback and opens the browser. `serve` is headless, for
   the TUI, scripts or a GUI shell. `run` encodes from the CLI through the same
   Core API. `doctor` explains which engine and binaries were found.
-- **The TUI is a separate program** (`wmark-tui`), a REST client. That keeps
-  LGPL Lanterna out of the proprietary Pro binary.
+- **The TUI is a separate program** (`wmark-tui`), a REST client, so the
+  engine binary carries no terminal code and the TUI no engine.
 - **External UI.** `--ui-dir` replaces the built-in UI with one served from a
   directory, like Clash's external-ui. It talks to the REST API.
 - **The routes know nothing about transport or identity.** They read the
@@ -68,7 +68,7 @@ names or requires them.
 | Media | `watermark.media/MediaIO` | local files (`media.local`) | object storage |
 | Queue | `watermark.core.jobs/JobQueue` | in-process executor (`jobs.local`) | SQS / Cloud Tasks / a Postgres table |
 | Entitlements | `watermark.core.features/Entitlements` | community, offline license, hosted plan | StoreKit, Play Billing |
-| Text modes | `watermark.core.modes/register!` (a registry) | continuous, scheduled; Pro: subliminal, random | — |
+| Text modes | `watermark.core.modes/register!` (a registry) | continuous, scheduled; Pro: canary (wire id `subliminal`), random | — |
 
 Text modes are a registry rather than a multimethod because ClojureDart has
 no multimethods.
@@ -86,7 +86,7 @@ requires made them fail, as intended.
 | `watermark.core.*` requires no engine, media or store implementation, no OS utilities, no server code | Stage 4+: new engines don't touch orchestration |
 | `src/` requires nothing from desktop, web, Pro, SaaS, TUI or http-kit | Stage 5: the backend reuses the host core as is |
 | `web/` talks to `watermark.core.api` only: no engines, stores, media, config, jobs internals, desktop, Pro or SaaS code | The same views serve the local UI and a hosted dashboard |
-| The backend doesn't use the desktop server; the TUI shares only home discovery | Licensing lanes (LGPL Lanterna) and lean images |
+| The backend doesn't use the desktop server; the TUI shares only home discovery | Lean binaries and images |
 
 ## Core API ↔ REST
 
@@ -125,6 +125,18 @@ Error kinds map to HTTP statuses:
 
 On the wire, keywords keep their namespaces (`"text.mode/subliminal"`);
 plain data.json would drop them.
+
+**Text-mode names.** The canary mode's wire id is `subliminal`: settings,
+profiles, `/api/v1` and render specs carry it, and the keyed seed hashes it,
+so it can't change without moving every existing schedule. Users only ever
+see and type `canary` ([ADR 0005](adr/0005-canary-display-name.md)):
+- Every entry point accepts `canary` and resolves it to the wire id through
+  `features/canonical-settings`: `schema/decode-json`, `schema/validate!` and
+  the planner.
+- The CLI, the web UI (the editor and the effective table), the TUI and
+  error messages show the display name.
+- API clients learn it from `/api/v1/features` (`display-name` on
+  `text.mode/subliminal`). The JSON Schema titles that branch `canary`.
 
 ## The built-in web UI (`web/`)
 
@@ -282,8 +294,8 @@ Pro features are protected twice:
 
 1. **Code absence.** The community binary is built from this repository alone
    (verified: zero Pro classes in the AOT output). Its mode registry simply
-   has no `:subliminal` or `:random` entry, so such a layer fails with
-   `:feature-unavailable` ("part of wmark Pro").
+   has no canary (`:subliminal`) or `:random` entry, so such a layer fails
+   with `:feature-unavailable` ("part of wmark Pro").
 2. **Entitlement.** The Pro binary registers its modes when
    `watermark.pro.modes` loads (at image build time under native-image). The
    core gate (`features/check!`) runs at planning time, and Pro code re-checks

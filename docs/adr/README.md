@@ -8,9 +8,10 @@ owner first (CLAUDE.md, "Decisions").
 | # | Decision | Status |
 |---|---|---|
 | [0001](0001-ffmpeg-in-release-bundles.md) | Pinned GPL FFmpeg builds in the release bundles, for now | Proposed |
-| [0002](0002-windows-code-signing.md) | Windows Authenticode through a hardware-backed signing service | Proposed |
-| [0003](0003-macos-signing-and-library-validation.md) | Developer ID, notarization, and keeping library validation on | Proposed |
+| [0002](0002-windows-code-signing.md) | Windows Authenticode through a hardware-backed signing service | Rejected for now: signing deferred |
+| [0003](0003-macos-signing-and-library-validation.md) | Developer ID, notarization, and keeping library validation on | Rejected for now: signing deferred |
 | [0004](0004-release-supply-chain.md) | Release supply chain: tags from main, a protected environment, pinned actions, checksums, Sigstore, attestations | Accepted |
+| [0005](0005-canary-display-name.md) | The canary mode keeps its wire id `subliminal`; users see "canary" | Accepted |
 | [0006](0006-render-spec-v2-host-rendered-overlays.md) | Render spec v2: the host renders, engines only composite (prototype measured) | Proposed |
 
 New records copy this shape: **Status**, **Context**, **Decision**,

@@ -11,13 +11,18 @@
   can render them as locked (\"Pro\") controls; their *implementations* live in
   the Pro source tree only.
 
+  Text modes are named by wire id here (`subliminal` for the canary mode).
+  Aliases users type (`canary`) resolve before validation, through
+  watermark.core.features/canonical-settings (docs/adr/0005).
+
   Portability: this is the only kernel namespace that needs malli. Hosts
-  without malli (ClojureDart, Stage 3/4) validate against the JSON Schema that
-  `json-schema` emits at build time instead."
+  without malli (ClojureDart, Stage 3/4) apply `canonical-settings`, then
+  validate against the JSON Schema that `json-schema` emits at build time."
   (:require [malli.core :as m]
             [malli.error :as me]
             [malli.json-schema :as mjs]
-            [malli.transform :as mt]))
+            [malli.transform :as mt]
+            [watermark.core.features :as features]))
 
 #?(:clj (set! *warn-on-reflection* true))
 
@@ -62,21 +67,26 @@
    [:offset     {:optional true} Offset]])
 
 (defn- text-layer [mode tier extra]
-  (into [:map {:closed true :json-schema/x-tier (name tier)}
+  (into [:map (cond-> {:closed true :json-schema/x-tier (name tier)}
+                ;; schema-driven UIs show the display name, not the wire id
+                (features/mode-display-names mode)
+                (assoc :json-schema/title (features/mode-display-names mode)))
          [:mode [:= mode]]]
         (concat text-common extra)))
 
 (def TextLayer
   [:multi {:dispatch :mode
-           ;; JSON arrives with "mode": "subliminal"; dispatch needs the keyword
-           :decode/json (fn [x] (if (and (map? x) (string? (:mode x)))
-                                  (update x :mode keyword)
+           ;; JSON arrives with "mode": "subliminal" (or its alias "canary");
+           ;; dispatch needs the wire id as a keyword
+           :decode/json (fn [x] (if (and (map? x) (contains? x :mode))
+                                  (update x :mode features/canonical-mode)
                                   x))}
    [:continuous (text-layer :continuous :community [])]
    [:scheduled  (text-layer :scheduled :community
                             [[:at [:vector {:min 1 :max 500} Seconds]]
                              [:duration-s [:double {:min 0.04 :max 600.0}]]])]
-   ;; PRO: 1-3 frame "canary" inserts at a keyed, per-video phase
+   ;; PRO: 1-3 frame canary inserts at a keyed, per-video phase. Users see
+   ;; and type "canary"; the wire id stays :subliminal (it seeds schedules).
    [:subliminal (text-layer :subliminal :pro
                             [[:every-s {:optional true} [:double {:min 1.0 :max 600.0}]]
                              [:frames  {:optional true} [:int {:min 1 :max 3}]]])]
@@ -144,18 +154,22 @@
   (m/decoder Settings (mt/transformer mt/json-transformer)))
 
 (defn decode-json
-  "JSON-shaped settings (string enums, integral doubles) -> Clojure settings."
+  "JSON-shaped settings (string enums, integral doubles) -> Clojure settings,
+  text modes by wire id."
   [x]
   (json-decoder x))
 
 (defn validate!
-  "Settings or an :invalid error with humanised messages per field."
+  "Settings with text modes resolved to wire ids, or an :invalid error with
+  humanised messages per field. Callers keep the returned value: it is what
+  profiles store and what plans seed from."
   [settings]
-  (if (validator settings)
-    settings
-    (throw (ex-info "Invalid settings."
-                    {:wmark/error :invalid
-                     :errors      (me/humanize (explainer settings))}))))
+  (let [settings (features/canonical-settings settings)]
+    (if (validator settings)
+      settings
+      (throw (ex-info "Invalid settings."
+                      {:wmark/error :invalid
+                       :errors      (me/humanize (explainer settings))})))))
 
 (defn json-schema
   "JSON Schema of the settings, for UIs that render forms from it.

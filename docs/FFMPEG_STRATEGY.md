@@ -211,7 +211,7 @@ compiler maps each timing to an `enable=` expression:
 |---|---|---|
 | `:always` | continuous | no `enable` |
 | `:windows` | scheduled; random (Pro) | `between(n,s1,e1)+between(n,s2,e2)+...` |
-| `:periodic` | subliminal canary (Pro) | `gte(n,O)*lt(mod(n-O,P),K)` |
+| `:periodic` | canary (Pro) | `gte(n,O)*lt(mod(n-O,P),K)` |
 
 - **Scheduled times are frame ranges now.** Phase 1 used time-based
   `between(t,a,a+d)`, which includes both ends and so could show one extra
@@ -356,7 +356,9 @@ Be honest with customers about the threat model.
   as a flicker, and it is the easiest element to strip, because it stands out
   from neighbouring frames. Its value is proof: a keyed insert at a frame only
   you can predict. Don't market it as "subliminal"; that word has regulatory
-  baggage in broadcast rules on subliminal techniques.
+  baggage in broadcast rules on subliminal techniques. The mode's wire id is
+  still `subliminal`, because the keyed seed hashes it, but users only see
+  "canary" ([ADR 0005](adr/0005-canary-display-name.md)).
 - **Strongest roadmap items:**
   - per-recipient fingerprinting, so a leak identifies its source (SaaS);
   - a verification tool that re-derives the schedule and checks a suspect copy;

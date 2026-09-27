@@ -1,7 +1,31 @@
 # 0003. Developer ID, notarization, and keeping library validation on
 
-- **Status:** Proposed (a credential and a security trade-off: the owner decides)
+- **Status:** Rejected for now (the owner, 2026-09-27): Developer ID signing
+  and notarization are deferred indefinitely, see "Owner decision" below.
+  Library validation (point 3) is moot until builds are signed. The rest of
+  this record stays as the researched option for when it is revisited.
 - **Date:** 2026-09-27
+
+## Owner decision (2026-09-27)
+
+The owner puts core functionality first and defers enrolling a Developer ID
+indefinitely. Offline desktop users open unsigned builds with a manual
+override.
+
+- The `sign-macos` job stays in `release.yml`, **frozen**: it is skipped
+  because `MACOS_SIGNING` is unset. Don't enable, remove or extend it without
+  the owner. The CI step that runs the smoke test under an ad-hoc
+  hardened-runtime signature stays: it keeps the evidence for point 3 fresh.
+- macOS bundles are neither Developer ID-signed nor notarized, and the draft
+  release says so. Checksums, their Sigstore signature and attestations
+  (ADR 0004) still prove provenance, but Gatekeeper doesn't check them.
+- **What users meet:** Gatekeeper refuses the first launch of each
+  downloaded program. Apple's documented override is System Settings →
+  Privacy & Security → "Open Anyway", after one attempt to open it. wmark
+  starts `bin/ffmpeg` and `bin/ffprobe` itself, so those may need it too;
+  clearing the quarantine attribute of the whole extracted folder covers all
+  four Mach-O files at once. Neither path has been tried on a real quarantined
+  download yet. RUNBOOK.md, "Unsigned downloads", gives the steps.
 
 ## Context
 
@@ -68,8 +92,10 @@ engine library, possibly a third party's.
   https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.cs.disable-library-validation
 - GraalVM 25, FFM API in Native Image (supported platforms):
   https://www.graalvm.org/jdk25/reference-manual/native-image/native-code-interoperability/ffm-api/
+- Safely open apps on your Mac ("Open Anyway"; checked 2026-09-27):
+  https://support.apple.com/en-us/102445
 
-## Owner actions
+## Owner actions (when signing is revisited)
 
 1. Enroll in the Apple Developer Program (if not already) and create a
    **Developer ID Application** certificate and an **App Store Connect API

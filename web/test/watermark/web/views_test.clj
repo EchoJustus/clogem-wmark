@@ -42,6 +42,14 @@
                        "Needs wmark Pro to run: Flash-frame canaries."))
     (is (str/includes? (h/html (v/effective r {} true)) "this profile (unsaved)") "preview wording")))
 
+(deftest the-canary-mode-is-shown-as-canary
+  (let [s {:texts [{:mode :subliminal :content "(c) Studio"}]}
+        r {:settings s :provenance {[:texts] :profile} :base {:kind :named} :locked [:text.mode/subliminal]}]
+    (is (str/includes? (v/settings-text s) "\"mode\": \"canary\""))
+    (is (not (str/includes? (v/settings-text s) "subliminal")))
+    (is (not (str/includes? (h/html (v/effective r {:text.mode/subliminal "Flash-frame canaries"} false))
+                            "subliminal")))))
+
 (deftest only-numbers-in-data-signals
   (let [page (h/html (v/page {:nonce "n0nce" :health {:edition :community :version "1" :engine {:available? true :engine/id :ffmpeg}}
                               :profiles [{:name hostile :slug "x" :auto? false}]
