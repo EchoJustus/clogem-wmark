@@ -111,7 +111,7 @@ ports, using a synthetic logo defined by formula and the bundled font.
 - **The LGPL pin.** `deps.edn` `:ffmpeg :variants :lgpl` pins BtbN's
   LGPL-3.0-or-later build of the same FFmpeg commit as the GPL pin, for
   Linux x64 (archive, SHA-256, licenses, source notes), fetched with
-  `bb ffmpeg :variant :lgpl`. CI sets `WMARK_REQUIRE_LGPL=1`, so the exit
+  `bb ffmpeg` (the default since ADR 0001 made LGPL the bundled build). CI sets `WMARK_REQUIRE_LGPL=1`, so the exit
   test cannot skip there.
 
 ## Measurements (2026-09-27, Linux x64, 4 vCPU)

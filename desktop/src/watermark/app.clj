@@ -14,6 +14,7 @@
   GUI shells (--announce, --parent-pid). `run` encodes from the command line
   through the same Core API. `doctor` shows how the engine was resolved."
   (:require [clojure.data.json :as json]
+            [clojure.java.io :as io]
             [clojure.pprint :as pprint]
             [clojure.string :as str]
             [clojure.tools.cli :as cli]
@@ -33,7 +34,11 @@
 
 (set! *warn-on-reflection* true)
 
-(def version "0.2.0-SNAPSHOT")
+(def version
+  "This build's version, from the resource wmark/version.txt: the release
+  workflow stamps it with the release's version before building. Read when
+  the namespace loads, so a native image keeps the version it was built with."
+  (or (some-> (io/resource "wmark/version.txt") slurp str/trim not-empty) "unknown"))
 
 ;; ---------------------------------------------------------------------------
 ;; System

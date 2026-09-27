@@ -116,7 +116,21 @@ compatibility rule; the C mock composites v2. **Exit met:** the pinned LGPL
 FFmpeg and the C mock pass v2 conformance on real frames (worst 1.11 px,
 text on exactly the scheduled frames), more accurately than v1. Open: LGPL
 pins for Windows and macOS, and whether the downloads bundle LGPL builds
-(ADR 0001).
+(ADR 0001): both settled below.
+
+## Decisions for the first Windows release (27 September 2026)
+
+1. **Ship a Windows MVP first; M3 (the kernel under ClojureDart) is paused.**
+2. **The downloads bundle LGPL FFmpeg builds by default** (ADR 0001, accepted):
+   - BtbN's LGPL build on Windows and Linux;
+   - on macOS, FFmpeg's signed source built with a fixed recipe, since no
+     maintained macOS LGPL build exists.
+
+   The GPL builds stay pinned as a variant for development.
+3. **Releases can be started from the GitHub web UI** (the `release`
+   workflow's **Run workflow**, on `main`). The run tags the commit itself
+   once every bundle is built, and the draft release is made exactly as for
+   a pushed tag.
 
 ## Stages → bundles → code
 

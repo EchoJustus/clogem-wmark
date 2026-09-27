@@ -40,6 +40,6 @@ Clojure and its contrib libraries (EPL-1.0), malli (EPL-2.0) and http-kit
 (Apache-2.0).
 
 FFmpeg is not part of this program. It runs as a separate executable. Release
-downloads bundle a pinned FFmpeg build in bin/, licensed under the GNU GPL
-version 3 or later; its license and a note on its exact archives and source
-code are in licenses/ffmpeg/.
+downloads bundle a pinned FFmpeg build in bin/, licensed under the GNU LGPL
+version 3 or later; its license and a note on its exact archives, build
+flags and source code are in licenses/ffmpeg/.

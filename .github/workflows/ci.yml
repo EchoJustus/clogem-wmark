@@ -46,8 +46,8 @@ jobs:
       - name: Test prerequisites (FFmpeg and a font for the conformance tests)
         run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
       - run: bb lint
-      - name: The pinned LGPL FFmpeg (M2's exit test is v2 conformance on it)
-        run: bb ffmpeg :variant :lgpl
+      - name: The pinned LGPL FFmpeg the bundles ship (M2's exit test is v2 conformance on it)
+        run: bb ffmpeg
       - name: bb test (fails on any reflection warning)
         env:
           WMARK_REQUIRE_LGPL: "1"
@@ -100,7 +100,10 @@ jobs:
         with: { cli: latest, bb: latest }
       - run: clojure -T:build native :target :engine
       - run: clojure -T:build native :target :tui
-      - name: Pinned FFmpeg for this platform (SHA-256 verified)
+      - name: nasm, to build FFmpeg's x86 assembly (a build tool; not shipped)
+        if: matrix.platform == 'macos-x64'
+        run: brew install nasm
+      - name: Pinned LGPL FFmpeg for this platform (SHA-256 verified; macOS builds the signed source)
         run: clojure -T:build ffmpeg
       - name: Mock native engine (the C ABI test double)
         if: matrix.mock != ''

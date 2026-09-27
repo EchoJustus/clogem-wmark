@@ -20,7 +20,8 @@ clip = os.path.join(work, "clip.mp4")
 subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
                 "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=25:duration=6",
                 "-f", "lavfi", "-i", "sine=frequency=440:duration=6",
-                "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac",
+                # FFmpeg's own encoder: the bundled LGPL builds have no x264
+                "-c:v", "mpeg4", "-q:v", "5", "-pix_fmt", "yuv420p", "-c:a", "aac",
                 "-shortest", clip], check=True)
 
 # --parent-pid: the engine exits with this script, even when started through a

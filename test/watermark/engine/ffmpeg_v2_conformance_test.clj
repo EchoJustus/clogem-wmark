@@ -3,8 +3,8 @@
 (ns watermark.engine.ffmpeg-v2-conformance-test
   "Render spec v2 (M2): the host draws the flip and the text, FFmpeg only
   composites. Measured with v1's harness and tolerances against v1's
-  reference geometry, on the ffmpeg on PATH and on the pinned LGPL build
-  (`bb ffmpeg :variant :lgpl`, or WMARK_FFMPEG_LGPL=<its bin dir>). M2's exit
+  reference geometry, on the ffmpeg on PATH and on the pinned LGPL build the
+  bundles ship (`bb ffmpeg`, or WMARK_FFMPEG_LGPL=<its bin dir>). M2's exit
   criterion is that the LGPL build passes. Skipped without ffmpeg."
   (:require [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]
@@ -17,8 +17,11 @@
 (set! *warn-on-reflection* true)
 
 (defn- lgpl-bin []
+  ;; `bb ffmpeg` fetches the LGPL build the bundles ship (a GPL fetch, from
+  ;; before LGPL became the default or with :variant :gpl, has no LGPLv3 text)
   (or (System/getenv "WMARK_FFMPEG_LGPL")
-      (let [d (io/file "target/ffmpeg/linux-x64-lgpl/bin")] (when (.isDirectory d) (str d)))))
+      (let [d (io/file "target/ffmpeg/linux-x64")]
+        (when (.isFile (io/file d "licenses" "COPYING.LGPLv3")) (str (io/file d "bin"))))))
 
 (defn- check-v2 [eng dir clip logo label]
   (let [{:keys [spec v2 output outcome]} (c/render! eng (v1/settings-for logo) clip {:out-dir dir :spec-version 2})
@@ -51,7 +54,7 @@
   (if-not (and (c/ffmpeg-available?) (lgpl-bin))
     (if (System/getenv "WMARK_REQUIRE_LGPL")
       (is (lgpl-bin) "CI fetches the pinned LGPL FFmpeg: this test must run there, not skip")
-      (println "  (skipped: no pinned LGPL FFmpeg; run bb ffmpeg :variant :lgpl)"))
+      (println "  (skipped: no pinned LGPL FFmpeg; run bb ffmpeg)"))
     (let [dir (c/tmp-dir)
           eng (ffmpeg/ffmpeg-engine {:work-root dir :ffmpeg (lgpl-bin)})
           {:keys [clip logo]} (c/make-media! dir {})]

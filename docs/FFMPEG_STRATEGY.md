@@ -77,7 +77,9 @@ and derives what it can render:
 - **Codec families** come from the encoders present (see "Encoding").
 - **`perspective` is GPL-only.** FFmpeg builds it only with `--enable-gpl`, so
   LGPL builds (BtbN's `lgpl` variants, for instance) can't draw the flip
-  themselves. Release downloads carry pinned GPL builds for now
+  themselves. They don't need to: render spec v2 draws it on the host.
+  Release downloads carry pinned **LGPL** builds: BtbN's for Linux and
+  Windows, and on macOS FFmpeg's signed source built with a fixed recipe
   ([ADR 0001](adr/0001-ffmpeg-in-release-bundles.md)).
 - **Render spec v2 needs only `overlay`** (plus `fps` and `null`:
   `required-filters-v2`, tested like the v1 list), and neither
@@ -263,6 +265,19 @@ the hardware is there. BtbN's LGPL build lists NVENC, QSV and AMF, and on a
 machine without them every render failed until the software encoders it
 also has (OpenH264, Kvazaar) were ranked first.
 
+**A listed encoder is tried before it is trusted.** A build lists what it
+was compiled with, not what runs on this machine:
+- Media Foundation is missing on Windows N editions and optional on Windows
+  Server;
+- VideoToolbox's hardware encoder is absent in VMs.
+
+So discovery runs a five-frame trial encode down each codec's preference
+list (`compile/usable-encoders`, `process/trial-encode?`) and uses the
+first that works. `doctor` names the encoders that failed. VideoToolbox runs
+with `-allow_sw 1`: the hardware encoder where there is one, else Apple's
+software encoder. Without it, FFmpeg demands hardware
+(`videotoolboxenc.c`, 9.0.2).
+
 | Quality | x264 CRF | x265 CRF | Other encoders (bits per pixel per frame) |
 |---|---|---|---|
 | archival | 14 | 19 | 0.20 |
@@ -273,10 +288,10 @@ also has (OpenH264, Kvazaar) were ranked first.
 - **NVENC** gets `-rc vbr -cq` with the CRF value for its codec.
 - **HEVC** bitrate targets are 60% of the H.264 ones.
 - **libx265 output is tagged `hvc1`,** so it plays in QuickTime and on iOS.
-- **LGPL-only FFmpeg builds** have no x264. They fall back to the operating
-  system's encoder (Media Foundation on Windows, VideoToolbox on macOS) with
-  a bitrate target. This is unit-tested on the argv only; those encoders need
-  Windows or macOS to render.
+- **LGPL-only FFmpeg builds** (what the downloads ship) have no x264. They
+  use the operating system's encoder (Media Foundation on Windows,
+  VideoToolbox on macOS) or OpenH264, with a bitrate target. The native CI
+  job renders with them on each OS.
 
 ## Keyed schedules
 

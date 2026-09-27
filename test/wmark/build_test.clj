@@ -41,7 +41,31 @@
         (is (seq (build/ffmpeg-pin-problems (assoc-in ok [:ffmpeg :variants :lgpl]
                                                      (assoc-in lgpl [:platforms :linux-x64 :archives 0 :sha256] "latest")))))
         (is (seq (build/ffmpeg-pin-problems (assoc-in ok [:ffmpeg :variants :lgpl]
-                                                     (assoc-in lgpl [:license :texts 0 :url] "http://example.org/L")))))))))
+                                                     (assoc-in lgpl [:license :texts 0 :url] "http://example.org/L")))))))
+    (testing "a platform built from source pins its source archive and states its configure flags"
+      (let [src  {:version "9.0.2" :source ["the archive"]
+                  :build {:source {:url "https://example.org/ffmpeg-9.0.2.tar.xz" :sha256 (apply str (repeat 64 "d"))}
+                          :configure ["--enable-version3"]}}
+            with #(assoc-in ok [:ffmpeg :platforms :macos-arm64] %)]
+        (is (empty? (build/ffmpeg-pin-problems (with src))))
+        (is (seq (build/ffmpeg-pin-problems (with (assoc-in src [:build :source :sha256] "latest")))))
+        (is (seq (build/ffmpeg-pin-problems (with (assoc-in src [:build :configure] [])))))
+        (is (seq (build/ffmpeg-pin-problems (with (assoc src :archives (:archives pin)))))
+            "archives or a recipe, not both")))))
+
+(deftest the-downloads-bundle-lgpl-ffmpeg
+  ;; ADR 0001 (owner, 2026-09-27): LGPL builds by default on every release
+  ;; platform; GPL builds only as the :gpl variant
+  (let [{:keys [license platforms variants]} (:ffmpeg (:wmark/build-matrix (edn/read-string (slurp "deps.edn"))))
+        release (set (map keyword (re-seq #"(?<=platform: )[a-z0-9-]+" (slurp ".github/workflows/release.yml"))))]
+    (is (= "LGPL-3.0-or-later" (:spdx license)))
+    (is (= #{"COPYING.LGPLv3" "COPYING.GPLv3"} (set (map :file (build/license-texts license)))))
+    (is (= #{:linux-x64 :windows-x64 :macos-arm64 :macos-x64} release))
+    (is (every? platforms release) "every platform the release builds has an LGPL pin")
+    (is (every? #(get-in platforms [% :build]) [:macos-arm64 :macos-x64])
+        "no maintained macOS LGPL build exists: macOS builds FFmpeg's source")
+    (is (not-any? #(some #{"--enable-gpl" "--enable-nonfree"} (get-in platforms [% :build :configure])) (keys platforms)))
+    (is (= "GPL-3.0-or-later" (get-in variants [:gpl :license :spdx])))))
 
 (deftest licenses-come-from-the-pom-or-its-parents
   (let [repo  (.toFile (java.nio.file.Files/createTempDirectory "m2" (make-array java.nio.file.attribute.FileAttribute 0)))
