@@ -59,7 +59,13 @@
       {:engine/id :ffmpeg :available? false :binaries bins
        :problems ["FFmpeg not found. Put ffmpeg and ffprobe next to wmark (or in its bin/ folder), on PATH, or pass --ffmpeg."]
        :capabilities {}}
-      (let [{:keys [version filters encoders]} (process/describe-binary (:path ffmpeg))
+      (let [{:keys [version filters] listed :encoders} (process/describe-binary (:path ffmpeg))
+            encoders  (compile/usable-encoders
+                       listed
+                       (fn [codec enc]
+                         (process/trial-encode? (:path ffmpeg)
+                                                (compile/video-args {:codec codec} enc {:width 256 :height 144} 30))))
+            unusable  (sort (remove encoders listed))
             missing   (remove filters process/required-filters)
             v1?       (empty? missing)
             ;; spec v2 (host-rendered bitmaps) needs compositing only: LGPL
@@ -76,6 +82,9 @@
                            (empty? codecs) (conj "This FFmpeg build has no H.264 or HEVC encoder."))
          :warnings       (vec (concat (keep locate/working-dir-warning [ffmpeg ffprobe])
                                       (some-> (split-build-warning bins) vector)
+                                      (when (seq unusable)
+                                        [(str "This FFmpeg lists encoders that fail on this machine, so wmark won't use them: "
+                                              (str/join ", " unusable) ".")])
                                       (when (and v1? v2? (not text?))
                                         ;; information: the job pipeline gives text to v2
                                         ["This FFmpeg build has no drawtext filter, so wmark draws text layers itself (render spec v2)."])

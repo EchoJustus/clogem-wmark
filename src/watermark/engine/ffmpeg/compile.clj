@@ -169,6 +169,21 @@
   [encoders]
   (set (for [[codec names] encoder-preference :when (some encoders names)] codec)))
 
+(defn usable-encoders
+  "`encoders` minus the ones that fail on this machine. A build lists what it
+  was compiled with, not what runs here: vendor hardware that isn't there,
+  Media Foundation on Windows N and Server editions, VideoToolbox's hardware
+  encoder in a VM. Per codec family, the listed encoders are tried in
+  preference order, `(works? codec encoder)`, until one works; later ones
+  are never picked, so they aren't tried."
+  [encoders works?]
+  (let [failed (reduce (fn [failed [codec names]]
+                         (into failed (reduce (fn [acc enc]
+                                                (if (works? codec enc) (reduced acc) (conj acc enc)))
+                                              [] (filter encoders names))))
+                       #{} encoder-preference)]
+    (reduce disj (set encoders) failed)))
+
 (defn video-args
   "Encoder arguments. Quality tiers map to CRF for x264/x265 and CQ for NVENC;
   other encoders get a bitrate target from the tier and the frame size."
@@ -185,7 +200,10 @@
 
       :else
       (let [bps (* (bits-per-pixel quality 0.12) width height fps (if (= codec :hevc) 0.6 1.0))]
-        ["-c:v" encoder "-b:v" (str (Math/round (double bps)))]))))
+        (cond-> ["-c:v" encoder "-b:v" (str (Math/round (double bps)))]
+          ;; the hardware encoder when there is one, else Apple's software
+          ;; encoder (FFmpeg otherwise demands hardware, which VMs lack)
+          (str/ends-with? encoder "_videotoolbox") (into ["-allow_sw" "1"]))))))
 
 (defn frame-sync-args
   "Pass frames through exactly as the filtergraph produced them. FFmpeg's
