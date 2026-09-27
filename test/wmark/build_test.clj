@@ -20,3 +20,31 @@
     (is (= ["desktop/resources" "desktop/src" "resources" "src" "web/resources" "web/src"]
            (build/project-dirs basis))
         "component resources (datastar.js, app.css, reachability-metadata.json) are copied; libraries are left to uber")))
+
+(deftest ffmpeg-pins-are-exact
+  (let [pin {:version "9.0.2" :archives [{:url "https://example.org/ffmpeg.zip" :sha256 (apply str (repeat 64 "a"))}]
+             :source ["https://example.org/src"]}
+        ok  {:bundles {:b {:sidecars [:ffmpeg]}}
+             :ffmpeg  {:license   {:text {:url "https://example.org/COPYING" :sha256 (apply str (repeat 64 "b"))}}
+                       :platforms {:linux-x64 pin}}}]
+    (is (empty? (build/ffmpeg-pin-problems ok)))
+    (is (seq (build/ffmpeg-pin-problems (assoc-in ok [:ffmpeg :platforms :linux-x64 :archives 0 :url] "http://example.org/x.zip")))
+        "plain http is not a pin")
+    (is (seq (build/ffmpeg-pin-problems (assoc-in ok [:ffmpeg :platforms :linux-x64 :archives 0 :sha256] "latest"))))
+    (is (seq (build/ffmpeg-pin-problems (update-in ok [:ffmpeg :platforms :linux-x64] dissoc :source))))
+    (is (seq (build/ffmpeg-pin-problems (dissoc ok :ffmpeg))) "bundles with sidecars need pins")))
+
+(deftest licenses-come-from-the-pom-or-its-parents
+  (let [repo  (.toFile (java.nio.file.Files/createTempDirectory "m2" (make-array java.nio.file.attribute.FileAttribute 0)))
+        write (fn [path xml] (let [f (clojure.java.io/file repo path)] (clojure.java.io/make-parents f) (spit f xml) f))
+        _     (write "org/example/parent/1/parent-1.pom"
+                     "<project><licenses><license><name>EPL-1.0</name><url>https://e.org/epl</url></license></licenses></project>")
+        child (write "org/example/lib/2/lib-2.pom"
+                     "<project><parent><groupId>org.example</groupId><artifactId>parent</artifactId><version>1</version></parent></project>")]
+    (is (= [{:name "EPL-1.0" :url "https://e.org/epl"}] (build/pom-licenses repo child)))))
+
+(deftest the-sdk-names-the-abi-it-carries
+  (is (= 1 (build/abi-version)) "read from native/include/wmark_engine.h")
+  (is (thrown-with-msg? clojure.lang.ExceptionInfo #"doesn't match WMARK_ENGINE_ABI_VERSION"
+                        (build/sdk {:name "abi-v99"})))
+  (is (every? #(.isFile (clojure.java.io/file (first %))) build/sdk-files) "every SDK input exists"))
