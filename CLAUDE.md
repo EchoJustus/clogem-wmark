@@ -91,11 +91,14 @@ its own matrix.
    - JSON REST `/api/v1` stays the contract for the TUI, GUIs, scripts and
      external UIs (`--ui-dir`).
 2. **No jank for now.**
-   - Keep the native surface small instead: the kernel will pre-compute
-     per-frame geometry (a baked flip table) and host-rasterized text
-     (render spec v2).
-   - Platform engines then only composite bitmaps into quads, in their native
-     APIs (Swift/AVFoundation, Kotlin/Media3).
+   - Keep the native surface small instead, with render spec v2: the kernel
+     computes the geometry, and the host pre-renders every pixel to draw.
+     That means the logo warped for each flip phase and every text layer,
+     as bitmaps.
+   - Engines, FFmpeg included, then only composite bitmaps at given
+     positions and frames, in their native APIs (Swift/AVFoundation,
+     Kotlin/Media3; FFmpeg's `overlay`). No engine warps or typesets, so an
+     LGPL FFmpeg is fully capable (owner, 2026-09-27).
    - A Rust/wgpu effects core only if a trigger fires: pixel-identical output
      across platforms, marks warped onto tracked content, or engine-parity
      costs exceeding the core's cost.
@@ -110,6 +113,13 @@ its own matrix.
 5. **Repositories:** this one is public and upstream. The commercial one
    depends on it through git (`:deps/root`), never the reverse. The kernel
    stays here as an independent subproject for now.
+6. **Code signing is deferred** (owner, 2026-09-27; ADRs 0002 and 0003,
+   rejected for now).
+   - Windows and macOS bundles ship unsigned, and users open them with the
+     OS override (RUNBOOK.md, "Unsigned downloads").
+   - The signing jobs in `release.yml` stay frozen: skipped, neither enabled,
+     removed nor extended without the owner.
+   - Checksums, Sigstore and attestations (ADR 0004) continue.
 
 ## 4. Invariants (enforced by tests where marked; never weaken one to make a test pass)
 
@@ -304,41 +314,38 @@ M1 → M2 → the kernel under ClojureDart (it waits for M2's kernel changes).
 M4 starts after M1 and once the v2 spec schema is frozen. Each milestone ends
 with its exit criteria met, the docs updated and a short status report.
 
-1. **M1 · CI/CD with signed artifacts.**
-   - The first real native-image builds on Windows, macOS and Linux. Collect
-     missing `reachability-metadata.json` entries with the tracing agent (the
-     e2e test, a real render, `--engine native` with the C mock). Binaries
-     pass `--help`, `doctor` and a real render; the e2e suite runs against the
-     Linux binary.
-   - A release workflow on `v*` tags: build, `bb bundle`, `SHA256SUMS`, sign,
-     draft GitHub Release. FFmpeg is pinned per OS (version and SHA-256 in the
-     repository, never "latest") with its license and source offer in
-     `licenses/`; third-party notices come from the resolved dependencies.
-   - Signing: Authenticode with timestamping through a hardware-backed service
-     (ADR; the owner procures); Developer ID and notarization for every
-     Mach-O, `bin/ffmpeg` included; checksums, Sigstore signatures and
-     build-provenance attestations. Signing runs only in a protected `release`
-     environment, on tags from `main`, with least-privilege `permissions` and
-     actions pinned by commit SHA.
-   - `kernel-v*` and `abi-v*` tags with an engine SDK archive.
-   - Exit: a `vX.Y.Z-rc` tag produces a draft release with signed, notarized
-     and attested bundles for Windows x64, macOS arm64 and Linux x64, each
-     smoke-tested on a clean runner.
-2. **M2 · Render spec v2** (ENGINE.md, "Planned: render spec v2"). Additive:
-   `:spec/version 2` is chosen by capability negotiation, and v1 stays until
-   every engine migrates.
-   - Baked geometry as compact periodic tables (flip period, phase, the quads
-     within one flip, a static pose), never per-video-frame arrays; bitmap
-     layers referenced by content hash and pixel size; windows stay half-open.
-   - A `TextRasterizer` host port in `src/` (Java2D, a bundled OFL font, fixed
-     antialiasing, hinting, colour space and alpha policy). The kernel places
-     measured sizes deterministically and stays graphics-free.
-   - FFmpeg composites v2 text as bitmaps, so minimal and LGPL builds become
-     fully capable; `required-filters` stays exact.
+1. **M1 · CI/CD.** Built in PR #1 (merged): native builds and smoke tests on
+   every OS (the e2e suite against the Linux binary), the release and SDK
+   workflows on tags from `main`, FFmpeg pinned per OS with its license and
+   source note, and third-party notices from the resolved dependencies.
+   - Code signing is deferred (decision 6); the signing jobs stay frozen.
+   - Exit: a `vX.Y.Z-rc` tag on `main` produces a draft release with unsigned,
+     checksummed, Sigstore-signed and attested bundles for Windows x64,
+     macOS arm64 and Linux x64, each smoke-tested on a clean runner. The
+     owner pushes the tag.
+2. **M2 · Render spec v2: the host renders, engines composite**
+   (ENGINE.md, "Planned: render spec v2"; decision 2).
+   - Additive: `:spec/version 2` is chosen by capability negotiation, and v1
+     stays until every engine migrates.
+   - The kernel computes geometry (a flip's quads per frame, placements,
+     half-open windows) and stays graphics-free.
+   - A host port in `src/` rasterizes deterministically: Java2D with fixed
+     interpolation, antialiasing, colour space and alpha policy, and a
+     bundled OFL font for text. It produces the logo warped for each frame of
+     a flip (a static pose otherwise) and every text layer.
+   - The spec stays periodic (flip period, phase, one bitmap per frame within
+     a flip), never per-video-frame arrays. Bitmaps are referenced by content
+     hash and pixel size.
+   - FFmpeg only composites, with `overlay`: no `perspective`, no `drawtext`.
+     `required-filters` stays exact.
+   - First prototype one overlay per flip phase and measure it with the
+     conformance harness, before optimising (sprite sheets, deduplication,
+     caching).
    - The C ABI version is bumped under a written compatibility rule,
      `render-spec.schema.json` is updated, and the C mock consumes v2.
-   - New golden vectors (diff reviewed); the conformance harness measures v2
-     on real frames for FFmpeg and the mock.
+   - New golden vectors (diff reviewed).
+   - Exit: a pinned LGPL FFmpeg build passes v2 conformance on real frames,
+     and so does the C mock.
 3. **M3 · The kernel under ClojureDart.** It compiles and passes
    `kernel/test/golden/*.edn` in Dart: the `util/num` `:cljd` branches,
    HMAC-SHA256 through `package:crypto`, and malli or the schema fallback.

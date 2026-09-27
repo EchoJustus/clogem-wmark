@@ -71,6 +71,29 @@ spec: an engine-neutral description of one watermarked video.
    stays here as an independent subproject, and the GUI is one Flutter
    codebase for every platform, kept with the commercial editions.
 
+## Decisions after the M0 and M1 review (27 September 2026)
+
+1. **Render spec v2: the host renders, engines only composite.** This
+   refines decision 3 above.
+   - The host pre-renders the logo warped for each flip phase and every text
+     layer as bitmaps. Every engine, FFmpeg included, only composites them.
+   - FFmpeg then needs `overlay` alone. `perspective` is GPL-only (ADR 0001),
+     so today's flip ties the bundles to GPL builds. After v2 an LGPL build is
+     fully capable.
+   - M2 starts with one overlay per flip phase, measured with the
+     conformance harness before anything cleverer. Its exit is a pinned LGPL
+     FFmpeg passing v2 conformance.
+2. **Code signing: deferred indefinitely.**
+   - ADRs 0002 and 0003 are rejected for now. Windows and macOS bundles ship
+     unsigned, and users open them with the OS override (RUNBOOK.md,
+     "Unsigned downloads").
+   - The signing jobs stay in `release.yml`, frozen and skipped.
+   - Smart App Control on Windows blocks unsigned programs with no per-app
+     exception, which is this decision's main cost.
+3. **Lanterna: dropped.** The TUI never used it. `wmark-tui` stays a
+   line-mode REST client with no terminal library, and its third-party
+   notices now list no LGPL code.
+
 ## Stages → bundles → code
 
 The same mapping lives as data in `deps.edn` (`:wmark/build-matrix`).
@@ -79,7 +102,7 @@ against the repository.
 
 | Stage | Bundle | New code | Reused unchanged |
 |---|---|---|---|
-| 1 WebServer + TUI, Windows then macOS | `desktop-server`: `wmark`, `wmark-tui`, `bin/ffmpeg`, `bin/ffprobe` | none: ready to build natively and sign | everything |
+| 1 WebServer + TUI, Windows then macOS | `desktop-server`: `wmark`, `wmark-tui`, `bin/ffmpeg`, `bin/ffprobe` | none: builds natively (signing deferred) | everything |
 | 2 + GUI for Windows | `windows-combo` | Flutter app as a sidecar client. It starts `wmark serve --announce json --parent-pid <pid>`, reads the endpoint line, and talks REST + SSE. | engine, API, TUI |
 | 3 GUI for Android | `android-app` | Kernel compiled by ClojureDart, in-process; Android engine plugin; Play Billing entitlements | kernel, render spec, golden vectors |
 | 4 + iPad/macOS | `apple-app` | AVFoundation/Metal engine (Swift, behind the C ABI); StoreKit entitlements | Stage 3 app, kernel |

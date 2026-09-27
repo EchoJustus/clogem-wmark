@@ -50,8 +50,8 @@ names or requires them.
   engine serves on loopback and opens the browser. `serve` is headless, for
   the TUI, scripts or a GUI shell. `run` encodes from the CLI through the same
   Core API. `doctor` explains which engine and binaries were found.
-- **The TUI is a separate program** (`wmark-tui`), a REST client. That keeps
-  LGPL Lanterna out of the proprietary Pro binary.
+- **The TUI is a separate program** (`wmark-tui`), a REST client, so the
+  engine binary carries no terminal code and the TUI no engine.
 - **External UI.** `--ui-dir` replaces the built-in UI with one served from a
   directory, like Clash's external-ui. It talks to the REST API.
 - **The routes know nothing about transport or identity.** They read the
@@ -86,7 +86,7 @@ requires made them fail, as intended.
 | `watermark.core.*` requires no engine, media or store implementation, no OS utilities, no server code | Stage 4+: new engines don't touch orchestration |
 | `src/` requires nothing from desktop, web, Pro, SaaS, TUI or http-kit | Stage 5: the backend reuses the host core as is |
 | `web/` talks to `watermark.core.api` only: no engines, stores, media, config, jobs internals, desktop, Pro or SaaS code | The same views serve the local UI and a hosted dashboard |
-| The backend doesn't use the desktop server; the TUI shares only home discovery | Licensing lanes (LGPL Lanterna) and lean images |
+| The backend doesn't use the desktop server; the TUI shares only home discovery | Lean binaries and images |
 
 ## Core API ↔ REST
 

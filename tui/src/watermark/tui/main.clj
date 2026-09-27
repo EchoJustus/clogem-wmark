@@ -4,11 +4,10 @@
   "wmark-tui: a terminal client of a running `wmark serve` -- just another API
   client, like the web UI (the Clash model).
 
-  This first cut is a line-mode shell: it works in every terminal, including
-  legacy Windows consoles, with no native code. Full-screen Lanterna views
-  (profile list + detail panes) come next behind the same `call` function;
-  Lanterna stays in this separate binary because it is LGPL-3.0 and because
-  its Windows console support is its weakest part.
+  It is a line-mode shell: it works in every terminal, including legacy
+  Windows consoles, with no native code and no terminal library. Full-screen
+  views (profile list + detail panes) would sit behind the same `call`
+  function; adding a terminal library for them needs its own decision.
 
   Connects via --url/--token, else the runtime file the server writes
   (<home>/runtime/server.edn)."

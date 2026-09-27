@@ -1,7 +1,30 @@
 # 0002. Windows Authenticode through a hardware-backed signing service
 
-- **Status:** Proposed (a purchase and a credential: the owner procures)
+- **Status:** Rejected for now (the owner, 2026-09-27): code signing is
+  deferred indefinitely, see "Owner decision" below. The rest of this record
+  stays as the researched option for when it is revisited.
 - **Date:** 2026-09-27
+
+## Owner decision (2026-09-27)
+
+The owner puts core functionality (render spec v2, the GUI spike) first and
+defers procuring a certificate or signing service indefinitely. Offline
+desktop users install unsigned builds with a manual override.
+
+- The `sign-windows` job stays in `release.yml`, **frozen**: it is skipped
+  because `WINDOWS_SIGNING` is unset. Don't enable, remove or extend it
+  without the owner.
+- Windows bundles are unsigned, and the draft release says so. They still
+  carry `SHA256SUMS`, its Sigstore signature and provenance attestations
+  (ADR 0004), which prove where a download came from but aren't checked by
+  Windows.
+- **What users meet:** SmartScreen shows "Windows protected your PC" for a
+  downloaded unsigned program ("More info" → "Run anyway"; or `Unblock-File`
+  on the extracted folder first). **Smart App Control blocks unsigned
+  programs outright, with no per-app exception**: a user who has it on must
+  turn it off in Windows Security to run wmark. Managed machines that allow
+  only signed code can't run it at all. RUNBOOK.md, "Unsigned downloads",
+  gives the steps.
 
 ## Context
 
@@ -66,8 +89,11 @@ Google Cloud KMS and Azure's signing service.
 - Azure Artifact Signing pricing: https://azure.microsoft.com/en-us/pricing/details/artifact-signing/
 - `azure/artifact-signing-action` v2.0.0: https://github.com/Azure/artifact-signing-action
 - jsign 7.5 (store types, timestamping): https://ebourg.github.io/jsign/
+- Smart App Control FAQ ("There is currently no way to bypass Smart App
+  Control protection for individual apps"; checked 2026-09-27):
+  https://support.microsoft.com/en-us/windows/security/threat-malware-protection/smart-app-control-frequently-asked-questions
 
-## Owner actions
+## Owner actions (when signing is revisited)
 
 1. Choose the option that fits the studio's legal entity, and procure it
    (identity validation or certificate vetting takes days).
