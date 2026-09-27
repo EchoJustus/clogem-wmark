@@ -70,8 +70,11 @@
 
 (deftest the-job-pipeline-runs-unchanged-on-a-native-engine
   (with-mock [lib]
-    (let [dir (tmp)
-          in  (str (io/file dir "clip.mov"))
+    (let [;; non-ASCII where this JVM can name such files: the path must reach
+          ;; the library as UTF-8 bytes (the ABI's JSON is UTF-8, unescaped)
+          utf8? (= "UTF-8" (System/getProperty "sun.jnu.encoding"))
+          dir (str (doto (io/file (tmp) (if utf8? "vidéo 视频" "video")) .mkdirs))
+          in  (str (io/file dir (if utf8? "clip é.mov" "clip.mov")))
           env {:engine (native/native-engine {:library lib}) :media (media/local-media)
                :entitlements (features/community) :secret-for (constantly (byte-array 32))
                :font (delay "/fonts/a.ttf")}]
@@ -81,4 +84,4 @@
                                                                   {:logo {:path "/l.png"} :encode {:audio :none}})}
                                {})]
         (is (= :done (:state r)))
-        (is (= "mock render\n" (slurp (io/file dir "clip_wm.mp4"))))))))
+        (is (= "mock render\n" (slurp (io/file dir (if utf8? "clip é_wm.mp4" "clip_wm.mp4")))))))))

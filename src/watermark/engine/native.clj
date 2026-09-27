@@ -86,11 +86,15 @@
          (finally (call fns "wmark_free" s)))))
 
 (defn- ->json
-  "Clojure data -> JSON text, keeping keyword namespaces (\"spec/version\")."
+  "Clojure data -> JSON text, keeping keyword namespaces (\"spec/version\").
+  Non-ASCII stays literal UTF-8, as the ABI specifies, rather than \\u escapes
+  a small engine might not decode (a path like vidéo/clip.mp4 must arrive as
+  its bytes)."
   [x]
   (json/write-str
    (walk/postwalk #(if (keyword? %) (if (namespace %) (str (namespace %) "/" (name %)) (name %)) %) x)
-   :escape-slash false))
+   :escape-slash false
+   :escape-unicode false))
 
 (defn- <-json [s] (some-> s (json/read-str :key-fn keyword)))
 
