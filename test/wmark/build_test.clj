@@ -48,3 +48,13 @@
   (is (thrown-with-msg? clojure.lang.ExceptionInfo #"doesn't match WMARK_ENGINE_ABI_VERSION"
                         (build/sdk {:name "abi-v99"})))
   (is (every? #(.isFile (clojure.java.io/file (first %))) build/sdk-files) "every SDK input exists"))
+
+(deftest git-dependencies-name-their-license-and-source
+  (is (= "EPL-2.0" (build/git-license "kernel/src")) "read from the SPDX header of its sources")
+  (let [text (build/notices-text {:libs {'wmark/kernel {:git/url "https://github.com/EchoJustus/clogem-wmark.git"
+                                                        :git/sha "a3b74780f1357b33cd7f8a33c61b68a19c6aa082"
+                                                        :paths   ["kernel/src"]}}}
+                                 "Third-party notices")]
+    (is (clojure.string/includes? text "License: EPL-2.0"))
+    (is (clojure.string/includes? text "Source: https://github.com/EchoJustus/clogem-wmark/tree/a3b74780f1357b33cd7f8a33c61b68a19c6aa082")
+        "EPL-2.0 3.1: where to get the source of the exact commit")))

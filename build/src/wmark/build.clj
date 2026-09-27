@@ -415,6 +415,20 @@
   (nth (iterate #(some-> ^File % .getParentFile) (io/file jar))
        (+ 3 (count (str/split (or (namespace lib) (name lib)) #"\.")))))
 
+(defn git-license
+  "The SPDX-License-Identifier at the top of the first Clojure source under a
+  git dependency's source folder, e.g. \"EPL-2.0\" for clogem-wmark's
+  components."
+  [dir]
+  (let [d (io/file (str dir))]
+    (when (.isDirectory d)
+      (some (fn [^File f]
+              (when (and (.isFile f) (re-find #"\.clj[cd]?$" (.getName f)))
+                (with-open [r (io/reader f)]
+                  (some #(second (re-find #"SPDX-License-Identifier:\s*([A-Za-z0-9.+\-]+)" %))
+                        (take 5 (line-seq r))))))
+            (file-seq d)))))
+
 (defn- embedded-notices
   "Texts of LICENSE, NOTICE and COPYING files inside a jar."
   [^String jar]
@@ -439,11 +453,14 @@
           (for [[lib {:keys [mvn/version git/url git/sha paths]}] libs
                 :when (or version url)
                 :let [jar  (first (filter #(str/ends-with? (str %) ".jar") paths))
-                      lics (when jar (pom-licenses (local-repo lib jar) (pom-of jar)))]]
+                      lics (when jar (pom-licenses (local-repo lib jar) (pom-of jar)))
+                      spdx (when url (some-> (first paths) git-license))]]
             (str "-- " lib " " (or version (str url " " sha)) "\n"
-                 (if (seq lics)
-                   (str/join "" (for [{n :name u :url} lics] (str "   License: " n (when u (str " <" u ">")) "\n")))
-                   "   License: see the library's own files below or its repository\n")
+                 (cond
+                   (seq lics) (str/join "" (for [{n :name u :url} lics] (str "   License: " n (when u (str " <" u ">")) "\n")))
+                   url        (str "   License: " (or spdx "see the repository") "\n"
+                                   "   Source: " (str/replace url #"\.git$" "") "/tree/" sha "\n")
+                   :else      "   License: see the library's own files below or its repository\n")
                  (str/join "" (for [[entry text] (some-> jar embedded-notices)]
                                 (str "\n   " entry ":\n" (str/join "\n" (map #(str "   | " %) (str/split-lines text))) "\n")))))))))
 
