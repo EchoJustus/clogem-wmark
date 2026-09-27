@@ -7,6 +7,8 @@
   (:import (java.lang ProcessBuilder)
            (java.util List)))
 
+(set! *warn-on-reflection* true)
+
 (defn- start ^Process [& argv] (.start (ProcessBuilder. ^List (vec argv))))
 
 (deftest a-gui-sidecar-exits-with-its-parent

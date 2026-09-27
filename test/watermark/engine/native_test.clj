@@ -18,6 +18,8 @@
   (:import (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)))
 
+(set! *warn-on-reflection* true)
+
 (defn- tmp [] (str (Files/createTempDirectory "wmark-native" (make-array FileAttribute 0))))
 
 (def mock-library

@@ -56,7 +56,7 @@
 
   ;; -- Development -----------------------------------------------------------
   ;; A C compiler enables the native-engine tests; ffmpeg enables conformance.
-  :dev      {:extra-paths ["testkit/src" "kernel/test" "test" "web/test" "desktop/test"
+  :dev      {:extra-paths ["testkit/src" "build/src" "kernel/test" "test" "web/test" "desktop/test"
                            "web/src" "web/resources" "desktop/src" "desktop/resources" "tui/src"]
              :extra-deps  {http-kit/http-kit                {:mvn/version "2.8.1"}
                            org.clojure/tools.cli            {:mvn/version "1.4.256"}
@@ -87,8 +87,9 @@
             :artifact     {:community "wmark"}
             :native-image ["--no-fallback"
                            "-march=compatibility"      ; default x86-64-v3 crashes on older CPUs
+                           ;; shutdown hooks on Ctrl+C need no flag: GraalVM 25 installs
+                           ;; exit handlers in executables by default
                            "--features=clj_easy.graal_build_time.InitClojureClasses"
-                           "--install-exit-handlers"   ; shutdown hooks on Ctrl+C
                            "--enable-native-access=ALL-UNNAMED" ; native engines (FFM)
                            "-H:+ReportExceptionStackTraces"]}
    :tui    {:doc          "Terminal client of a running engine (one edition: goes into every bundle)"
@@ -98,8 +99,7 @@
             :main         {:community watermark.tui.main}
             :artifact     {:community "wmark-tui"}
             :native-image ["--no-fallback" "-march=compatibility"
-                           "--features=clj_easy.graal_build_time.InitClojureClasses"
-                           "--install-exit-handlers"]}}
+                           "--features=clj_easy.graal_build_time.InitClojureClasses"]}}
 
   :bundles
   {:desktop-server {:doc       "Engine + TUI + FFmpeg sidecar, unzip and run"

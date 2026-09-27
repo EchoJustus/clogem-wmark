@@ -30,6 +30,8 @@
   (:import (java.lang ProcessHandle)
            (java.nio.file Path)))
 
+(set! *warn-on-reflection* true)
+
 (def version "0.2.0-SNAPSHOT")
 
 ;; ---------------------------------------------------------------------------

@@ -16,6 +16,8 @@
   (:import (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)))
 
+(set! *warn-on-reflection* true)
+
 (def ^:dynamic *dir* nil)
 
 (use-fixtures :each

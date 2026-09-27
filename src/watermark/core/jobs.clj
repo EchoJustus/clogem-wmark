@@ -26,6 +26,8 @@
             [watermark.render :as render])
   (:import (clojure.lang ExceptionInfo)))
 
+(set! *warn-on-reflection* true)
+
 (defprotocol JobQueue
   (submit!      [q job]   "Queue {:ctx :settings :inputs}; returns the job with :id and :state.")
   (cancel!      [q id]    "Request cancellation; running renders are stopped.")

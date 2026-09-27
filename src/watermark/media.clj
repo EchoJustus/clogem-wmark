@@ -16,6 +16,8 @@
   schedules, so every implementation must compute it identically -- a render
   made on the desktop must be verifiable by the backend and vice versa.")
 
+(set! *warn-on-reflection* true)
+
 (defprotocol MediaIO
   (open-input  [io ctx input]
     "{:id display-name, :location local path or URL for the engine, :fingerprint hex}")
