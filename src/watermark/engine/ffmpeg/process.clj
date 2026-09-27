@@ -39,14 +39,19 @@
     {:major nil :raw first-line}))
 
 (defn parse-filters
-  "Names from `ffmpeg -filters` (lines like \" T.C drawtext  V->V  Draw text...\")."
+  "Names from `ffmpeg -filters`. Up to FFmpeg 8 each line has three flag
+  columns (\" T.C drawtext  V->V  Draw text...\"); FFmpeg 9 dropped the
+  command-support column (\" T. drawtext  V->V  ...\"). The in->out column
+  keeps the legend lines (\" T.. = Timeline support\") out."
   [out]
-  (into #{} (keep #(second (re-find #"^\s*[T.][S.][C.]\s+(\S+)\s" %))) (str/split-lines out)))
+  (into #{} (keep #(second (re-find #"^\s*[T.][S.][C.]?\s+(\S+)\s+\S*->\S*\s" %)))
+        (str/split-lines out)))
 
 (defn parse-encoders
-  "Video encoder names from `ffmpeg -encoders` (lines like \" V....D libx264  ...\")."
+  "Video encoder names from `ffmpeg -encoders` (lines like \" V....D libx264  ...\"),
+  minus the legend (\" V..... = Video\")."
   [out]
-  (into #{} (keep #(second (re-find #"^\s*V[.A-Z]{5}\s+(\S+)\s" %))) (str/split-lines out)))
+  (into #{} (keep #(second (re-find #"^\s*V[.A-Z]{5}\s+([^\s=]\S*)\s" %))) (str/split-lines out)))
 
 (defn describe-binary
   "Version, filters and video encoders of an ffmpeg executable."
