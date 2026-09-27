@@ -35,4 +35,18 @@
         out     (with-out-str
                   (is (= 0 (app/run-cli edition ["--home" home "run" "--help"]))))]
     (is (str/includes? out "Usage: wmark run [options] INPUT..."))
-    (is (str/includes? out "--dry-run"))))
+    (is (str/includes? out "--dry-run"))
+    (is (str/includes? out "canary (Pro)"))
+    (is (not (str/includes? out "subliminal")) "users never see the canary mode's wire id")))
+
+(deftest the-cli-takes-and-shows-canary
+  (let [home    (str (Files/createTempDirectory "wmark-cli" (make-array FileAttribute 0)))
+        edition {:edition :community :entitlements-fn (fn [_] (features/community))}
+        err     (java.io.StringWriter.)
+        code    (binding [*err* err]
+                  (app/run-cli edition ["--home" home "run" "--dry-run" "--text-mode" "canary"
+                                        "--text" "(c) Studio" (str home "/clip.mp4")]))]
+    (is (= 1 code) "the community edition refuses it")
+    (is (str/includes? (str err) "Not available on the community plan: Flash-frame canaries") (str err))
+    (is (str/includes? (str err) "Locked features: Flash-frame canaries") (str err))
+    (is (not (str/includes? (str err) "subliminal")) (str err))))

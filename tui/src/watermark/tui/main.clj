@@ -57,6 +57,26 @@
         (when-let [errors (:errors body)] (pprint/pprint errors))
         nil)))
 
+(defn- feature-catalog [conn] (:features (ok-or-say (call conn "GET" "/features"))))
+
+(defn shown-settings
+  "Settings as users read them. The API carries text modes by wire id; the
+  engine's feature catalog names the ones shown differently (the canary
+  mode's wire id is \"subliminal\")."
+  [settings catalog]
+  (let [names (into {} (for [{:keys [id display-name]} catalog
+                             :when (and display-name (str/starts-with? (str id) "text.mode/"))]
+                         [(subs (str id) (count "text.mode/")) display-name]))]
+    (cond-> settings
+      (sequential? (:texts settings))
+      (update :texts (partial mapv #(if (map? %) (update % :mode (fn [m] (get names (str m) m))) %))))))
+
+(defn feature-titles
+  "Feature ids as users read them: each one's title from the catalog."
+  [ids catalog]
+  (let [titles (into {} (map (juxt (comp str :id) :title)) catalog)]
+    (map #(get titles (str %) (str %)) ids)))
+
 (defn- list-profiles [conn]
   (let [ps (:profiles (ok-or-say (call conn "GET" "/profiles")))]
     (if (empty? ps)
@@ -89,12 +109,14 @@
           :blank    (recur ps)
           :help     (do (println help) (recur ps))
           :list     (recur (list-profiles conn))
-          :show     (do (some-> (ok-or-say (call conn "GET" (str "/profiles/" (enc a)))) :settings pprint/pprint)
+          :show     (do (some-> (ok-or-say (call conn "GET" (str "/profiles/" (enc a)))) :settings
+                                (shown-settings (feature-catalog conn)) pprint/pprint)
                         (recur ps))
           :effective (do (when-let [r (ok-or-say (call conn "POST" "/resolve" {:profile a}))]
                             (doseq [[path src] (sort (:provenance r))]
                               (println (format "  %-30s %s" (name path) src)))
-                            (when (seq (:locked r)) (println "  Needs Pro:" (str/join ", " (:locked r)))))
+                            (when (seq (:locked r))
+                              (println "  Needs Pro:" (str/join ", " (feature-titles (:locked r) (feature-catalog conn))))))
                           (recur ps))
           :new      (do (ok-or-say (call conn "POST" "/profiles" {:name (str/join " " (remove nil? [a b])) :settings {}}))
                         (recur (list-profiles conn)))

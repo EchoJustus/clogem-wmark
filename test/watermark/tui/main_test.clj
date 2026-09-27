@@ -24,6 +24,15 @@
                      "No running wmark server found")
       "no runtime file, no server: say so and fail"))
 
+(deftest users-read-display-names-and-titles
+  (let [catalog [{:id "text.mode/subliminal" :title "Flash-frame canaries" :display-name "canary"}
+                 {:id "text.mode/random" :title "Randomized text"}]]
+    (is (= {:texts [{:mode "canary" :content "x"} {:mode "random" :content "y"}]}
+           (tui/shown-settings {:texts [{:mode "subliminal" :content "x"} {:mode "random" :content "y"}]} catalog)))
+    (is (= {:logo {:opacity 1}} (tui/shown-settings {:logo {:opacity 1}} catalog)))
+    (is (= ["Flash-frame canaries" "jobs/parallel"]
+           (tui/feature-titles ["text.mode/subliminal" "jobs/parallel"] catalog)))))
+
 (deftest a-session-against-a-running-engine
   (let [sys (app/with-jobs (app/system {:edition :community :entitlements-fn (fn [_] (features/community))}
                                        {:home (temp-dir)}))

@@ -16,7 +16,8 @@
     :fps (double)              :font default font path
     :index layer position      :seed 64-bit seed keyed to (secret, input, layer)
     :entitlements the active watermark.core.features/Entitlements"
-  (:require [watermark.render.layout :as layout]))
+  (:require [watermark.core.features :as features]
+            [watermark.render.layout :as layout]))
 
 #?(:clj (set! *warn-on-reflection* true))
 
@@ -31,13 +32,15 @@
 (defn available [] (set (keys @registry)))
 
 (defn layer-spec
-  "Render-spec layer for one settings text layer."
+  "Render-spec layer for one settings text layer. The registry is keyed by
+  wire id, so an alias (\"canary\") finds its mode (:subliminal)."
   [ctx layer]
-  (if-let [f (get @registry (:mode layer))]
-    (f ctx layer)
-    (throw (ex-info (str "The \"" (name (:mode layer)) "\" text mode is part of wmark Pro.")
-                    {:wmark/error :feature-unavailable
-                     :mode        (:mode layer)}))))
+  (let [layer (update layer :mode features/canonical-mode)]
+    (if-let [f (get @registry (:mode layer))]
+      (f ctx layer)
+      (throw (ex-info (str "The \"" (features/mode-display-name (:mode layer)) "\" text mode is part of wmark Pro.")
+                      {:wmark/error :feature-unavailable
+                       :mode        (:mode layer)})))))
 
 (register! :continuous
            (fn [ctx layer] (layout/text-layer ctx layer)))
