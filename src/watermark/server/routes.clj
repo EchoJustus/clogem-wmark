@@ -91,12 +91,11 @@
 (defn- h-form [sys ctx _ {:keys [name]} _] (api/settings-form sys ctx name))
 
 (defn- h-edit
-  "{op, id?, value?, mode?, index?, delta?, if-rev?}: one form edit, saved.
-  Answers with the saved profile and its new form."
+  "{op, id?, value?, mode?, index?, delta?, if-rev?}: one form edit, saved
+  only if the profile is still at if-rev (else 409, reason stale). Answers
+  with the saved profile and its new form."
   [sys ctx _ {:keys [name]} body]
-  (let [doc (api/edit-profile! sys ctx name (-> body
-                                                (assoc :if-rev (get body (keyword "if-rev")))
-                                                (dissoc (keyword "if-rev"))))]
+  (let [doc (api/edit-profile! sys ctx name body)]    ; JSON "if-rev" arrives as :if-rev
     (assoc (api/settings-form sys ctx (:profile/slug doc)) :saved doc)))
 
 (defn- h-preview [sys ctx _ _ {:keys [profile clean settings source t aspect]}]

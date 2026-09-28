@@ -4,7 +4,8 @@
   "The settings form and the preview through the Core API, on real adapters
   (a file store, local media, the FFmpeg engine). The preview part is
   skipped without ffmpeg."
-  (:require [clojure.java.io :as io]
+  (:require [clojure.data.json :as json]
+            [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [watermark.config :as config]
@@ -14,7 +15,8 @@
             [watermark.engine.conformance :as c]
             [watermark.engine.ffmpeg :as ffmpeg]
             [watermark.media.local :as local-media]
-            [watermark.raster.local :as raster-local]))
+            [watermark.raster.local :as raster-local]
+            [watermark.server.routes :as routes]))
 
 (set! *warn-on-reflection* true)
 
@@ -92,3 +94,29 @@
     (is (= :unsupported (try (api/preview-frame (dissoc s :preview-dir) ctx {:profile "p"}) nil
                              (catch clojure.lang.ExceptionInfo e (:wmark/error (ex-data e))))))
     (is (not (.exists (io/file (:home s) "work" "previews" "x.png"))))))
+
+(defn- rest!
+  "One REST call through the route table, as a GUI app makes it."
+  [s method uri body]
+  (let [resp ((routes/api-handler s) {:request-method method :uri uri
+                                       :body (when body (java.io.ByteArrayInputStream. (.getBytes ^String (json/write-str body) "UTF-8")))})]
+    [(:status resp) (if (string? (:body resp)) (json/read-str (:body resp) :key-fn keyword) (:body resp))]))
+
+(deftest the-rest-routes-a-gui-app-uses
+  (let [s (sys)
+        [_ doc] (rest! s :post "/api/v1/profiles" {:name "GUI" :settings {}})
+        rev     (:profile/rev doc)
+        [st f]  (rest! s :get "/api/v1/profiles/gui/form" nil)]
+    (is (= 200 st))
+    (is (= ["Logo" "Text layers" "Output" "Encoding"] (map :title (get-in f [:form :categories]))))
+    (let [[st saved] (rest! s :post "/api/v1/profiles/gui/edit" {:op "set" :id "logo.opacity" :value "70" :if-rev rev})]
+      (is (= 200 st))
+      (is (= ["70%" "set-here"] ((juxt :text :source) (row saved "logo.opacity")))))
+    (testing "an edit against the revision read before is refused, not saved over"
+      (let [[st e] (rest! s :post "/api/v1/profiles/gui/edit" {:op "unset" :id "logo.opacity" :if-rev rev})]
+        (is (= [409 "stale"] [st (:reason e)]))
+        (is (= "70%" (:text (row (second (rest! s :get "/api/v1/profiles/gui/form" nil)) "logo.opacity"))))))
+    (testing "a bad value is a 422 that names the field"
+      (let [[st e] (rest! s :post "/api/v1/profiles/gui/edit" {:op "set" :id "logo.opacity" :value "150"})]
+        (is (= 422 st))
+        (is (re-find #"Opacity: at most 100" (:message e)))))))
