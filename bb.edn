@@ -9,8 +9,7 @@
   lint       {:doc "Validate the build matrix and the component deps.edn files" :task (clojure "-T:build lint")}
   matrix     {:doc "What ships at each roadmap stage"                 :task (clojure "-T:build matrix")}
   dev        {:doc "Run the engine from source (opens the browser)"   :task (apply clojure "-M:dev -m watermark.main" *command-line-args*)}
-  tui        {:doc "Terminal client for a running engine"             :task (apply clojure "-M:dev -m watermark.tui.main" *command-line-args*)}
-  native     {:doc "Native binary for this OS, e.g. bb native :target :tui"
+  native     {:doc "Native binary for this OS (bb native, or bb native :target :engine)"
               :task (apply clojure "-T:build native" (or (seq *command-line-args*) [":target" ":engine"]))}
   ffmpeg     {:doc "Fetch the pinned FFmpeg for this OS into target/ffmpeg/<platform> (SHA-256 verified)"
               :task (apply clojure "-T:build ffmpeg" *command-line-args*)}

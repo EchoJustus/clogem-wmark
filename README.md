@@ -4,8 +4,8 @@ Batch video watermarking that makes AI watermark removal harder. wmark adds a
 logo that periodically flips in 3D (a per-frame homography, so a fixed-box
 inpainter can't simply erase it), warning text in continuous or scheduled
 mode, and schedules keyed per video. It ships as one native binary: double-click
-it and a local web UI opens. The same engine serves a REST API, a CLI and a
-terminal client.
+it and a local web UI opens. The same engine serves a REST API and a CLI with
+progress in the terminal.
 
 This repository is the **open core** of wmark, licensed under the
 [Eclipse Public License 2.0](LICENSE). Commercial editions (keyed canary
@@ -17,7 +17,7 @@ are built on top of it separately; nothing here depends on them.
 ## How it's built
 
 - **One headless engine, many clients** (the Clash model): the built-in web UI,
-  the CLI, `wmark-tui`, scripts and GUI shells all use the same Core API.
+  the CLI, scripts and GUI shells all use the same Core API.
 - **A portable kernel** (`kernel/`, `.cljc` only) turns settings into an
   engine-neutral **render spec**: pixels and frame indices, with normative
   reference semantics and golden vectors. ClojureDart can compile it for
@@ -54,7 +54,6 @@ GraalVM 25 is needed only for native binaries.
 bb dev             # run from source: starts the server and opens the web UI
 bb dev doctor      # which engine and FFmpeg were found, and from where
 bb dev run --logo logo.png --text "(c) Studio" clip.mp4    # CLI render
-bb tui             # terminal client for the running server
 bb test            # every test (the C-compiler and FFmpeg groups skip themselves if absent)
 bb e2e             # the web UI in Chromium (needs Python Playwright; test tooling only)
 bb lint            # the build matrix and component deps.edn files vs the repository
@@ -66,7 +65,7 @@ bb bundle :bundle :desktop-server :ffmpeg-dir /path/to/ffmpeg/bin   # the downlo
 
 ```
 wmark                         start the local UI (what a double-click does)
-wmark serve [--port N]        headless server for the TUI, scripts or a GUI
+wmark serve [--port N]        headless server for scripts or a GUI
       --announce json         print the endpoint as one JSON line (for a parent process)
       --parent-pid PID        exit when that process exits
       --ui-dir DIR            serve an external UI instead of the built-in one
@@ -78,7 +77,8 @@ wmark run [flags] FILES...    render; flags override the profile, which override
       --text / --text-file    warning text; --text-mode continuous|scheduled
       --text-at 1,5 --text-duration 2
       -o/--out DIR  --dry-run (prints the render spec summary, FFmpeg command and filtergraph)
-wmark profiles list | show | save NAME [flags] | rename | copy | delete
+      --progress auto|bar|lines|none   a bar redrawn in place on a terminal (auto), else a line per 10%
+wmark profiles list | show | effective [NAME] | save NAME [flags] | rename | copy | delete
 wmark doctor                  which engine and FFmpeg binaries were found, and why
 
 Global options:
@@ -98,7 +98,6 @@ src/        JVM host core: profile rules, store/media/queue ports, job pipeline,
 web/        built-in UI: escaping hiccup, Datastar SSE events, views, handler;
             vendored datastar.js (MIT) and app.css
 desktop/    CLI, http-kit server, loopback security, sidecar mode, native-image metadata
-tui/        wmark-tui, a line-mode REST client
 native/     wmark_engine.h (C ABI), a mock engine, exported JSON Schemas
 testkit/    conformance harness, store contract, golden vectors, architecture checks
 build/      wmark.build: interprets the build matrix in deps.edn
@@ -107,7 +106,7 @@ spikes/     experiments kept as evidence (not built)
 docs/       RUNBOOK, ARCHITECTURE, ENGINE, FFMPEG_STRATEGY, ROADMAP
 ```
 
-`kernel/`, `web/`, `desktop/`, `tui/`, `testkit/` and `build/` each have a
+`kernel/`, `web/`, `desktop/`, `testkit/` and `build/` each have a
 `deps.edn`, so other projects can depend on one of them from git:
 
 ```clojure

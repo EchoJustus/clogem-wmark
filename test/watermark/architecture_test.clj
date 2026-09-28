@@ -29,7 +29,7 @@
 
 (def public-roots
   "Everything clogem-wmark publishes, as source roots."
-  ["kernel" "src" "test" "testkit" "web" "desktop" "tui" "build" "native" "resources" "spikes"
+  ["kernel" "src" "test" "testkit" "web" "desktop" "build" "native" "resources" "spikes"
    "scripts/cloud-setup.sh"])
 
 (def vendored
@@ -59,7 +59,7 @@
 (deftest the-host-core-has-no-desktop-or-edition-code
   (is (empty? (violations host #(under? ["watermark.app" "watermark.main" "watermark.server.http"
                                          "watermark.server.security" "watermark.server.static"
-                                         "watermark.pro" "watermark.saas" "watermark.tui" "org.httpkit"] %)))
+                                         "watermark.pro" "watermark.saas" "org.httpkit"] %)))
       "src/ is shared by desktop and hosted builds"))
 
 (deftest the-web-ui-talks-to-the-core-api-only
@@ -70,16 +70,12 @@
                                           "watermark.app" "watermark.main"
                                           "watermark.server.http" "watermark.server.security"
                                           "watermark.server.static" "watermark.pro" "watermark.saas"
-                                          "watermark.tui" "watermark.util"] %)))
+                                          "watermark.util"] %)))
         "views and handlers go through watermark.core.api, like any other client"))
   (is (empty? (violations host #(under? ["watermark.web"] %))) "the host core doesn't know the UI exists"))
 
-(deftest the-terminal-client-stays-in-its-lane
-  (is (empty? (violations (sources "tui/src") #(and (under? ["watermark."] %) (not= 'watermark.config %))))
-      "the TUI is a REST client: it shares home discovery, nothing else"))
-
 (deftest the-open-core-names-no-commercial-code
-  (let [nses (mapcat sources ["kernel/src" "src" "web/src" "desktop/src" "tui/src" "testkit/src" "build/src"
+  (let [nses (mapcat sources ["kernel/src" "src" "web/src" "desktop/src" "testkit/src" "build/src"
                               "kernel/test" "test" "web/test" "desktop/test"])]
     (is (< 50 (count nses)))
     (is (empty? (filter #(under? ["watermark.pro" "watermark.saas"] (:ns %)) nses))
@@ -88,7 +84,7 @@
         "the open core requires nothing from the commercial editions; they plug in through registries and ports")))
 
 (deftest every-namespace-warns-on-reflection
-  (let [files (->> ["kernel/src" "src" "web/src" "desktop/src" "tui/src" "testkit/src" "build/src"
+  (let [files (->> ["kernel/src" "src" "web/src" "desktop/src" "testkit/src" "build/src"
                     "kernel/test" "test" "web/test" "desktop/test"]
                    (mapcat sources)
                    (map (comp io/file :file)))]

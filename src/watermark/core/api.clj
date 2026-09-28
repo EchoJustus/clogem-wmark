@@ -3,7 +3,7 @@
 (ns watermark.core.api
   "The Core API -- the one contract every presentation layer uses.
 
-  HTTP routes, the CLI, the TUI (through HTTP) and future GUIs call these
+  HTTP routes, the CLI, the web UI and GUI shells (through HTTP) call these
   functions; none of them touch profile files, engines or entitlements
   directly. That is the Clash-style split: a headless engine with a stable
   API, and any number of clients.

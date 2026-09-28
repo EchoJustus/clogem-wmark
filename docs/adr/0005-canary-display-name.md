@@ -2,6 +2,9 @@
 
 - **Status:** Accepted (the owner, 2026-09-27)
 - **Date:** 2026-09-27
+- **Update 2026-09-28:** `wmark-tui` was removed (ADR 0010). The CLI's
+  `profiles show` and `profiles effective` now show the display name where
+  the TUI did.
 
 ## Context
 

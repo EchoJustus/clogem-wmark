@@ -50,3 +50,38 @@
     (is (str/includes? (str err) "Not available on the community plan: Flash-frame canaries") (str err))
     (is (str/includes? (str err) "Locked features: Flash-frame canaries") (str err))
     (is (not (str/includes? (str err) "subliminal")) (str err))))
+
+(defn- cli [home & args]
+  (let [edition {:edition :community :entitlements-fn (fn [_] (features/community))}
+        err     (java.io.StringWriter.)
+        out     (with-out-str (binding [*err* err] (app/run-cli edition (into ["--home" home] args))))]
+    {:out out :err (str err)}))
+
+(deftest profiles-show-and-effective-use-display-names
+  (let [home (str (Files/createTempDirectory "wmark-cli" (make-array FileAttribute 0)))]
+    (cli home "profiles" "save" "Evidence" "--clean" "--text" "(c) Studio" "--text-mode" "canary" "--opacity" "0.7")
+    (testing "show: the stored profile, text modes by display name"
+      (let [{:keys [out]} (cli home "profiles" "show" "Evidence")]
+        (is (str/includes? out ":mode :canary") out)
+        (is (not (str/includes? out "subliminal")) out)))
+    (testing "effective: every setting, its value and where it came from"
+      (let [{:keys [out]} (cli home "profiles" "effective" "Evidence")]
+        (is (str/includes? out "Base: profile \"Evidence\"") out)
+        (is (re-find #"logo\.opacity\s+0\.7\s+from profile \"Evidence\"" out) out)
+        (is (re-find #"logo\.anchor\s+\S+\s+built-in default" out) out)
+        (is (str/includes? out "\"mode\":\"canary\"") out)
+        (is (str/includes? out "Needs wmark Pro to run: Flash-frame canaries") out)
+        (is (not (str/includes? out "subliminal")) out)))
+    (testing "effective --clean: built-in defaults only"
+      (let [{:keys [out]} (cli home "profiles" "effective" "--clean")]
+        (is (str/includes? out "Base: built-in defaults") out)
+        (is (not (str/includes? out "from profile")) out)
+        (is (not (str/includes? out "Needs wmark Pro")) out)))
+    (testing "an unknown profile is an error, never a silent fallback"
+      (let [{:keys [err]} (cli home "profiles" "effective" "Nope")]
+        (is (str/includes? err "Nope") err)))))
+
+(deftest run-takes-a-progress-mode
+  (let [home (str (Files/createTempDirectory "wmark-cli" (make-array FileAttribute 0)))]
+    (is (str/includes? (:out (cli home "run" "--help")) "--progress MODE"))
+    (is (str/includes? (:err (cli home "run" "--progress" "fancy" "x.mp4")) "must be auto, bar, lines or none"))))

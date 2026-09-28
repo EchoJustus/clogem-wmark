@@ -6,9 +6,10 @@
 # native:  native binaries on every OS, by hand (workflow_dispatch) or on a
 #          pull request labelled `native`; releases build them in release.yml.
 #          Each binary is smoke-tested for real: doctor, a render of a clip in
-#          a non-ASCII folder with the pinned FFmpeg, the web UI's assets, a
-#          wmark-tui session, the C ABI through the mock engine, the assembled
-#          bundle, and (Linux) the browser suite against the native binary.
+#          a non-ASCII folder with the pinned FFmpeg and the progress bar, the
+#          profile commands, the web UI's assets, the C ABI through the mock
+#          engine, the assembled bundle, and (Linux) the browser suite against
+#          the native binary.
 # Actions are pinned by commit SHA; Dependabot keeps the pins current.
 name: ci
 
@@ -99,7 +100,6 @@ jobs:
       - uses: DeLaGuardo/setup-clojure@6d46099eae24853c33c0482f2bb54edf4f1a4c74 # 13.7.0
         with: { cli: latest, bb: latest }
       - run: clojure -T:build native :target :engine
-      - run: clojure -T:build native :target :tui
       - name: nasm, to build FFmpeg's x86 assembly (a build tool; not shipped)
         if: matrix.platform == 'macos-x64'
         run: brew install nasm
@@ -137,7 +137,7 @@ jobs:
         shell: bash
         run: |
           cp -R dist/desktop-server "$RUNNER_TEMP/hardened"
-          codesign --force --options runtime --sign - "$RUNNER_TEMP/hardened/wmark" "$RUNNER_TEMP/hardened/wmark-tui"
+          codesign --force --options runtime --sign - "$RUNNER_TEMP/hardened/wmark"
           codesign --display --verbose=2 "$RUNNER_TEMP/hardened/wmark" 2>&1 | grep -i flags || true
           bb test/smoke/native.clj --bin "$RUNNER_TEMP/hardened" --ffmpeg "$RUNNER_TEMP/hardened/bin" --bundled true --mock "${{ matrix.lib }}"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
