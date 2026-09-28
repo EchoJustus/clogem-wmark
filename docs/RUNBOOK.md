@@ -10,7 +10,6 @@ follows the same code paths but needs a machine with the named tool (see
 | Artifact | What it is | Built from |
 |---|---|---|
 | `wmark` / `wmark.exe` | The engine: local web UI, REST API, CLI | `:engine` target |
-| `wmark-tui` | Terminal client of a running engine | `:tui` target |
 | `dist/desktop-server/` | The download: binaries, `bin/ffmpeg`, licenses, checksums | `bundle` task |
 
 All of this is declared as data in `deps.edn` under `:wmark/build-matrix`.
@@ -65,7 +64,6 @@ On WSL2, keep the clone on the Linux filesystem (`~/src/clogem-wmark`), not unde
 ```bash
 bb dev                 # engine from source; opens the web UI in your browser
 bb dev serve           # same, without opening a browser (prints the URL with its token)
-bb tui                 # terminal client; finds the running engine via <home>/runtime/server.edn
 bb dev run --logo logo.png --text "(c) Studio" clip.mp4        # CLI render
 bb dev run --dry-run --logo logo.png clip.mp4                  # spec, FFmpeg argv and filtergraph only
 bb dev doctor          # which engine and FFmpeg were found, and from where
@@ -177,7 +175,6 @@ errors. **Verified:** 20 checks.
 ### JVM uberjars (any OS)
 ```bash
 clojure -T:build uber :target :engine                   # target/wmark.jar
-clojure -T:build uber :target :tui                      # target/wmark-tui.jar
 java --enable-native-access=ALL-UNNAMED -jar target/wmark.jar
 ```
 Every target is AOT-compiled with direct linking; the web UI is inside the
@@ -187,7 +184,6 @@ engine jar. With Babashka only: `bb clojure -T:build uber :target :engine`.
 ```bash
 export GRAALVM_HOME=/path/to/graalvm-community-25     # Windows: set GRAALVM_HOME=C:\graalvm-25
 bb native                                   # = clojure -T:build native :target :engine
-bb native :target :tui                      # target/bin/wmark-tui
 target/bin/wmark doctor
 ```
 - `native` builds the uberjar, then runs `native-image -jar` with the target's
@@ -233,8 +229,8 @@ target/bin/wmark doctor
   ```
   `test/smoke/native.clj` checks `--help`, `version`, `doctor`, a real render
   of a clip in a non-ASCII folder (every frame kept), the API behind the
-  token, the sign-in redirect, the UI page and its assets, a `wmark-tui`
-  session, and a render through the C ABI. CI's `native` job runs it on
+  token, the sign-in redirect, the UI page and its assets, the progress bar,
+  `profiles save` and `profiles effective`, and a render through the C ABI. CI's `native` job runs it on
   Linux x64, Windows x64, macOS arm64 and macOS x64 (by hand, or on a pull
   request labelled `native`).
 
@@ -272,15 +268,15 @@ comparisons and render spec v1; the downloads don't ship them.
 
 ### The download (Stage 1)
 ```bash
-bb native && bb native :target :tui && bb ffmpeg
+bb native && bb ffmpeg
 bb bundle :bundle :desktop-server :ffmpeg-dir target/ffmpeg/linux-x64
 bb smoke --bin dist/desktop-server --ffmpeg dist/desktop-server/bin --bundled true
 ```
 This writes `dist/desktop-server/` with:
-- `wmark(.exe)` and `wmark-tui(.exe)`;
+- `wmark(.exe)`;
 - `bin/ffmpeg(.exe)` and `bin/ffprobe(.exe)`;
 - `licenses/`: this repository's `LICENSE` and `NOTICE`,
-  `THIRD-PARTY-wmark.txt` and `THIRD-PARTY-wmark-tui.txt` (every library in
+  `THIRD-PARTY-wmark.txt` (every library in
   the binary with its declared license and the license files it ships,
   generated from the resolved dependencies), and FFmpeg's
   `ffmpeg/COPYING.LGPLv3`, `ffmpeg/COPYING.GPLv3` and `ffmpeg/SOURCE.txt`;

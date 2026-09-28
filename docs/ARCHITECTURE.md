@@ -8,7 +8,7 @@ rewriting code. [ROADMAP.md](ROADMAP.md) maps the stages onto this structure;
 ## Components
 
 Each directory is a source root with its own alias in `deps.edn`. The
-components other repositories build on (`kernel/`, `web/`, `desktop/`, `tui/`,
+components other repositories build on (`kernel/`, `web/`, `desktop/`,
 `testkit/`, `build/`) also have their own `deps.edn`, so they can be consumed
 from git with `:deps/root`; `bb lint` keeps each one in step with its alias.
 The commercial editions (Pro modes, licenses, the hosted backend and the apps)
@@ -17,19 +17,28 @@ names or requires them.
 
 | Directory | Contents | Runs on | May depend on |
 |---|---|---|---|
-| `kernel/` | Settings schema and resolution, the render spec (v1 and v2) and its reference semantics, the rasterizer that draws v2's bitmaps (TrueType, text, the warp), keyed seeds, the PRNG, the text-mode registry, the engine protocol, the feature catalog | Any Clojure host: JVM today, ClojureDart later | malli (two namespaces), nothing else |
+| `kernel/` | Settings schema and resolution, the render spec (v1 and v2) and its reference semantics, the rasterizer that draws v2's bitmaps (TrueType, text, the warp), keyed seeds, the PRNG, the text-mode registry, the engine protocol, the feature catalog | Any Clojure host: GraalVM/JVM today, the Dart VM through ClojureDart next (ADR 0008) | malli (two namespaces), nothing else |
 | `src/` | Profile rules (`config`), the store, media, queue and rasterizer ports' local adapters, the job pipeline, the Core API, the FFmpeg and native engines, JSON REST routes | JVM | kernel |
 | `web/` | The built-in web UI: server-rendered HTML and Datastar events over SSE; vendored `datastar.js`, no npm | JVM | the Core API (src) |
-| `desktop/` | CLI, http-kit server, loopback security, sidecar mode, native-image metadata | JVM / native image | src, web |
-| `tui/` | Terminal client of a running engine (REST only) | JVM / native image | home discovery only |
+| `desktop/` | CLI (with terminal progress), http-kit server, loopback security, sidecar mode, native-image metadata | JVM / native image | src, web |
 | `testkit/` | Harnesses for code that plugs in from elsewhere: engine conformance, the store contract, golden vectors, architecture checks | JVM (tests) | src, kernel |
 | `build/` | `wmark.build`, the interpreter of the build matrix | JVM (tool) | tools.build |
-| `native/` | C ABI for native engines, a mock engine, exported JSON Schemas | C / Swift / Rust / Kotlin | nothing |
+| `native/` | C ABI for native engines, a mock engine (the test double), exported JSON Schemas | C header and mock; platform engines in their OS's language behind it (decision 3) | nothing |
+
+**The kernel grows into the core library**
+([ADR 0008](adr/0008-desktop-architecture-and-binary-size.md), accepted).
+- It is compiled for GraalVM and, through ClojureDart, for the Dart VM, so
+  Dart and Flutter programs can embed it as JVM programs do.
+- The pure logic still in `src/` moves into it behind ports: the profile
+  rules, planning, the FFmpeg plan compiler and output parsers, and the use
+  cases. New pure logic, such as the settings form model, starts there.
+- `src/`, `web/` and `desktop/` then hold the GraalVM host's adapters: I/O,
+  processes, the server, the views and the native window.
 
 ## Layers
 
 ```
- clients        web UI (Datastar) · wmark-tui · scripts · Flutter GUI (Stage 2: sidecar client)
+ clients        web UI (Datastar, in a browser or the desktop window of ADR 0008) · CLI · scripts · GUI shells (sidecar)
                     │ HTML + SSE       │ REST + SSE                │ argv
  transports     desktop: http-kit, token, Host/Origin     desktop: watermark.app (CLI)
                 saas:    function adapter + wrap-identity (OIDC)
@@ -49,10 +58,13 @@ names or requires them.
 
 - **One binary, several modes.** Run with no arguments (a double-click), the
   engine serves on loopback and opens the browser. `serve` is headless, for
-  the TUI, scripts or a GUI shell. `run` encodes from the CLI through the same
-  Core API. `doctor` explains which engine and binaries were found.
-- **The TUI is a separate program** (`wmark-tui`), a REST client, so the
-  engine binary carries no terminal code and the TUI no engine.
+  scripts or a GUI shell. `run` encodes from the CLI through the same Core
+  API, with a progress bar on a terminal. `profiles` manages profiles and
+  shows what a run would use (`effective`). `doctor` explains which engine
+  and binaries were found.
+- **One program.** The terminal client `wmark-tui` was removed
+  ([ADR 0010](adr/0010-remove-wmark-tui.md)): as a second native image it
+  weighed nearly as much as the engine, and the CLI now does what it did.
 - **External UI.** `--ui-dir` replaces the built-in UI with one served from a
   directory, like Clash's external-ui. It talks to the REST API.
 - **The routes know nothing about transport or identity.** They read the
@@ -86,9 +98,9 @@ requires made them fail, as intended.
 | The kernel is `.cljc` only and requires nothing outside itself except `clojure.string`, plus malli in the two schema namespaces | Stages 3–4: the GUI runs the kernel in-process |
 | Pro schedules are portable too | Pro modes in the GUI apps |
 | `watermark.core.*` requires no engine, media or store implementation, no OS utilities, no server code | Stage 4+: new engines don't touch orchestration |
-| `src/` requires nothing from desktop, web, Pro, SaaS, TUI or http-kit | Stage 5: the backend reuses the host core as is |
+| `src/` requires nothing from desktop, web, Pro, SaaS or http-kit | Stage 5: the backend reuses the host core as is |
 | `web/` talks to `watermark.core.api` only: no engines, stores, media, config, jobs internals, desktop, Pro or SaaS code | The same views serve the local UI and a hosted dashboard |
-| The backend doesn't use the desktop server; the TUI shares only home discovery | Lean binaries and images |
+| The backend doesn't use the desktop server | Lean binaries and images |
 
 ## Core API ↔ REST
 
@@ -135,8 +147,8 @@ see and type `canary` ([ADR 0005](adr/0005-canary-display-name.md)):
 - Every entry point accepts `canary` and resolves it to the wire id through
   `features/canonical-settings`: `schema/decode-json`, `schema/validate!` and
   the planner.
-- The CLI, the web UI (the editor and the effective table), the TUI and
-  error messages show the display name.
+- The CLI (`profiles show`, `profiles effective`, help), the web UI (the
+  editor and the effective table) and error messages show the display name.
 - API clients learn it from `/api/v1/features` (`display-name` on
   `text.mode/subliminal`). The JSON Schema titles that branch `canary`.
 
@@ -277,7 +289,7 @@ A server on 127.0.0.1 is reachable by any web page the user visits and by
 DNS-rebinding attacks. The defences, all covered by the HTTP test:
 
 - **Per-launch token.** A random 256-bit token guards `/api/*` and the
-  built-in UI (`/`, `/ui/*`). The CLI and TUI send `Authorization: Bearer`.
+  built-in UI (`/`, `/ui/*`). Scripts and GUI shells send `Authorization: Bearer`.
   The browser gets the token once via `/?token=`: the server sets an
   `HttpOnly; SameSite=Strict` cookie and redirects, which removes the token
   from the address bar. The cookie also authenticates the UI's streams.
@@ -287,7 +299,7 @@ DNS-rebinding attacks. The defences, all covered by the HTTP test:
   with `frame-ancestors 'none'` (per-page nonce for the UI); path-traversal
   guards for static files.
 - **Runtime file.** `<home>/runtime/server.edn` holds the URL and token,
-  owner-only (0600 on POSIX), so the TUI can find the server. A shutdown hook
+  owner-only (0600 on POSIX), so scripts can find the server. A shutdown hook
   removes it.
 
 **Sidecar mode for GUI shells.** `wmark serve --announce json --parent-pid <pid>`
@@ -381,7 +393,7 @@ web UI end to end, on the JVM and against the native binary, and
 | Web UI | The official Datastar SDK wire-format cases; escaping of hostile names and texts; only numbers in `data-signals`; the page's CSP nonce; token and `Datastar-Request` checks; editing with revisions, live preview and validation messages; a render followed over the queue stream to "done" and the activity log |
 | Core API | Jobs are tenant-scoped: list, cancel and subscribe |
 | Sidecar | A server started with `--parent-pid` exits when its parent ends, including a parent that was gone before the watch began |
-| CLI and TUI | `run --help`; `wmark-tui` options and exit codes, and a scripted session against a live server |
+| CLI | `run --help` and `--progress`; the progress display's bar, lines and quiet modes against a fake clock; `profiles show` and `profiles effective` (values, where each came from, locked features, canary by name); canary refused on the community plan |
 | FFmpeg discovery | `-filters`, `-encoders` and `-version` output from 6.1 and 9.0 builds (9.0 dropped a flag column) |
 | Build | The uberjar carries every component's resources; FFmpeg pins must be https with a SHA-256; licenses through parent POMs; the SDK's ABI tag matches the header |
 | Commercial editions | Tested in their own repository against this one, with the same harnesses (`testkit/`) |

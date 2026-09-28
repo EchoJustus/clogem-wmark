@@ -6,7 +6,7 @@
   A server on 127.0.0.1 is still reachable by every web page the user visits
   (via fetch/form posts) and by DNS-rebinding attacks. So:
     * a random per-launch token guards /api/* and the built-in UI (its pages
-      carry data) -- `Authorization: Bearer ..` for the CLI/TUI, an HttpOnly
+      carry data) -- `Authorization: Bearer ..` for scripts and GUI shells, an HttpOnly
       SameSite=Strict cookie for the browser;
     * the browser gets the token once, via `/?token=..`, which sets the
       cookie and redirects, dropping the token from the address bar;

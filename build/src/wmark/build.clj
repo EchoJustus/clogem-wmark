@@ -636,7 +636,8 @@
 
 (defn- target-edition
   "The edition of `t` that goes into a bundle of `edition`. A target that comes
-  in one edition only (the TUI) is edition-independent; any other must offer
+  in one edition only (a tool built the same for every edition) is
+  edition-independent; any other must offer
   the edition asked for, so a Pro bundle can never pick up a community engine."
   [{:keys [editions]} edition]
   (cond (nil? edition)                edition
@@ -668,7 +669,7 @@
   `native` (target/bin/) and FFmpeg sidecars from :ffmpeg-dir (a folder with
   the executables, or what `clojure -T:build ffmpeg` wrote):
 
-    wmark(.exe)  wmark-tui(.exe)  bin/ffmpeg(.exe)  bin/ffprobe(.exe)
+    wmark(.exe)  bin/ffmpeg(.exe)  bin/ffprobe(.exe)
     licenses/    (LICENSE, NOTICE, licenses/*, THIRD-PARTY-<artifact>.txt,
                   ffmpeg/COPYING.GPLv3 and ffmpeg/SOURCE.txt)
     SHA256SUMS   README.txt

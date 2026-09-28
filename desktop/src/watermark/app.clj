@@ -10,14 +10,17 @@
      :license-cmd (optional, Pro) (fn [home args] exit-code)}
 
   Modes: no arguments (double-click) = `ui`: serve on loopback + open the
-  browser. `serve` is the same without the browser, for the TUI, scripts and
-  GUI shells (--announce, --parent-pid). `run` encodes from the command line
-  through the same Core API. `doctor` shows how the engine was resolved."
+  browser. `serve` is the same without the browser, for scripts and GUI
+  shells (--announce, --parent-pid). `run` encodes from the command line
+  through the same Core API, with a progress bar on a terminal. `profiles`
+  manages profiles and shows what a run would use (`effective`). `doctor`
+  shows how the engine was resolved."
   (:require [clojure.data.json :as json]
             [clojure.java.io :as io]
             [clojure.pprint :as pprint]
             [clojure.string :as str]
             [clojure.tools.cli :as cli]
+            [watermark.cli.progress :as progress]
             [watermark.config :as config]
             [watermark.core.api :as api]
             [watermark.core.features :as features]
@@ -132,6 +135,9 @@
 
 (def run-options (conj settings-options
                        [nil "--dry-run" "Print the FFmpeg command and filtergraph only"]
+                       [nil "--progress MODE" "auto (a bar on a terminal, else lines) | bar | lines | none"
+                        :default :auto :parse-fn keyword
+                        :validate [progress/modes "must be auto, bar, lines or none"]]
                        ["-h" "--help" "Show this help"]))
 
 (def save-options (conj settings-options [nil "--overwrite" "Replace a profile whose name maps to the same file"]))
@@ -171,28 +177,56 @@
   (binding [*out* *err*] (apply println msg))
   code)
 
-(defn- print-provenance [{:keys [base provenance]}]
+(defn- print-provenance* [{:keys [base]}]
   (println (str "Base: " (case (:kind base)
                           :none   "built-in defaults"
                           :latest "latest (auto-saved from the previous run)"
-                          (str "profile \"" (:name base) "\""))))
+                          (str "profile \"" (:name base) "\"")))))
+
+(defn- print-provenance [{:keys [provenance] :as r}]
+  (print-provenance* r)
   (doseq [[path src] (sort-by (comp str key) provenance)
           :when (not= src :defaults)]
     (println (format "  %-28s <- %s" (str/join "." (map name path)) (name src)))))
 
-(defn- progress-printer []
-  (let [last-shown (atom -1)]
-    (fn [{:keys [type index input output fraction state error]}]
-      (case type
-        :started  (do (reset! last-shown -1)
-                      (println (format "[%d] %s -> %s" (inc index) input output)))
-        :progress (when fraction
-                    (let [pct (int (* 100 fraction))]
-                      (when (>= pct (+ @last-shown 10))
-                        (reset! last-shown pct)
-                        (println (format "    %3d%%" pct)))))
-        :finished (println (format "    %s%s" (name state) (if error (str ": " error) "")))
-        nil))))
+(defn- progress-mode
+  "The progress display for this run (watermark.cli.progress)."
+  [requested]
+  (progress/resolve-mode requested {:terminal? (progress/terminal?) :term (System/getenv "TERM")}))
+
+(defn- source-label
+  "Where an effective setting came from, as users read it."
+  [{:keys [base provenance]} path]
+  (case (get provenance path)
+    :profile   (if (= :latest (:kind base)) "from your last run" (str "from profile \"" (:name base) "\""))
+    :overrides "set here"
+    "built-in default"))
+
+(defn- leaves
+  "[path value] for every leaf of a settings map, in a stable order. Vectors
+  (text layers) are leaves: a layer replaces the lower layers' wholesale."
+  ([m] (leaves [] m))
+  ([prefix m]
+   (mapcat (fn [[k v]]
+             (let [p (conj prefix k)]
+               (if (and (map? v) (seq v)) (leaves p v) [[p v]])))
+           (sort-by (comp str key) m))))
+
+(defn- show-value [v]
+  (cond (keyword? v) (name v)
+        (or (map? v) (sequential? v)) (json/write-str v :escape-slash false :key-fn #(if (keyword? %) (name %) (str %)))
+        :else (str v)))
+
+(defn print-effective
+  "Every setting a run would use, its value and where it came from, then the
+  features the current plan doesn't include (by title)."
+  [r]
+  (print-provenance* r)
+  (doseq [[path v] (leaves (features/display-settings (:settings r)))]
+    (println (format "  %-30s %-28s %s" (str/join "." (map name path)) (show-value v) (source-label r path))))
+  (when (seq (:locked r))
+    (println (str "Needs wmark Pro to run: "
+                  (str/join ", " (map #(get-in features/catalog [% :title] (subs (str %) 1)) (:locked r)))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Commands
@@ -253,7 +287,7 @@
         0)
       :else
       (let [r (api/run-batch! sys {:tenant "local" :user "local"} (request options arguments)
-                              {:on-event (progress-printer)})]
+                              {:on-event (progress/printer (progress-mode (:progress options)) (count arguments))})]
         (if (every? #(= :done (:state %)) (:results r)) 0 1)))))
 
 (defn- cmd-doctor [sys]
@@ -282,7 +316,15 @@
           0)
 
       "show"
-      (do (pprint/pprint (api/get-profile sys ctx (first args))) 0)
+      ;; users read text modes by display name ("canary"), never by wire id
+      (do (pprint/pprint (update (api/get-profile sys ctx (first args)) :settings features/display-settings)) 0)
+
+      "effective"
+      (let [{:keys [options arguments errors]} (cli/parse-opts args [[nil "--clean" "From built-in defaults only"]])]
+        (if errors
+          (fail! 2 (str/join "\n" errors))
+          (do (print-effective (api/resolve-settings sys ctx {:profile (if (:clean options) :none (first arguments))}))
+              0)))
 
       "save"
       (let [{:keys [options arguments errors]} (cli/parse-opts args save-options)
@@ -303,7 +345,8 @@
       "rename" (do (api/rename-profile! sys ctx (first args) (second args)) 0)
       "copy"   (do (api/copy-profile! sys ctx (first args) (second args)) 0)
       "delete" (do (api/delete-profile! sys ctx (first args)) 0)
-      (fail! 2 "Usage: wmark profiles [list | show NAME | save NAME [flags] | rename OLD NEW | copy FROM TO | delete NAME]"))))
+      (fail! 2 (str "Usage: wmark profiles [list | show NAME | effective [NAME | --clean] | save NAME [flags]"
+                    " | rename OLD NEW | copy FROM TO | delete NAME]")))))
 
 (defn- usage [summary]
   (str/join "\n"
@@ -315,7 +358,7 @@
              "  ui                  Start and open the web UI (default when run without arguments)"
              "  serve               Start the local API/UI server without opening a browser"
              "  run INPUT...        Watermark files from the command line (see: wmark run --help)"
-             "  profiles ...        list | show | save | rename | copy | delete"
+             "  profiles ...        list | show | effective | save | rename | copy | delete"
              "  doctor              Show which engine and FFmpeg binaries wmark found, and why"
              "  license ...         status | activate KEY (Pro)"
              "  version"

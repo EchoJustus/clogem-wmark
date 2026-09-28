@@ -34,7 +34,7 @@
 (defn- runtime-file ^Path [^Path home] (.resolve home "runtime/server.edn"))
 
 (defn- write-runtime-file!
-  "Discovery file for local clients (the TUI): URL + token, owner-only.
+  "Discovery file for local clients (scripts, GUI shells): URL + token, owner-only.
   Same idea as Jupyter's runtime files."
   [^Path home info]
   (let [f (runtime-file home)]

@@ -2,7 +2,7 @@
 ;; SPDX-License-Identifier: EPL-2.0
 (ns watermark.config
   "Configuration profiles: CRUD, the auto-saved `latest` profile, and the
-  fallback resolution every entry point (CLI, REST, TUI, GUI) goes through.
+  fallback resolution every entry point (CLI, REST, web UI, GUI) goes through.
 
   Resolution, lowest to highest precedence:
 

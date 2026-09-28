@@ -9,8 +9,9 @@
 
   It checks what a user's first minutes need: --help, doctor, a real render
   (render spec v1, and v2 drawn by wmark itself)
-  of a clip in a non-ASCII folder, the web UI's assets and the API behind the
-  token, a wmark-tui session, and (with --mock) a render through the C ABI.
+  of a clip in a non-ASCII folder with the progress bar, the profile commands,
+  the web UI's assets and the API behind the token, and (with --mock) a render
+  through the C ABI.
   Exits 1 if any check fails."
   (:require [babashka.fs :as fs]
             [babashka.http-client :as http]
@@ -44,7 +45,6 @@
 (defn -main [& args]
   (let [opts    (into {} (map (fn [[k v]] [(keyword (subs k 2)) v]) (partition 2 args)))
         wmark   (exe (:bin opts "target/bin") (:name opts "wmark"))
-        tui     (exe (:bin opts "target/bin") "wmark-tui")
         ffdir   (str (fs/absolutize (or (:ffmpeg opts) (throw (ex-info "--ffmpeg DIR is required" {})))))
         ffmpeg  (exe ffdir "ffmpeg")
         ffprobe (exe ffdir "ffprobe")
@@ -67,8 +67,6 @@
       (check "wmark --help" (and (zero? exit) (str/includes? out "Usage: wmark")) out))
     (let [{:keys [exit out]} (run wmark "version")]
       (check (str "wmark version says " edition) (and (zero? exit) (str/includes? out (str "(" edition ")"))) out))
-    (let [{:keys [exit out]} (run tui "--help")]
-      (check "wmark-tui --help" (and (zero? exit) (str/includes? out "Usage: wmark-tui")) out))
     (let [{:keys [exit out err]} (apply run wmark (concat base ["doctor"]))]
       (check "doctor: engine ready with the bundled FFmpeg"
              (and (zero? exit) (str/includes? out "[ready]") (or (not bundled) (str/includes? out "(from app-bin)")))
@@ -88,15 +86,32 @@
         (check "render: every frame kept" (= 100 (frames ffprobe result)) (str (frames ffprobe result) " frames"))))
 
     ;; render spec v2: the kernel's TrueType reader, text rasterizer and warp run
-    ;; inside the binary, the bundled font included; FFmpeg decodes the logo
+    ;; inside the binary, the bundled font included; FFmpeg decodes the logo.
+    ;; --progress bar: the line redrawn in place, as on a terminal
     (let [out2 (str (fs/path work "out v2"))
-          {:keys [exit out err]} (apply run wmark (concat base ["--render-spec" "2" "run" "--logo" logo
-                                                                 "--text" "(c) Studio — ©" "-o" out2 clip]))
+          {:keys [exit out err]} (apply run wmark (concat base ["--render-spec" "2" "run" "--progress" "bar"
+                                                                 "--logo" logo "--text" "(c) Studio — ©" "-o" out2 clip]))
           result (str (fs/path out2 "clip é_wm.mp4"))]
       (check "render spec v2: wmark draws the flip and the text, FFmpeg composites"
              (and (zero? exit) (fs/exists? result)) (str out err))
+      (check "run --progress bar: one line redrawn in place, then the outcome"
+             ;; ASCII only: how a console encodes the file name varies by OS
+             (and (str/includes? out "\r[1/1]  clip ") (str/includes? out "%  ")
+                  (re-find #"  done  in \d+:\d\d" out)) out)
       (when (fs/exists? result)
         (check "render spec v2: every frame kept" (= 100 (frames ffprobe result)) (str (frames ffprobe result) " frames"))))
+
+    ;; the profile commands the terminal client used to offer, now in wmark itself
+    (let [{:keys [exit out err]} (apply run wmark (concat base ["profiles" "save" "Smoke test" "--clean"
+                                                                 "--opacity" "0.5" "--text-mode" "canary" "--text" "x"]))]
+      (check "profiles save" (and (zero? exit) (str/includes? out "Saved \"Smoke test\"")) (str out err)))
+    (let [{:keys [exit out err]} (apply run wmark (concat base ["profiles" "effective" "Smoke test"]))]
+      (check "profiles effective: values, where each came from, what needs Pro, canary by name"
+             (and (zero? exit) (re-find #"logo\.opacity\s+0\.5\s+from profile \"Smoke test\"" out)
+                  (str/includes? out "built-in default") (str/includes? out "canary")
+                  (not (str/includes? out "subliminal"))
+                  (or (not= "community" edition) (str/includes? out "Needs wmark Pro to run")))
+             (str out err)))
 
     (let [srv   (apply p/process {:err :string} wmark (concat base ["serve" "--announce" "json"]))
           line  (.readLine ^java.io.BufferedReader (io/reader (:out srv)))
@@ -118,8 +133,6 @@
           (let [r (get! asset)]
             (check (str "asset " asset " is in the binary") (and (= 200 (:status r)) (< 1000 (count (str (:body r)))))
                    (:status r))))
-        (let [{:keys [exit out]} (run {:in "new Smoke test\nlist\nquit\n"} tui "--url" url "--token" token)]
-          (check "wmark-tui session: create and list a profile" (and (zero? exit) (str/includes? out "Smoke test")) out))
         (finally (p/destroy-tree srv))))
 
     (when-let [mock (:mock opts)]

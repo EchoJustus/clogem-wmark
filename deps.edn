@@ -14,7 +14,6 @@
 ;;   web/      built-in web UI: server-rendered HTML + Datastar (vendored
 ;;             datastar.js, no npm)                                (own deps.edn)
 ;;   desktop/  CLI, http-kit server, loopback security (needs web/) (own deps.edn)
-;;   tui/      terminal client                                     (own deps.edn)
 ;;   testkit/  conformance harness, store contract, golden vectors (own deps.edn)
 ;;   build/    wmark.build, the interpreter of the matrix below     (own deps.edn)
 ;;   native/   C ABI for native engines (+ a mock used by tests)
@@ -49,13 +48,11 @@
   :desktop  {:extra-paths ["desktop/src" "desktop/resources"]
              :extra-deps  {http-kit/http-kit     {:mvn/version "2.8.1"}      ; Apache-2.0
                            org.clojure/tools.cli {:mvn/version "1.4.256"}}}
-  :tui      {:extra-paths ["tui/src"]
-             :extra-deps  {org.clojure/tools.cli {:mvn/version "1.4.256"}}}
 
   ;; -- Development -----------------------------------------------------------
   ;; A C compiler enables the native-engine tests; ffmpeg enables conformance.
   :dev      {:extra-paths ["testkit/src" "build/src" "kernel/test" "test" "web/test" "desktop/test"
-                           "web/src" "web/resources" "desktop/src" "desktop/resources" "tui/src"]
+                           "web/src" "web/resources" "desktop/src" "desktop/resources"]
              :extra-deps  {http-kit/http-kit     {:mvn/version "2.8.1"}
                            org.clojure/tools.cli {:mvn/version "1.4.256"}}
              :jvm-opts    ["--enable-native-access=ALL-UNNAMED"]}
@@ -88,24 +85,16 @@
                            ;; exit handlers in executables by default
                            "--features=clj_easy.graal_build_time.InitClojureClasses"
                            "--enable-native-access=ALL-UNNAMED" ; native engines (FFM)
-                           "-H:+ReportExceptionStackTraces"]}
-   :tui    {:doc          "Terminal client of a running engine (one edition: goes into every bundle)"
-            :toolchain    :jvm
-            :aliases      [:tui]
-            :editions     [:community]
-            :main         {:community watermark.tui.main}
-            :artifact     {:community "wmark-tui"}
-            :native-image ["--no-fallback" "-march=compatibility"
-                           "--features=clj_easy.graal_build_time.InitClojureClasses"]}}
+                           "-H:+ReportExceptionStackTraces"]}}
 
   :bundles
-  {:desktop-server {:doc       "Engine + TUI + FFmpeg sidecar, unzip and run"
+  {:desktop-server {:doc       "Engine + FFmpeg sidecar, unzip and run"
                     :platforms [:windows :macos :linux]
-                    :targets   [:engine :tui]
+                    :targets   [:engine]
                     :sidecars  [:ffmpeg :ffprobe]}}
 
   :stages
-  {1 {:name "WebServer + TUI for Windows, then macOS" :bundles [:desktop-server]}}
+  {1 {:name "WebServer for Windows, then macOS" :bundles [:desktop-server]}}
 
   ;; GraalVM releases native builds must use where the latest 25.x won't do.
   ;; GraalVM 25.0.2 dropped macOS x64, and Intel Macs stay supported, so

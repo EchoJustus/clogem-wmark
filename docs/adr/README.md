@@ -14,6 +14,10 @@ owner first (CLAUDE.md, "Decisions").
 | [0005](0005-canary-display-name.md) | The canary mode keeps its wire id `subliminal`; users see "canary" | Accepted |
 | [0006](0006-render-spec-v2-host-rendered-overlays.md) | Render spec v2: the host renders, engines only composite | Accepted |
 | [0007](0007-intel-macs-on-graalvm-25-0-1.md) | Intel Macs stay supported, on GraalVM 25.0.1 | Accepted |
+| [0008](0008-desktop-architecture-and-binary-size.md) | Hexagonal architecture: a `.cljc` core library for GraalVM and the Dart VM; the open core on GraalVM with the Datastar UI in a webview window; ClojureDart GUI apps, sidecar then in-process; a size diet; Clojure first | Accepted |
+| [0009](0009-community-distribution-through-package-managers.md) | The community edition through package managers: Scoop, winget, a Homebrew tap, AppImage, .deb/.rpm first | Proposed |
+| [0010](0010-remove-wmark-tui.md) | Remove `wmark-tui`; the CLI takes over its useful parts and gains a progress bar | Accepted |
+| [0011](0011-web-ui-product-overhaul.md) | The web UI as a product: design system, a schema-generated settings form, live preview | Proposed |
 
 New records copy this shape: **Status**, **Context**, **Decision**,
 **Consequences**, **Alternatives**, **Sources** (with the date facts were

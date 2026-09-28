@@ -35,11 +35,11 @@ pinned commit. This repository never names, requires or contains their code.
 ## 2. Architecture: the Clash model
 
 It is one headless engine with a stable API, and interchangeable clients.
-Clients: the built-in web UI (Datastar), the CLI, `wmark-tui`, scripts, GUI
+Clients: the built-in web UI (Datastar), the CLI, scripts, GUI
 shells (sidecar mode) and hosted APIs built on the same core.
 
 ```
- clients        web UI (Datastar) · wmark-tui · CLI · GUI shells · hosted APIs
+ clients        web UI (Datastar) · CLI · GUI shells · hosted APIs
  transports     desktop: http-kit + token/Host/Origin guards   hosted: an identity middleware
  contract       watermark.server.routes (JSON REST /api/v1) + watermark.web.handler (/ and /ui/*)
                     └─► watermark.core.api   (every fn takes (sys ctx ...))
@@ -51,16 +51,15 @@ shells (sidecar mode) and hosted APIs built on the same core.
 
 | Directory | Role | Language / runs on |
 |---|---|---|
-| `kernel/` | Portable domain kernel: settings schema and resolution, render spec (v1, v2) and reference semantics, the v2 rasterizer (TrueType, text, warp), keyed seeds, SplitMix64 PRNG, text-mode registry, `VideoEngine` protocol, feature catalog | `.cljc` only: JVM now, ClojureDart later |
+| `kernel/` | The core library's start (decision 11): settings schema and resolution, render spec (v1, v2) and reference semantics, the v2 rasterizer (TrueType, text, warp), keyed seeds, SplitMix64 PRNG, text-mode registry, `VideoEngine` protocol, feature catalog | `.cljc` only: GraalVM/JVM now, the Dart VM through ClojureDart (Track B) |
 | `src/` | Host core: profile rules, store/media/queue ports and local adapters, job pipeline, Core API, FFmpeg and native engines, REST routes | JVM |
 | `web/` | Built-in web UI: server-rendered HTML plus Datastar over SSE (vendored `datastar.js`, no npm) | JVM |
 | `desktop/` | CLI, http-kit server, loopback security, sidecar mode, native-image metadata | JVM / GraalVM |
-| `tui/` | Terminal client over REST | JVM / GraalVM |
 | `native/` | C ABI `wmark_engine.h`, mock engine, exported JSON Schemas | C |
 | `testkit/` | Harnesses for code that plugs in from elsewhere: conformance, store contract, golden vectors, architecture checks | JVM (tests) |
 | `build/` | `wmark.build`, the interpreter of the build matrix | JVM (tool) |
 
-`kernel/`, `web/`, `desktop/`, `tui/`, `testkit/` and `build/` each have a
+`kernel/`, `web/`, `desktop/`, `testkit/` and `build/` each have a
 `deps.edn` so other repositories can consume them from git with `:deps/root`.
 `bb lint` fails if one drifts from its alias in the root `deps.edn`.
 
@@ -90,7 +89,7 @@ its own matrix.
      JS build, ever.
    - `datastar.js` 1.0.4 is vendored and pinned by SHA-256; free MIT core
      only. Datastar Pro's license forbids use in open-source projects.
-   - JSON REST `/api/v1` stays the contract for the TUI, GUIs, scripts and
+   - JSON REST `/api/v1` stays the contract for GUIs, scripts and
      external UIs (`--ui-dir`).
 2. **No jank for now.**
    - Keep the native surface small instead, with render spec v2 (ADR 0006):
@@ -107,9 +106,11 @@ its own matrix.
      positions and frames, in their native APIs (Swift/AVFoundation,
      Kotlin/Media3; FFmpeg's `overlay`). No engine warps or typesets, so an
      LGPL FFmpeg is fully capable (owner, 2026-09-27).
-   - A Rust/wgpu effects core only if a trigger fires: pixel-identical output
+   - No Rust/wgpu effects core: Clojure first (decision 9) withdrew it
+     (owner, 2026-09-28). If one of its triggers fires (pixel-identical output
      across platforms, marks warped onto tracked content, or engine-parity
-     costs exceeding the core's cost.
+     costs exceeding a core's cost), the answer has to be found within
+     decision 9.
 3. **Engines per platform:** FFmpeg on Windows, Linux and servers;
    AVFoundation/Metal on Apple; Media3 first on Android. All behind the same
    protocol and C ABI.
@@ -140,6 +141,39 @@ its own matrix.
      states, no GPL or nonfree parts, no library outside macOS), and a test
      keeps every release platform on an LGPL pin.
    - GPL builds are only a development variant (`:variant :gpl`).
+9. **Clojure first** (owner, 2026-09-28; ADR 0008). Our primary language stays
+   Clojure, whatever hosts the app. This is an invariant for long-term
+   maintainability.
+   - Product code is written in Clojure dialects: Clojure on the JVM and in
+     native images, and ClojureScript or ClojureDart where a host needs them.
+   - We never write TypeScript, JavaScript or Rust.
+   - Outside the rule:
+     - third-party code we build but don't write (FFmpeg, a webview library);
+     - the C ABI header and its test double;
+     - platform engines behind the C ABI where an OS offers no other route
+       (decision 3), kept to compositing (ADR 0006).
+   - A desktop shell or GUI proposal that needs Rust or TypeScript is out,
+     however small the glue (Tauri needs a Rust crate).
+10. **`wmark-tui` is removed** (owner, 2026-09-28; ADR 0010). It was a
+    57 MB native image for a line-mode REST client. `wmark` took over what
+    it did well (`profiles effective`, display names in `profiles show`) and
+    gained a progress bar for `run`. The code is at `v0.1.0-rc.1`.
+11. **Hexagonal architecture around a dual-target core library** (owner,
+    2026-09-28; ADR 0008, accepted).
+    - **The core library** is `.cljc`, compiled for GraalVM (CLI, server, a
+      JVM library) and for the Dart VM by ClojureDart (a Dart package and a
+      Dart CLI), for us and for third parties. It starts as `kernel/`. The
+      pure logic in `src/` (profile rules, planning, the FFmpeg plan
+      compiler and parsers, the use cases) moves in behind ports, and new
+      pure logic (the settings form model, the preview's planning) starts
+      there.
+    - **The open core's host** stays GraalVM: the CLI, the local server and
+      the Datastar UI (modernized, ADR 0011), in a thin webview window
+      through FFM, with browser fallbacks.
+    - **The GUI apps** (stages 2–4) are ClojureDart and Flutter: first a
+      sidecar client of the hidden engine over REST and SSE, then the core
+      library in-process on the Dart VM with Dart adapters and no GraalVM.
+      No single webview window for every edition: the owner rejected it.
 
 ## 4. Invariants (enforced by tests where marked; never weaken one to make a test pass)
 
@@ -155,6 +189,11 @@ its own matrix.
 - **Pure over clever.** Add no dependency without a written reason. Prefer a
   small function we own (we write the Datastar SSE format ourselves, about 60
   lines).
+- **Clojure first** (decision 9). Code we write is Clojure, ClojureScript or
+  ClojureDart. We never write TypeScript, JavaScript or Rust.
+- **Bytes count.** Every download carries what we add. A new native image,
+  bundled library or asset needs its size measured and stated in the change
+  (ADR 0008).
 
 **Kernel (tested by `architecture_test`)**
 - `.cljc` only. It requires nothing outside the kernel except
@@ -169,6 +208,18 @@ its own matrix.
 - Golden vectors (`kernel/test/golden`) pin outputs for Dart, Swift and Rust
   ports. Regenerate them (`WMARK_UPDATE_GOLDEN=1`) only for an intended
   change, and review the diff.
+
+**Core library portability** (decision 11; reviewed now, tested on the Dart
+VM once M3a runs it in CI)
+- Runtime-specific behaviour lives in small host primitives with one
+  `#?(:clj … :cljd …)` branch per runtime: `watermark.util.num` (numbers and
+  their formatting), `watermark.core.seeds` (HMAC), `watermark.raster`
+  (SHA-256), `watermark.raster.text` (code points). Elsewhere, reader
+  conditionals carry only type hints and the reflection flag.
+- No `format`, `java.*` or ratios outside those primitives, and only regular
+  expressions both runtimes read the same way.
+- Logic moving into the library brings golden vectors with it (FFmpeg argv
+  and filtergraphs, the form model), and both runtimes must match them.
 
 **Rendering**
 - **The render spec is engine-neutral.** Engines never re-read settings or
@@ -202,7 +253,7 @@ its own matrix.
 **Orchestration and ports (tested)**
 - `watermark.core.*` requires no engine, media or store implementation, no OS
   utilities, and no server code.
-- `src/` requires nothing from desktop, web or the TUI.
+- `src/` requires nothing from desktop or web.
 - `web/` talks to `watermark.core.api` only.
 - Every Core API function takes `(sys ctx ...)`, and `ctx` carries the tenant
   and user. Jobs are tenant-scoped (list, cancel and subscribe filter on
@@ -307,8 +358,7 @@ bb test          # all tests (C compiler and FFmpeg groups skip themselves if ab
 bb lint          # build matrix and component deps.edn files vs repository
 bb e2e           # Chromium smoke test of the web UI (ffmpeg + Python Playwright)
 bb dev           # engine from source, opens the web UI     bb dev doctor | bb dev run ...
-bb tui           # terminal client
-bb native        # GraalVM binary for this OS (GRAALVM_HOME)  bb native :target :tui
+bb native        # GraalVM binary for this OS (GRAALVM_HOME)
 bb ffmpeg        # the pinned FFmpeg for this OS -> target/ffmpeg/<platform> (SHA-256 verified)
 bb bundle :bundle :desktop-server :ffmpeg-dir target/ffmpeg/<platform>
 bb smoke --bin target/bin --ffmpeg target/ffmpeg/<platform>/bin [--mock LIB] [--bundled true]
@@ -334,50 +384,90 @@ clojure -M:dev:test -n watermark.web.sse-test               # one namespace
 | Stages, decisions, assessments | `docs/ROADMAP.md`, `docs/adr/` |
 | Contributing, DCO, license headers | `CONTRIBUTING.md` |
 
-## 8. Next work, in order (Phase 3)
+## 8. Next work, in order
 
-M1 → M2 → the kernel under ClojureDart (it waits for M2's kernel changes).
-M4 starts after M1 and once the v2 spec schema is frozen. Each milestone ends
-with its exit criteria met, the docs updated and a short status report.
+**Now: productization and UX** (owner, 2026-09-28; ROADMAP, "Decisions for
+productization"). The MVP engine is validated by `v0.1.0-rc.1`.
+- **P1 first:** the records and the cleanup, in one pull request for the
+  owner's review. No UI code until the owner approves it.
+- **Then two tracks in parallel:** Track A, the open core's product; Track
+  B, M3 restarted as the core library on the Dart VM.
+- Each milestone ends with its tests green, the docs updated and a short
+  status report.
 
-1. **M1 · CI/CD.** Built in PR #1 (merged): native builds and smoke tests on
-   every OS (the e2e suite against the Linux binary), the release and SDK
-   workflows on tags from `main`, FFmpeg pinned per OS with its license and
-   source note, and third-party notices from the resolved dependencies.
-   - Code signing is deferred (decision 6); the signing jobs stay frozen.
-   - Exit: a `vX.Y.Z-rc` tag on `main` produces a draft release with unsigned,
-     checksummed, Sigstore-signed and attested bundles for Windows x64,
-     macOS arm64 and Linux x64, each smoke-tested on a clean runner. The
-     owner starts it: a pushed tag, or **Run workflow** on the `release`
-     workflow in the web UI, which tags `main` itself (RUNBOOK, "Releases").
-2. **M2 · Render spec v2: the host renders, engines composite**
-   (ENGINE.md, "Render spec v2"; decision 2; ADR 0006, accepted). Built in
-   PR #5:
-   - the kernel's `watermark.render.v2` (what to draw, `assemble`,
-     `draw-at`) and `watermark.raster.*` (TrueType, text, colours, the
-     warp; `bitmap-id`), the `Rasterizer` port and its local adapter, the
-     bundled Fira Sans Bold (OFL);
-   - FFmpeg composites with `overlay` only (`required-filters-v2`), decodes
-     stills, and an LGPL build is a complete engine; the job pipeline and
-     `--render-spec` choose the version;
-   - `native/render-spec-v2.schema.json`, `kernel/test/golden/render-v2.edn`;
-   - the C ABI 2 under a written compatibility rule; the C mock composites
-     v2;
-   - Exit met: the pinned LGPL FFmpeg and the C mock pass v2 conformance on
-     real frames.
-   - The LGPL pins for every platform, and bundling them (ADR 0001), came
-     with the release preparation (decision 8).
-3. **M3 · The kernel under ClojureDart.** Paused (owner, 2026-09-27): a
-   Windows release comes first. It compiles and passes
-   `kernel/test/golden/*.edn` in Dart: the `util/num` `:cljd` branches,
-   HMAC-SHA256 through `package:crypto`, and malli or the schema fallback.
-   GUI clients drive the engine as a sidecar
-   (`serve --announce json --parent-pid`) over the unchanged REST and SSE API.
-4. **M4 · Port contracts for hosting** (`testkit/`, modelled on
-   `store-contract`); the local adapters must pass them:
-   - `JobQueue`: at-least-once delivery with leases, idempotent completion,
-     cancel, per-job ordered progress, tenant isolation, a dead-letter path;
-   - `MediaIO`: put, get, stat, delete, presigned URLs, size and type limits,
-     tenant-scoped keys.
-   Hosted adapters are built against these suites. FFmpeg never receives
-   arbitrary URLs: media is downloaded to scratch first.
+**P1 · Records and cleanup** (this phase's first pull request):
+- ADRs 0008 (hexagonal architecture, accepted), 0009 (package managers),
+  0010 (TUI removed) and 0011 (the web UI as a product);
+- the TUI removed, and the CLI's `profiles effective` and progress bar.
+
+**Track A: the open core's product** (the GraalVM host)
+1. **P2 · Design system and app shell** (ADR 0011, sections 1–2): CSS
+   tokens, light and dark themes, the rail, workbench and queue layout.
+   Screenshots go with the pull request.
+2. **P3 · The settings form** (ADR 0011, section 3):
+   - generated from the schema, after adding titles, descriptions and
+     categories to it;
+   - the form model is a pure function in the core library, and the API
+     serves it as JSON too, for the GUI apps;
+   - click to edit, enums as `<select>`, text layers as cards, provenance
+     badges and reset;
+   - saved one path at a time with `if-rev`.
+3. **P4 · Files and live preview** (ADR 0011, sections 4–5):
+   - the logo picker and upload (content-addressed assets);
+   - the server-side video picker;
+   - `api/preview` with a REST route and the engine's preview capability,
+     with a conformance test that frame n of a preview equals frame n of a
+     render.
+4. **P5 · The desktop window** (ADR 0008, section 2): a spike on all four
+   platforms, then the build, with the fallbacks (browser app mode, then
+   the default browser). The browser suite also runs in WebKit.
+5. **P6 · The size diet** (ADR 0008, section 4), each step measured:
+   - `-Os`, after a check that host-side drawing isn't slower in a way users
+     notice;
+   - shared-library FFmpeg, then a trimmed LGPL build from the signed
+     source;
+   - a size budget in CI.
+6. **P7 · Package managers, Tier 1** (ADR 0009): Scoop, winget, a Homebrew
+   tap, AppImage, .deb and .rpm, generated from `SHA256SUMS` by the release
+   workflow. The owner provides the repositories and credentials.
+
+**Track B: M3 restarted, the core library on the Dart VM** (ADR 0008)
+1. **M3a · The kernel on the Dart VM:** ClojureDart and the Dart SDK pinned
+   (by full commit SHA and version), the kernel compiled for the Dart VM, and
+   `kernel/test/golden/*.edn` passing there in CI: the `util/num` `:cljd`
+   branches, HMAC-SHA256 through `package:crypto`, and malli or a small
+   validator of our own driven by the same schema data.
+2. **M3b · The GUI apps' sidecar shell** (Phase 1), built with the commercial
+   editions. The core's part: `serve --announce json --parent-pid` stays
+   stable, and the form model and preview routes of P3–P4 serve it.
+3. **M3c · Pure host logic into the library,** behind new ports (process
+   runner, files, clock, HMAC): the profile rules, planning, the FFmpeg plan
+   compiler and parsers, the use cases. Golden vectors grow to cover argv,
+   filtergraphs and the form model, on both runtimes.
+4. **M3d · The Dart adapters and the Dart CLI** (`dart:io` files,
+   `Process.start` for FFmpeg), with a conformance run on real frames. GUI
+   apps then embed the library in-process (Phase 2).
+
+**Done before:**
+- **M1 · CI/CD** (PR #1). Its exit was met by `v0.1.0-rc.1` (2026-09-27): a
+  draft release with unsigned, checksummed, Sigstore-signed and attested
+  bundles for every platform, each smoke-tested on a clean runner.
+  - The owner starts a release with a pushed tag, or with **Run workflow**
+    on `release` in the web UI (RUNBOOK, "Releases").
+  - Code signing stays deferred (decision 6).
+- **M2 · Render spec v2** (PR #5; ADR 0006; decision 2).
+  - The kernel draws every bitmap, and engines only composite.
+  - Exit met: the pinned LGPL FFmpeg and the C mock pass v2 conformance on
+    real frames.
+  - LGPL pins for every platform were added with the release (decision 8).
+
+**Later:**
+- **M4 · Port contracts for hosting** (`testkit/`, modelled on
+  `store-contract`); the local adapters must pass them:
+  - `JobQueue`: at-least-once delivery with leases, idempotent completion,
+    cancel, per-job ordered progress, tenant isolation, a dead-letter path;
+  - `MediaIO`: put, get, stat, delete, presigned URLs, size and type limits,
+    tenant-scoped keys.
+
+  Hosted adapters are built against these suites. FFmpeg never receives
+  arbitrary URLs: media is downloaded to scratch first. M4 follows Track A.

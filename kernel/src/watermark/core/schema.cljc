@@ -3,9 +3,9 @@
 (ns watermark.core.schema
   "Domain schema for watermark settings.
 
-  .cljc on purpose: the ClojureScript SPA validates forms with exactly these
-  rules, and `json-schema` serves the same definition to any other UI (the
-  TUI, a future web dashboard) over the API.
+  .cljc on purpose: the kernel runs on every host, and `json-schema` serves
+  the same definition to every UI over the API (the web UI's settings form,
+  GUI shells, scripts).
 
   The *shapes* of Pro modes live here, in the open core, so the community UI
   can render them as locked (\"Pro\") controls; their *implementations* live in
