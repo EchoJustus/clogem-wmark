@@ -2,7 +2,9 @@
 
 - **Status:** Proposed. The owner reviews this direction before the UI is
   rebuilt (2026-09-28: "Hold off on writing the massive UI refactoring code
-  until I approve the architectural direction").
+  until I approve the architectural direction"). The owner has since
+  confirmed that the Datastar UI is modernized for the open core
+  (ADR 0008, accepted); this record is its design.
 - **Date:** 2026-09-28
 
 ## Context
@@ -113,6 +115,12 @@
   the form with no UI change.
   - The schema gains a human `title` and `description` per setting, and a
     `category`. Today it has enums, bounds and `x-tier` only.
+- **One form model for every UI** (ADR 0008, section 1). A pure function in
+  the core library turns the schema, the effective settings and their
+  provenance into one row per setting: path, title, description, control
+  kind, enum options with display names, locks and source. The Datastar
+  views render it as HTML; the API also serves it as JSON, so a GUI app
+  renders the same rows with its own widgets.
 - **Flattened rows, in the style of VS Code.** Each leaf is a row showing:
   - its title, and its path (`logo.opacity`, `texts.0.mode`) in small type;
   - a one-line description;
@@ -193,6 +201,10 @@ scheduled text are visible at the frames where they land.
    overlay graph, and writes a single PNG (`-frames:v 1`);
 4. stores it in `<home>/work/previews/` under a random id, served
    token-protected at `/ui/preview/<id>.png`.
+
+The same function has a REST route under `/api/v1`, so GUI apps driving the
+engine as a sidecar (ADR 0008, section 3) show exactly the frames the
+Datastar UI shows. Steps 1 and 2 are pure and live in the core library.
 
 **What users see.**
 - The UI patches the `<img>` element when a new frame is ready. Edits are

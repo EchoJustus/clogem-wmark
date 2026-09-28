@@ -51,7 +51,7 @@ shells (sidecar mode) and hosted APIs built on the same core.
 
 | Directory | Role | Language / runs on |
 |---|---|---|
-| `kernel/` | Portable domain kernel: settings schema and resolution, render spec (v1, v2) and reference semantics, the v2 rasterizer (TrueType, text, warp), keyed seeds, SplitMix64 PRNG, text-mode registry, `VideoEngine` protocol, feature catalog | `.cljc` only: JVM now, ClojureDart later |
+| `kernel/` | The core library's start (decision 11): settings schema and resolution, render spec (v1, v2) and reference semantics, the v2 rasterizer (TrueType, text, warp), keyed seeds, SplitMix64 PRNG, text-mode registry, `VideoEngine` protocol, feature catalog | `.cljc` only: GraalVM/JVM now, the Dart VM through ClojureDart (Track B) |
 | `src/` | Host core: profile rules, store/media/queue ports and local adapters, job pipeline, Core API, FFmpeg and native engines, REST routes | JVM |
 | `web/` | Built-in web UI: server-rendered HTML plus Datastar over SSE (vendored `datastar.js`, no npm) | JVM |
 | `desktop/` | CLI, http-kit server, loopback security, sidecar mode, native-image metadata | JVM / GraalVM |
@@ -158,6 +158,22 @@ its own matrix.
     57 MB native image for a line-mode REST client. `wmark` took over what
     it did well (`profiles effective`, display names in `profiles show`) and
     gained a progress bar for `run`. The code is at `v0.1.0-rc.1`.
+11. **Hexagonal architecture around a dual-target core library** (owner,
+    2026-09-28; ADR 0008, accepted).
+    - **The core library** is `.cljc`, compiled for GraalVM (CLI, server, a
+      JVM library) and for the Dart VM by ClojureDart (a Dart package and a
+      Dart CLI), for us and for third parties. It starts as `kernel/`. The
+      pure logic in `src/` (profile rules, planning, the FFmpeg plan
+      compiler and parsers, the use cases) moves in behind ports, and new
+      pure logic (the settings form model, the preview's planning) starts
+      there.
+    - **The open core's host** stays GraalVM: the CLI, the local server and
+      the Datastar UI (modernized, ADR 0011), in a thin webview window
+      through FFM, with browser fallbacks.
+    - **The GUI apps** (stages 2–4) are ClojureDart and Flutter: first a
+      sidecar client of the hidden engine over REST and SSE, then the core
+      library in-process on the Dart VM with Dart adapters and no GraalVM.
+      No single webview window for every edition: the owner rejected it.
 
 ## 4. Invariants (enforced by tests where marked; never weaken one to make a test pass)
 
@@ -192,6 +208,18 @@ its own matrix.
 - Golden vectors (`kernel/test/golden`) pin outputs for Dart, Swift and Rust
   ports. Regenerate them (`WMARK_UPDATE_GOLDEN=1`) only for an intended
   change, and review the diff.
+
+**Core library portability** (decision 11; reviewed now, tested on the Dart
+VM once M3a runs it in CI)
+- Runtime-specific behaviour lives in small host primitives with one
+  `#?(:clj … :cljd …)` branch per runtime: `watermark.util.num` (numbers and
+  their formatting), `watermark.core.seeds` (HMAC), `watermark.raster`
+  (SHA-256), `watermark.raster.text` (code points). Elsewhere, reader
+  conditionals carry only type hints and the reflection flag.
+- No `format`, `java.*` or ratios outside those primitives, and only regular
+  expressions both runtimes read the same way.
+- Logic moving into the library brings golden vectors with it (FFmpeg argv
+  and filtergraphs, the form model), and both runtimes must match them.
 
 **Rendering**
 - **The render spec is engine-neutral.** Engines never re-read settings or
@@ -359,42 +387,66 @@ clojure -M:dev:test -n watermark.web.sse-test               # one namespace
 ## 8. Next work, in order
 
 **Now: productization and UX** (owner, 2026-09-28; ROADMAP, "Decisions for
-productization"). The MVP engine is validated by `v0.1.0-rc.1`, so M3 is
-paused.
-- The UI rework waits for the owner to approve ADRs 0008 and 0011.
+productization"). The MVP engine is validated by `v0.1.0-rc.1`.
+- **P1 first:** the records and the cleanup, in one pull request for the
+  owner's review. No UI code until the owner approves it.
+- **Then two tracks in parallel:** Track A, the open core's product; Track
+  B, M3 restarted as the core library on the Dart VM.
 - Each milestone ends with its tests green, the docs updated and a short
   status report.
 
-1. **P1 · Records and cleanup** (this phase's first pull request):
-   - ADRs 0008 (desktop architecture and binary size), 0009 (package
-     managers), 0010 (TUI removed) and 0011 (the web UI as a product);
-   - the TUI removed, and the CLI's `profiles effective` and progress bar.
-2. **P2 · Design system and app shell** (ADR 0011, sections 1–2): CSS
+**P1 · Records and cleanup** (this phase's first pull request):
+- ADRs 0008 (hexagonal architecture, accepted), 0009 (package managers),
+  0010 (TUI removed) and 0011 (the web UI as a product);
+- the TUI removed, and the CLI's `profiles effective` and progress bar.
+
+**Track A: the open core's product** (the GraalVM host)
+1. **P2 · Design system and app shell** (ADR 0011, sections 1–2): CSS
    tokens, light and dark themes, the rail, workbench and queue layout.
    Screenshots go with the pull request.
-3. **P3 · The settings form** (ADR 0011, section 3):
+2. **P3 · The settings form** (ADR 0011, section 3):
    - generated from the schema, after adding titles, descriptions and
      categories to it;
+   - the form model is a pure function in the core library, and the API
+     serves it as JSON too, for the GUI apps;
    - click to edit, enums as `<select>`, text layers as cards, provenance
      badges and reset;
    - saved one path at a time with `if-rev`.
-4. **P4 · Files and live preview** (ADR 0011, sections 4–5):
+3. **P4 · Files and live preview** (ADR 0011, sections 4–5):
    - the logo picker and upload (content-addressed assets);
    - the server-side video picker;
-   - `api/preview` and the engine's preview capability, with a conformance
-     test that frame n of a preview equals frame n of a render.
-5. **P5 · The desktop window** (ADR 0008): a spike on all four platforms,
-   then the build, with the fallbacks (browser app mode, then the default
-   browser). The browser suite also runs in WebKit.
-6. **P6 · The size diet** (ADR 0008), each step measured:
+   - `api/preview` with a REST route and the engine's preview capability,
+     with a conformance test that frame n of a preview equals frame n of a
+     render.
+4. **P5 · The desktop window** (ADR 0008, section 2): a spike on all four
+   platforms, then the build, with the fallbacks (browser app mode, then
+   the default browser). The browser suite also runs in WebKit.
+5. **P6 · The size diet** (ADR 0008, section 4), each step measured:
    - `-Os`, after a check that host-side drawing isn't slower in a way users
      notice;
    - shared-library FFmpeg, then a trimmed LGPL build from the signed
      source;
    - a size budget in CI.
-7. **P7 · Package managers, Tier 1** (ADR 0009): Scoop, winget, a Homebrew
+6. **P7 · Package managers, Tier 1** (ADR 0009): Scoop, winget, a Homebrew
    tap, AppImage, .deb and .rpm, generated from `SHA256SUMS` by the release
    workflow. The owner provides the repositories and credentials.
+
+**Track B: M3 restarted, the core library on the Dart VM** (ADR 0008)
+1. **M3a · The kernel on the Dart VM:** ClojureDart and the Dart SDK pinned
+   (by full commit SHA and version), the kernel compiled for the Dart VM, and
+   `kernel/test/golden/*.edn` passing there in CI: the `util/num` `:cljd`
+   branches, HMAC-SHA256 through `package:crypto`, and malli or a small
+   validator of our own driven by the same schema data.
+2. **M3b · The GUI apps' sidecar shell** (Phase 1), built with the commercial
+   editions. The core's part: `serve --announce json --parent-pid` stays
+   stable, and the form model and preview routes of P3–P4 serve it.
+3. **M3c · Pure host logic into the library,** behind new ports (process
+   runner, files, clock, HMAC): the profile rules, planning, the FFmpeg plan
+   compiler and parsers, the use cases. Golden vectors grow to cover argv,
+   filtergraphs and the form model, on both runtimes.
+4. **M3d · The Dart adapters and the Dart CLI** (`dart:io` files,
+   `Process.start` for FFmpeg), with a conformance run on real frames. GUI
+   apps then embed the library in-process (Phase 2).
 
 **Done before:**
 - **M1 · CI/CD** (PR #1). Its exit was met by `v0.1.0-rc.1` (2026-09-27): a
@@ -418,10 +470,4 @@ paused.
     tenant-scoped keys.
 
   Hosted adapters are built against these suites. FFmpeg never receives
-  arbitrary URLs: media is downloaded to scratch first.
-- **M3 · The kernel under ClojureDart,** deferred until mobile is scheduled
-  (ADR 0008).
-  - It must compile and pass `kernel/test/golden/*.edn` in Dart: the
-    `util/num` `:cljd` branches, HMAC-SHA256 through `package:crypto`, and
-    malli or the schema fallback.
-  - The kernel keeps its portability invariants meanwhile.
+  arbitrary URLs: media is downloaded to scratch first. M4 follows Track A.

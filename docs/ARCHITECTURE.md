@@ -17,13 +17,23 @@ names or requires them.
 
 | Directory | Contents | Runs on | May depend on |
 |---|---|---|---|
-| `kernel/` | Settings schema and resolution, the render spec (v1 and v2) and its reference semantics, the rasterizer that draws v2's bitmaps (TrueType, text, the warp), keyed seeds, the PRNG, the text-mode registry, the engine protocol, the feature catalog | Any Clojure host: JVM today, ClojureDart later | malli (two namespaces), nothing else |
+| `kernel/` | Settings schema and resolution, the render spec (v1 and v2) and its reference semantics, the rasterizer that draws v2's bitmaps (TrueType, text, the warp), keyed seeds, the PRNG, the text-mode registry, the engine protocol, the feature catalog | Any Clojure host: GraalVM/JVM today, the Dart VM through ClojureDart next (ADR 0008) | malli (two namespaces), nothing else |
 | `src/` | Profile rules (`config`), the store, media, queue and rasterizer ports' local adapters, the job pipeline, the Core API, the FFmpeg and native engines, JSON REST routes | JVM | kernel |
 | `web/` | The built-in web UI: server-rendered HTML and Datastar events over SSE; vendored `datastar.js`, no npm | JVM | the Core API (src) |
 | `desktop/` | CLI (with terminal progress), http-kit server, loopback security, sidecar mode, native-image metadata | JVM / native image | src, web |
 | `testkit/` | Harnesses for code that plugs in from elsewhere: engine conformance, the store contract, golden vectors, architecture checks | JVM (tests) | src, kernel |
 | `build/` | `wmark.build`, the interpreter of the build matrix | JVM (tool) | tools.build |
 | `native/` | C ABI for native engines, a mock engine (the test double), exported JSON Schemas | C header and mock; platform engines in their OS's language behind it (decision 3) | nothing |
+
+**The kernel grows into the core library**
+([ADR 0008](adr/0008-desktop-architecture-and-binary-size.md), accepted).
+- It is compiled for GraalVM and, through ClojureDart, for the Dart VM, so
+  Dart and Flutter programs can embed it as JVM programs do.
+- The pure logic still in `src/` moves into it behind ports: the profile
+  rules, planning, the FFmpeg plan compiler and output parsers, and the use
+  cases. New pure logic, such as the settings form model, starts there.
+- `src/`, `web/` and `desktop/` then hold the GraalVM host's adapters: I/O,
+  processes, the server, the views and the native window.
 
 ## Layers
 

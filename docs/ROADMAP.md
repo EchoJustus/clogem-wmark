@@ -14,8 +14,8 @@ spec: an engine-neutral description of one watermarked video.
  settings ─┐
  media ────┼─► kernel (portable .cljc) ──► render spec ──► VideoEngine ──► frames
  secret ───┘   resolve, layout, keyed                       FFmpeg       (desktop, server)
-               schedules, reference                         C ABI        (AVFoundation, Media3,
-               semantics                                                  Rust GPU core)
+               schedules, reference                         C ABI        (AVFoundation, Media3)
+               semantics
 ```
 
 - **The kernel runs on any host.** It lives in `kernel/`: `.cljc` files only,
@@ -145,31 +145,60 @@ paused M3 and opened a **productization and UX phase**.
 2. **`wmark-tui` is removed** ([ADR 0010](adr/0010-remove-wmark-tui.md)).
    Its useful parts are in `wmark`: `profiles effective`, display names in
    `profiles show`, and a progress bar for `run`.
-3. **Proposed, for the owner's review:**
-   - **The desktop app is the engine.** It opens a native webview window onto
-     its own UI: no Flutter or Tauri on desktop, plus a measured size diet
-     ([ADR 0008](adr/0008-desktop-architecture-and-binary-size.md)).
+3. **A hexagonal architecture around a dual-target core library**
+   ([ADR 0008](adr/0008-desktop-architecture-and-binary-size.md), accepted by
+   the owner). It replaces the earlier proposal of one webview window for
+   every edition.
+   - **The core library** is portable `.cljc`, compiled for GraalVM (the CLI,
+     the server, a JVM library) and for the Dart VM by ClojureDart (a Dart
+     package and a Dart CLI). Third parties can embed it on either runtime.
+     Today's kernel is its start. The pure logic still in `src/` (profile
+     rules, planning, the FFmpeg plan compiler and parsers, the use cases)
+     moves in behind ports, and new pure logic such as the settings form
+     model starts there.
+   - **The open core's host** stays GraalVM: one binary with the CLI, the
+     local server and the Datastar UI, modernized (ADR 0011) and shown in a
+     thin native webview window (WebView2, WKWebView, WebKitGTK) through FFM.
+   - **The GUI apps** (stages 2–4) are ClojureDart and Flutter:
+     - Phase 1: a sidecar client of the hidden GraalVM engine over REST and
+       SSE. The larger download is accepted; click-to-edit settings and live
+       preview come first.
+     - Phase 2: the core library in-process on the Dart VM, with Dart
+       adapters for files and for spawning FFmpeg, and no GraalVM engine.
+       The same code base reaches mobile.
+4. **Proposed, for the owner's review:**
    - **The community edition goes through package managers**
      ([ADR 0009](adr/0009-community-distribution-through-package-managers.md)).
    - **The web UI becomes a product:** a design system, a settings form
      generated from the schema, a logo picker and live preview
      ([ADR 0011](adr/0011-web-ui-product-overhaul.md)).
 
-**The phase's milestones, in order.** Each ends with its tests green, the
-docs updated and a short status report.
+**P1 comes first:** these records, the TUI removal and the CLI's new
+commands (ADRs 0008–0011). After the owner approves it, two tracks run in
+parallel. Each milestone ends with its tests green, the docs updated and a
+short status report.
+
+**Track A: the open core's product** (the GraalVM host).
 
 | # | Milestone | Record |
 |---|---|---|
-| P1 | These records, the TUI removal and the CLI's new commands | ADRs 0008–0011 |
 | P2 | Design system and app shell: tokens, light and dark themes, the layout | ADR 0011, sections 1–2 |
-| P3 | The settings form, generated from the schema, with titles and descriptions added to it | ADR 0011, section 3 |
-| P4 | Logo upload, the video picker and live preview (the engine's preview capability) | ADR 0011, sections 4–5 |
-| P5 | The desktop window: a spike, then the build | ADR 0008 |
-| P6 | The size diet: `-Os`, then shared FFmpeg, then trimmed FFmpeg, then a size budget in CI | ADR 0008 |
+| P3 | The settings form, generated from the schema, with titles and descriptions added to it. The form model is written in the core library and also served as JSON, so the GUI apps render the same rows | ADR 0011, section 3; ADR 0008, section 1 |
+| P4 | Logo upload, the video picker and live preview (the engine's preview capability), the preview being a Core API function with a REST route | ADR 0011, sections 4–5 |
+| P5 | The desktop window: a spike, then the build | ADR 0008, section 2 |
+| P6 | The size diet: `-Os`, then shared FFmpeg, then trimmed FFmpeg, then a size budget in CI | ADR 0008, section 4 |
 | P7 | Package managers, Tier 1 | ADR 0009 |
 
-M3 (the kernel under ClojureDart) waits for mobile to be scheduled. M4 (port
-contracts for hosting) follows this phase.
+**Track B: M3 restarted, the core library on the Dart VM.**
+
+| # | Milestone | Record |
+|---|---|---|
+| M3a | ClojureDart and the Dart SDK pinned; today's kernel compiles for the Dart VM and passes the golden vectors there, in CI (the spike's criterion 1) | ADR 0008, section 1 |
+| M3b | The GUI apps' sidecar shell (Phase 1), built with the commercial editions. It drives `wmark serve --announce json --parent-pid` over REST and SSE, starting with the form model and live preview from P3–P4 (the spike's criterion 2) | ADR 0008, section 3 |
+| M3c | The pure host logic moves into the core library behind ports (process runner, files, clock, HMAC). The golden vectors grow to cover FFmpeg argv, filtergraphs and the form model, checked on both runtimes | ADR 0008, section 1 |
+| M3d | The Dart adapters and the Dart CLI, with a conformance run on real frames through them. The GUI apps then embed the library in-process (Phase 2) | ADR 0008, section 3 |
+
+M4 (port contracts for hosting) follows Track A.
 
 ## Stages → bundles → code
 
@@ -179,9 +208,9 @@ against the repository.
 
 | Stage | Bundle | New code | Reused unchanged |
 |---|---|---|---|
-| 1 WebServer, Windows then macOS | `desktop-server`: `wmark`, `bin/ffmpeg`, `bin/ffprobe` (the TUI was removed, ADR 0010) | none: builds natively (signing deferred) | everything |
-| 2 + GUI for Windows | proposed: `wmark` itself, opening a native window onto its UI (ADR 0008) | the webview window (a spike first) | engine, API, web UI |
-| 3 GUI for Android | `android-app` | Kernel compiled by ClojureDart, in-process; Android engine plugin; Play Billing entitlements | kernel, render spec, golden vectors |
+| 1 WebServer, Windows then macOS | `desktop-server`: `wmark`, `bin/ffmpeg`, `bin/ffprobe` (the TUI was removed, ADR 0010) | none: builds natively (signing deferred). Later the webview window (P5) and the size diet (P6) | everything |
+| 2 + GUI for Windows | `windows-combo` | A ClojureDart/Flutter app as a sidecar client (ADR 0008, Phase 1). It starts `wmark serve --announce json --parent-pid <pid>`, reads the endpoint line, and talks REST + SSE. | engine, API, form model, preview |
+| 3 GUI for Android | `android-app` | The core library compiled by ClojureDart, in-process (ADR 0008, Phase 2); Android engine plugin; Play Billing entitlements | core library, render spec, golden vectors |
 | 4 + iPad/macOS | `apple-app` | AVFoundation/Metal engine (Swift, behind the C ABI); StoreKit entitlements | Stage 3 app, kernel |
 | 5 Serverless | `serverless` | Object-storage `MediaIO`, durable `JobQueue`, identity provider, a dashboard tier (the Datastar UI per tenant, on long-running containers) | Core API, routes, jobs, FFmpeg engine, web UI, **Postgres store (done, tested)** |
 
@@ -193,17 +222,18 @@ macOS gets both versions you described:
 
 ## Assessment 1: ClojureDart + Flutter for the GUI
 
-> **Update, 28 September 2026.** For desktop,
-> [ADR 0008](adr/0008-desktop-architecture-and-binary-size.md) (proposed)
-> replaces this assessment's recommendation.
-> - Flutter would add 25–35 MB per desktop platform (measured on the
->   engine artifacts), plus a second UI to maintain.
-> - The engine can open a native window onto the UI it already serves, for
->   well under 1 MB.
+> **Update, 28 September 2026.** The owner accepted ClojureDart and Flutter
+> for the GUI apps, and widened the bet
+> ([ADR 0008](adr/0008-desktop-architecture-and-binary-size.md)):
+> - the kernel becomes a core library compiled for both GraalVM and the Dart
+>   VM;
+> - the GUI apps start as sidecar clients (Phase 1), then run the library
+>   in-process on the Dart VM with no GraalVM engine (Phase 2);
+> - the open core's own download keeps the Datastar UI, in a native webview
+>   window.
 >
-> ClojureDart remains the candidate for mobile, where the in-process kernel
-> decides; M3 waits for mobile to be scheduled. The text below is kept as the
-> original assessment.
+> M3 restarts as Track B (M3a–M3d), still gated by the spike's exit criteria
+> below. The text below is kept as the original assessment.
 
 **Verdict: viable. Go, but gate the commitment on a 2–3 week spike with
 explicit exit criteria.** Two changes made in this phase make the bet cheap to
@@ -439,7 +469,8 @@ Plan most of the risk around per-platform interop.
 
 | Risk | Likelihood | Impact | Mitigation in place |
 |---|---|---|---|
-| ClojureDart stalls or can't compile the kernel | Medium | High for mobile (Stages 3–4); none for desktop since ADR 0008 | Spike exit criteria; golden vectors make a Dart port verifiable |
+| ClojureDart stalls or can't compile the kernel | Medium | High for the GUI apps (stages 2–4, ADR 0008); none for the open core's GraalVM host | Spike exit criteria, M3a first; golden vectors make a Dart port verifiable; a plain-Dart port as the fallback |
+| The core library behaves differently on the JVM and on the Dart VM | Medium without tests | Different plans, evidence disputes | Golden vectors on both runtimes, grown to FFmpeg argv, filtergraphs and the form model (M3c); runtime-specific code only in small host primitives |
 | Downloads grow past what users accept | High without a budget | Adoption | ADR 0008: the TUI removed (−57 MB), a measured diet (`-Os`, shared then trimmed LGPL FFmpeg) and a size budget in CI |
 | Engine parity drifts (Apple vs FFmpeg) | High without tests | Evidence disputes | Reference semantics + conformance harness + golden vectors |
 | FFmpeg builds vary (no drawtext, missing encoders) | High | Broken renders | Capability negotiation; `wmark doctor`; LGPL encoder fallbacks |
