@@ -132,6 +132,45 @@ pins for Windows and macOS, and whether the downloads bundle LGPL builds
    once every bundle is built, and the draft release is made exactly as for
    a pushed tag.
 
+## Decisions for productization (28 September 2026)
+
+The MVP engine is validated by the `v0.1.0-rc.1` release, so the owner
+paused M3 and opened a **productization and UX phase**.
+
+1. **Clojure first is an invariant.**
+   - Product code is written in Clojure dialects. We never write TypeScript,
+     JavaScript or Rust.
+   - The Rust/wgpu effects core (Assessment 2) is withdrawn.
+   - CLAUDE.md, decision 9, has the full rule.
+2. **`wmark-tui` is removed** ([ADR 0010](adr/0010-remove-wmark-tui.md)).
+   Its useful parts are in `wmark`: `profiles effective`, display names in
+   `profiles show`, and a progress bar for `run`.
+3. **Proposed, for the owner's review:**
+   - **The desktop app is the engine.** It opens a native webview window onto
+     its own UI: no Flutter or Tauri on desktop, plus a measured size diet
+     ([ADR 0008](adr/0008-desktop-architecture-and-binary-size.md)).
+   - **The community edition goes through package managers**
+     ([ADR 0009](adr/0009-community-distribution-through-package-managers.md)).
+   - **The web UI becomes a product:** a design system, a settings form
+     generated from the schema, a logo picker and live preview
+     ([ADR 0011](adr/0011-web-ui-product-overhaul.md)).
+
+**The phase's milestones, in order.** Each ends with its tests green, the
+docs updated and a short status report.
+
+| # | Milestone | Record |
+|---|---|---|
+| P1 | These records, the TUI removal and the CLI's new commands | ADRs 0008–0011 |
+| P2 | Design system and app shell: tokens, light and dark themes, the layout | ADR 0011, sections 1–2 |
+| P3 | The settings form, generated from the schema, with titles and descriptions added to it | ADR 0011, section 3 |
+| P4 | Logo upload, the video picker and live preview (the engine's preview capability) | ADR 0011, sections 4–5 |
+| P5 | The desktop window: a spike, then the build | ADR 0008 |
+| P6 | The size diet: `-Os`, then shared FFmpeg, then trimmed FFmpeg, then a size budget in CI | ADR 0008 |
+| P7 | Package managers, Tier 1 | ADR 0009 |
+
+M3 (the kernel under ClojureDart) waits for mobile to be scheduled. M4 (port
+contracts for hosting) follows this phase.
+
 ## Stages → bundles → code
 
 The same mapping lives as data in `deps.edn` (`:wmark/build-matrix`).
@@ -140,19 +179,31 @@ against the repository.
 
 | Stage | Bundle | New code | Reused unchanged |
 |---|---|---|---|
-| 1 WebServer + TUI, Windows then macOS | `desktop-server`: `wmark`, `wmark-tui`, `bin/ffmpeg`, `bin/ffprobe` | none: builds natively (signing deferred) | everything |
-| 2 + GUI for Windows | `windows-combo` | Flutter app as a sidecar client. It starts `wmark serve --announce json --parent-pid <pid>`, reads the endpoint line, and talks REST + SSE. | engine, API, TUI |
+| 1 WebServer, Windows then macOS | `desktop-server`: `wmark`, `bin/ffmpeg`, `bin/ffprobe` (the TUI was removed, ADR 0010) | none: builds natively (signing deferred) | everything |
+| 2 + GUI for Windows | proposed: `wmark` itself, opening a native window onto its UI (ADR 0008) | the webview window (a spike first) | engine, API, web UI |
 | 3 GUI for Android | `android-app` | Kernel compiled by ClojureDart, in-process; Android engine plugin; Play Billing entitlements | kernel, render spec, golden vectors |
 | 4 + iPad/macOS | `apple-app` | AVFoundation/Metal engine (Swift, behind the C ABI); StoreKit entitlements | Stage 3 app, kernel |
 | 5 Serverless | `serverless` | Object-storage `MediaIO`, durable `JobQueue`, identity provider, a dashboard tier (the Datastar UI per tenant, on long-running containers) | Core API, routes, jobs, FFmpeg engine, web UI, **Postgres store (done, tested)** |
 
 macOS gets both versions you described:
-- **Version A (server + TUI)** is the `desktop-server` bundle built on a Mac.
+- **Version A (the server)** is the `desktop-server` bundle built on a Mac.
   It can also load the Apple engine through `NativeFFIProcessor` once that
   exists, so the server edition gets the battery-friendly pipeline too.
 - **The App Store version** is `apple-app`.
 
 ## Assessment 1: ClojureDart + Flutter for the GUI
+
+> **Update, 28 September 2026.** For desktop,
+> [ADR 0008](adr/0008-desktop-architecture-and-binary-size.md) (proposed)
+> replaces this assessment's recommendation.
+> - Flutter would add 25–35 MB per desktop platform (measured on the
+>   engine artifacts), plus a second UI to maintain.
+> - The engine can open a native window onto the UI it already serves, for
+>   well under 1 MB.
+>
+> ClojureDart remains the candidate for mobile, where the in-process kernel
+> decides; M3 waits for mobile to be scheduled. The text below is kept as the
+> original assessment.
 
 **Verdict: viable. Go, but gate the commitment on a 2–3 week spike with
 explicit exit criteria.** Two changes made in this phase make the bet cheap to
@@ -314,6 +365,10 @@ with the same golden vectors, which is why they exist.
 
 ## Assessment 2: a custom cross-platform GPU video core
 
+> **Update, 28 September 2026.** The owner made Clojure first an invariant,
+> and we write no Rust, so the Rust/wgpu effects core below is withdrawn. If
+> one of its triggers fires, the answer has to be found within that rule.
+
 **Verdict: a full video engine is not viable for a small team. A narrow
 *effects* core is viable later, if one of the triggers below fires. The
 abstraction is ready for either.**
@@ -384,7 +439,8 @@ Plan most of the risk around per-platform interop.
 
 | Risk | Likelihood | Impact | Mitigation in place |
 |---|---|---|---|
-| ClojureDart stalls or can't compile the kernel | Medium | High for Stages 3–4 | Spike exit criteria; golden vectors make a Dart port verifiable |
+| ClojureDart stalls or can't compile the kernel | Medium | High for mobile (Stages 3–4); none for desktop since ADR 0008 | Spike exit criteria; golden vectors make a Dart port verifiable |
+| Downloads grow past what users accept | High without a budget | Adoption | ADR 0008: the TUI removed (−57 MB), a measured diet (`-Os`, shared then trimmed LGPL FFmpeg) and a size budget in CI |
 | Engine parity drifts (Apple vs FFmpeg) | High without tests | Evidence disputes | Reference semantics + conformance harness + golden vectors |
 | FFmpeg builds vary (no drawtext, missing encoders) | High | Broken renders | Capability negotiation; `wmark doctor`; LGPL encoder fallbacks |
 | Binary planting via working-folder lookup | Low | High | Source reported, warning when cwd ≠ install folder, hardened order flag, absolute paths only |
