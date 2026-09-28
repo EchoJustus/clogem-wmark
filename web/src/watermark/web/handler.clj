@@ -19,6 +19,7 @@
             [clojure.string :as str]
             [watermark.core.api :as api]
             [watermark.core.schema :as schema]
+            [watermark.web.form :as fv]
             [watermark.web.html :as h]
             [watermark.web.sse :as sse]
             [watermark.web.views :as v])
@@ -78,6 +79,19 @@
 ;; ---------------------------------------------------------------------------
 ;; Fragments for "show this profile"
 
+(defn- form-of [sys ctx slug] (when slug (api/settings-form sys ctx slug)))
+
+(defn- form-events
+  "The form, the JSON view and the preview after `doc` changed: the new
+  revision, the form in view mode, and a nudge (`pv`) to redraw the frame."
+  [{:keys [sys pv]} ctx doc]
+  (let [slug (:profile/slug doc)]
+    [(sse/patch-signals {:rev      (:profile/rev doc)
+                         :settings (v/settings-text (:settings doc))
+                         :pv       (swap! pv inc)})
+     (sse/patch-elements (h/html (fv/settings-form slug (form-of sys ctx slug))))
+     (sse/patch-elements (h/html (v/effective (api/resolve-settings sys ctx {:profile slug}) (titles sys ctx) false)))]))
+
 (defn- selection-events
   "Signals and fragments that make `slug` (or nothing) the selected profile."
   [sys ctx slug & {:keys [msg]}]
@@ -93,6 +107,8 @@
      (sse/patch-elements (h/html (if doc
                                    (v/effective (api/resolve-settings sys ctx {:profile slug}) (titles sys ctx) false)
                                    (v/effective))))
+     (sse/patch-elements (h/html (fv/settings-form slug (form-of sys ctx slug))))
+     (sse/patch-elements (h/html (fv/preview-panel slug)))
      (sse/patch-elements (h/html (v/run-button slug)))
      (sse/patch-elements (h/html (apply v/message (or msg [nil nil]))))]))
 
@@ -100,6 +116,17 @@
 
 ;; ---------------------------------------------------------------------------
 ;; Handlers: (fn [env req params] -> Ring response)
+
+(def ^:private theme-cookie "wmark_theme")
+
+(defn- theme-of
+  "The theme the person chose (an index into views/themes), from its cookie."
+  [req]
+  (or (some->> (get-in req [:headers "cookie"])
+               (re-find (re-pattern (str "(?:^|;\\s*)" theme-cookie "=([0-2])")))
+               second
+               parse-long)
+      0))
 
 (defn- page [{:keys [sys]} req _]
   (let [ctx      (ctx-of req)
@@ -113,13 +140,16 @@
                "Content-Security-Policy" (page-csp n)
                "X-Content-Type-Options"  "nosniff"
                "Referrer-Policy"         "no-referrer"}
-     :body    (h/document (v/page {:nonce    n
-                                   :health   (api/health sys)
-                                   :profiles profiles
-                                   :doc      doc
-                                   :resolved (when doc (api/resolve-settings sys ctx {:profile slug}))
-                                   :titles   (titles sys ctx)
-                                   :jobs     (api/list-jobs sys ctx)}))}))
+     :body    (h/document (v/page {:nonce        n
+                                   :health       (api/health sys)
+                                   :profiles     profiles
+                                   :doc          doc
+                                   :resolved     (when doc (api/resolve-settings sys ctx {:profile slug}))
+                                   :titles       (titles sys ctx)
+                                   :jobs         (api/list-jobs sys ctx)
+                                   :theme        (theme-of req)
+                                   :form-view    (fv/settings-form slug (form-of sys ctx slug))
+                                   :preview-view (fv/preview-panel slug)}))}))
 
 (defn- select [{:keys [sys]} req {:keys [slug]}]
   (apply sse/response (selection-events sys (ctx-of req) slug)))
@@ -140,17 +170,111 @@
       (throw (ex-info "The settings must be a JSON object." {:wmark/error :invalid})))
     (schema/decode-json m)))
 
-(defn- save [{:keys [sys]} req {:keys [slug]}]
+(defn- rev-of [signals]
+  (let [rev (get signals "rev")]
+    (when (and (number? rev) (pos? (long rev))) (long rev))))
+
+(defn- save [{:keys [sys] :as env} req {:keys [slug]}]
   (let [ctx     (ctx-of req)
         signals (sse/read-signals req)
-        rev     (get signals "rev")
         doc     (api/save-profile! sys ctx slug (parse-settings (get signals "settings"))
-                                   {:if-rev (when (and (number? rev) (pos? (long rev))) (long rev))})]
+                                   {:if-rev (rev-of signals)})]
+    (apply sse/response
+           (concat (form-events env ctx doc)
+                   [(sse/patch-elements (h/html (v/profile-list (api/list-profiles sys ctx) (:profile/slug doc))))
+                    (say :ok (str "Saved “" (:profile/name doc) "”."))]))))
+
+;; ---------------------------------------------------------------------------
+;; The settings form: one path at a time (docs/adr/0011, section 3)
+
+(defn- row-or-404 [sys ctx slug id]
+  (or (fv/find-row (:form (form-of sys ctx slug)) id)
+      (throw (ex-info (str "No setting \"" id "\".") {:wmark/error :not-found}))))
+
+(defn- field-view [{:keys [sys]} req {:keys [slug id]}]
+  (let [ctx (ctx-of req)
+        f   (form-of sys ctx slug)]
+    (sse/response (sse/patch-elements (h/html (fv/row-view slug (row-or-404 sys ctx slug id) (get-in f [:form :sources])))))))
+
+(defn- field-edit [{:keys [sys]} req {:keys [slug id]}]
+  (let [ctx (ctx-of req)
+        f   (form-of sys ctx slug)
+        row (row-or-404 sys ctx slug id)]
     (sse/response
-     (sse/patch-signals {:rev (:profile/rev doc)})
-     (sse/patch-elements (h/html (v/profile-list (api/list-profiles sys ctx) (:profile/slug doc))))
-     (sse/patch-elements (h/html (v/effective (api/resolve-settings sys ctx {:profile slug}) (titles sys ctx) false)))
-     (say :ok (str "Saved “" (:profile/name doc) "”.")))))
+     ;; the value travels as a signal (JSON), never inside an expression
+     (sse/patch-signals {:fv (if (= :boolean (:kind row)) (true? (:value row)) (:input row))})
+     (sse/patch-elements (h/html (fv/row-edit slug row (get-in f [:form :sources]) nil))))))
+
+(defn- edit!
+  "Apply one form edit; field mistakes are shown at the field."
+  [{:keys [sys] :as env} req slug edit & {:keys [ok]}]
+  (let [ctx     (ctx-of req)
+        signals (sse/read-signals req)]
+    (try
+      (let [doc (api/edit-profile! sys ctx slug (assoc edit :if-rev (rev-of signals)))]
+        (apply sse/response (concat (form-events env ctx doc) [(say :ok (or ok "Saved."))])))
+      (catch clojure.lang.ExceptionInfo e
+        (let [row (when (and (:id edit) (= :invalid (:wmark/error (ex-data e))))
+                    (fv/find-row (:form (form-of sys ctx slug)) (:id edit)))]
+          (if row
+            (sse/response (sse/patch-elements
+                           (h/html (fv/row-edit slug row (get-in (form-of sys ctx slug) [:form :sources]) (ex-message e)))))
+            (throw e)))))))
+
+(defn- field-save [env req {:keys [slug id]}]
+  (edit! env req slug {:op :set :id id :value (get (sse/read-signals req) "fv")}))
+
+(defn- field-reset [env req {:keys [slug id]}]
+  (edit! env req slug {:op :unset :id id} :ok "Reset to what it inherits."))
+
+(defn- layer-add [env req {:keys [slug]}]
+  (edit! env req slug {:op :add-layer :mode (get (sse/read-signals req) "nl")} :ok "Added a text layer."))
+
+(defn- layer-index [s]
+  (or (when (re-matches #"[0-9]{1,2}" (str s)) (parse-long s))
+      (throw (ex-info "No such text layer." {:wmark/error :not-found}))))
+
+(defn- layer-up [env req {:keys [slug index]}]
+  (edit! env req slug {:op :move-layer :index (layer-index index) :delta -1}))
+
+(defn- layer-down [env req {:keys [slug index]}]
+  (edit! env req slug {:op :move-layer :index (layer-index index) :delta 1}))
+
+(defn- layer-remove [env req {:keys [slug index]}]
+  (edit! env req slug {:op :remove-layer :index (layer-index index)} :ok "Removed the text layer."))
+
+;; ---------------------------------------------------------------------------
+;; Preview frames (docs/adr/0011, section 5)
+
+(defn- frame
+  "Draw the frame the preview panel asks for. One at a time, newest wins: a
+  request that finds a newer one waiting answers with nothing."
+  [{:keys [sys preview-ticket preview-lock]} req {:keys [slug]}]
+  (let [ctx     (ctx-of req)
+        signals (sse/read-signals req)
+        ticket  (swap! preview-ticket inc)
+        number  #(let [x (get signals %)] (if (number? x) (double x) 0.0))
+        source  (str/trim (str (get signals "ps")))]
+    (locking preview-lock
+      (if (not= ticket @preview-ticket)
+        (sse/response)
+        (try
+          (let [p (api/preview-frame sys ctx {:profile slug
+                                              :t       (number "pt")
+                                              :aspect  (get fv/aspects (long (number "pa")) "16:9")
+                                              :source  (not-empty source)})]
+            (sse/response
+             (sse/patch-signals {:pmax (max 1.0 (double (or (:duration-s p) 12.0)))})
+             (sse/patch-elements (h/html (fv/preview-frame p nil)))))
+          (catch clojure.lang.ExceptionInfo e
+            (if (:wmark/error (ex-data e))
+              (sse/response (sse/patch-elements (h/html (fv/preview-frame nil (error-text e)))))
+              (throw e))))))))
+
+(defn- theme [_ _ {:keys [n]}]
+  (let [i (or (when (re-matches #"[0-2]" (str n)) (parse-long n)) 0)]
+    (assoc (sse/response (sse/patch-signals {:theme i}))
+           :headers (assoc sse/headers "Set-Cookie" (str theme-cookie "=" i "; Path=/; Max-Age=31536000; SameSite=Strict")))))
 
 (defn- rename-or-copy [f verb {:keys [sys]} req {:keys [slug]}]
   (let [ctx (ctx-of req)
@@ -286,6 +410,16 @@
    [:post   "/ui/profiles/:slug/copy"   (partial rename-or-copy api/copy-profile! "Duplicated as")]
    [:delete "/ui/profiles/:slug"        delete]
    [:post   "/ui/preview/:slug"         preview]
+   [:get    "/ui/profiles/:slug/fields/:id"      field-view]
+   [:get    "/ui/profiles/:slug/fields/:id/edit" field-edit]
+   [:put    "/ui/profiles/:slug/fields/:id"      field-save]
+   [:delete "/ui/profiles/:slug/fields/:id"      field-reset]
+   [:post   "/ui/profiles/:slug/layers"          layer-add]
+   [:post   "/ui/profiles/:slug/layers/:index/up"   layer-up]
+   [:post   "/ui/profiles/:slug/layers/:index/down" layer-down]
+   [:delete "/ui/profiles/:slug/layers/:index"      layer-remove]
+   [:post   "/ui/frame/:slug"           frame]
+   [:post   "/ui/theme/:n"              theme]
    [:post   "/ui/jobs"                  submit]
    [:post   "/ui/jobs/:slug"            submit]
    [:post   "/ui/jobs/:id/cancel"       cancel]
@@ -321,7 +455,8 @@
   ([sys] (handler sys {:tenant "local" :user "local"}))
   ([sys ctx]
   (let [activity (atom [])
-        env      {:sys sys :activity activity}]
+        env      {:sys sys :activity activity
+                  :pv (atom 0) :preview-ticket (atom 0) :preview-lock (Object.)}]
     (when (:jobs sys) (track-activity! sys ctx activity))
     (fn [req]
       (let [uri (:uri req)]

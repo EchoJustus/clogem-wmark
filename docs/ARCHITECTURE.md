@@ -115,6 +115,9 @@ requires made them fail, as intended.
 | `save-profile!` | `PUT /api/v1/profiles/:name` `{settings, overwrite?, if-rev?}` |
 | `rename-profile!` / `copy-profile!` | `POST /api/v1/profiles/:name/rename` and `/copy` with `{to}` |
 | `delete-profile!` | `DELETE /api/v1/profiles/:name` |
+| `settings-form` | `GET /api/v1/profiles/:name/form`: the settings form model, a row per setting with its value, where it came from, its control and its choices ([ADR 0011](adr/0011-web-ui-product-overhaul.md), section 3) |
+| `edit-profile!` | `POST /api/v1/profiles/:name/edit` `{op, id?, value?, mode?, index?, delta?, if-rev?}`: one form edit (set or reset a setting, add, remove or move a text layer), saved; answers with the profile and its new form |
+| `preview-frame` / `preview-file` | `POST /api/v1/preview` `{profile?, settings?, source?, t?, aspect?}`, then `GET /api/v1/previews/:id` (`image/png`): one frame of the render, drawn by the engine (section 5 of the same ADR) |
 | `resolve-settings` | `POST /api/v1/resolve`: effective settings, provenance, locked features |
 | `plan-batch` | `POST /api/v1/plan`: dry run returning each render spec and engine plan |
 | `submit-job!` / `list-jobs` / `cancel-job!` | `POST`/`GET /api/v1/jobs`, `DELETE /api/v1/jobs/:id` |
@@ -163,8 +166,17 @@ of our own.
 |---|---|
 | `watermark.web.html` | Hiccup to HTML, escaping every text node and attribute value |
 | `watermark.web.sse` | Datastar's event format (`datastar-patch-elements`, `datastar-patch-signals`), written directly and checked against the 15 official SDK wire-format cases |
-| `watermark.web.views` | Pure functions from Core API results to hiccup: profiles, editor, effective settings with provenance, queue |
-| `watermark.web.handler` | `GET /` renders the page. Actions under `/ui/` (select, create, save, rename, duplicate, delete, preview, submit, cancel) answer with events. `GET /ui/stream` holds the queue open |
+| `watermark.web.views` | Pure functions from Core API results to hiccup: the app shell and theme switcher, profiles, the JSON editor, effective settings with provenance, queue |
+| `watermark.web.form` | The settings form (click to edit, one row per setting) and the preview panel, from the Core API's form model |
+| `watermark.web.handler` | `GET /` renders the page. Actions under `/ui/` (select, create, save, rename, duplicate, delete, the form's field and layer edits, preview frames, the theme, submit, cancel) answer with events. `GET /ui/stream` holds the queue open |
+
+**The look** ([ADR 0011](adr/0011-web-ui-product-overhaul.md), sections 1–2):
+`web/resources/public/app.css` is one file of tokens (colour, space, type,
+shape) and the components built from them. Light and dark themes come from
+the same tokens: the operating system's choice by default, or one the person
+pins with the switcher (remembered in a cookie). The layout is an app shell:
+profiles on the left, the settings form in the middle, the preview on the
+right, the render queue below.
 
 **How a page behaves:**
 - **Every interaction is a request** under `/ui/`. The response carries
@@ -175,9 +187,20 @@ of our own.
   whole queue. After that, row updates are coalesced to at most ten a second,
   whatever the engine emits. Datastar closes GET streams in hidden tabs and
   reopens them, and a reopen simply re-renders.
-- **Live preview.** Editing the settings JSON resolves the unsaved text
-  (debounced) and shows each value's source. Invalid JSON or schema errors
-  appear as a message; the table keeps its last good state.
+- **The settings form edits one path at a time.** A row shows its value; a
+  click asks the server for the row in edit mode, whose control is bound to
+  the `fv` signal. Enter, Save or a changed choice sends it; the server saves
+  that one path (`edit-profile!`) with the revision the page read and answers
+  with the whole form in view mode. A bad value is explained at the field; a
+  stale revision is a 409, as for any save.
+- **The preview is the render's own frame.** The preview panel asks for a
+  frame when it appears and whenever the shape, the time, the video or the
+  saved settings change (Datastar's `data-effect`). The server draws it
+  through the engine, one at a time with the newest request winning, and the
+  page loads the PNG from `/api/v1/previews/:id` with its session cookie.
+- **The JSON view stays, for bulk edits.** "Edit as JSON" resolves the
+  unsaved text (debounced) and shows each value's source. Invalid JSON or
+  schema errors appear as a message; the table keeps its last good state.
 
 **Security specific to the UI** (tests: `web_ui_test`, `views_test`, `html_test`):
 - **Pages carry data,** so `/` and `/ui/*` need the token, like `/api/*`.
