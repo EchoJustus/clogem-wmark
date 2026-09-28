@@ -255,3 +255,39 @@
   (testing "VideoToolbox may fall back to Apple's software encoder (VMs have no hardware one)"
     (is (= ["-c:v" "h264_videotoolbox" "-b:v" "110592" "-allow_sw" "1"]
            (compile/video-args {:codec :h264} "h264_videotoolbox" {:width 256 :height 144} 25)))))
+
+;; ---------------------------------------------------------------------------
+;; Previews: one frame of the same plan, as a PNG (docs/adr/0011, section 5)
+
+(defn- still [settings frame & {:keys [v2?]}]
+  (let [spec (spec-for settings :media media)]
+    ((if v2? compile/compile-request-v2 compile/compile-request)
+     {:spec (if v2?
+              (v2/assemble spec (into {} (for [{:keys [key size kind]} (v2/raster-requests spec)
+                                               :let [[w h] (if (= :text kind) [120 40] size)]]
+                                           [key {:bitmap (str "b" (hash key)) :width w :height h
+                                                 :path (str "/scratch/b" (hash key) ".rgba")}])))
+              spec)
+      :source "/in/clip.mov" :media media
+      :output {:path "/work/previews/p.png" :frame frame}
+      :encode (:encode (resolve/deep-merge schema/defaults settings))
+      :strip-metadata? true}
+     {:ffmpeg "/opt/wmark/bin/ffmpeg" :version {:major 7} :encoders x264-build :workdir "/tmp/job"})))
+
+(deftest a-preview-is-the-render-cut-to-one-frame
+  (doseq [v2? [false true]]
+    (let [settings {:logo flip :texts [{:mode :continuous :content "x"}]}
+          full     ((if v2? v2-plan plan) settings)
+          p        (still settings 45 :v2? v2?)]
+      (testing (if v2? "v2" "v1")
+        (is (str/starts-with? (:graph p) (:graph full)) "the same graph, with one chain added")
+        (is (str/ends-with? (:graph p) "[vout]trim=start_frame=45:end_frame=46[still]"))
+        (is (= ["-map" "[still]" "-an" "-frames:v" "1" "-c:v" "png" "-pix_fmt" "rgb24"]
+               (->> (:argv p) (drop-while #(not= "-map" %)) (take 9))))
+        (is (= "/work/previews/p.png" (last (:argv p))))
+        (is (= "passthrough" (arg-after (:argv p) "-fps_mode:v")) "frames pass through, so trim counts n")
+        (is (not-any? #{"-c:a" "-crf" "-movflags"} (:argv p)) "no encoding, no audio")
+        (is (empty? (set/difference (filters-in (:graph p))
+                                    (if v2? process/required-filters-v2 process/required-filters)
+                                    process/preview-filters #{"drawtext"}))
+            "every filter a preview adds is one :preview checks for")))))

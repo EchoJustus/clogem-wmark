@@ -102,6 +102,29 @@
         result (deref (engine/outcome (engine/execute! eng plan nil)) 120000 {:status :timeout})]
     {:spec spec :v2 v2 :output out :outcome result :media media :plan plan}))
 
+(defn preview!
+  "Frame `frame` of the render `render!` would make, drawn by the engine as a
+  still PNG (the :preview capability; docs/adr/0011, section 5). Same spec,
+  same engine plan, one frame. Returns {:png :outcome :v2}."
+  [eng settings input frame {:keys [entitlements seed-fn out-dir spec-version]}]
+  (let [media  (engine/probe eng input)
+        logo   (get-in settings [:logo :path])
+        spec   (render/build {:settings     (resolve/deep-merge schema/defaults settings)
+                              :media        media
+                              :logo-media   (when logo (engine/probe eng logo))
+                              :seed-fn      (or seed-fn (constantly 42))
+                              :entitlements (or entitlements (features/community))
+                              :font         (font)})
+        v2     (when (= 2 spec-version)
+                 (raster/realize! (raster-local/local-rasterizer {:work-root out-dir}) eng spec))
+        png    (str (io/file out-dir (str (.getName (io/file input)) ".frame-" frame ".png")))
+        plan   (engine/prepare eng {:spec (or v2 spec) :source input :media media
+                                    :output {:path png :frame frame}
+                                    :encode {:codec :h264 :quality :archival :audio :copy}
+                                    :strip-metadata? true})
+        result (deref (engine/outcome (engine/execute! eng plan nil)) 120000 {:status :timeout})]
+    {:png png :outcome result :v2 v2}))
+
 (defn gray-frames
   "Every frame of `path` as a luma byte array, decoded by ffmpeg."
   [path w h]

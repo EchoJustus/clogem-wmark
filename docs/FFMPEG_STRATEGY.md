@@ -356,6 +356,34 @@ host drawing per input (ADR 0006).
 comparison, or for text pixels that match every other engine); `1` forces
 v1, which a build without `perspective` refuses up front.
 
+## Previews: one frame of the render
+
+A preview ([ADR 0011](adr/0011-web-ui-product-overhaul.md), section 5) is
+compiled by the same functions as the render, v1 or v2, with one chain added
+at the end of the graph, as data:
+
+```
+[vout]trim=start_frame=N:end_frame=N+1[still]
+... -map [still] -an -frames:v 1 -c:v png -pix_fmt rgb24 -fps_mode:v passthrough -f image2 -update 1 preview.png
+```
+
+- **Frame-exact:** `trim` counts the frames the graph produced from 0, and
+  frames pass through unchanged (`-fps_mode:v passthrough`), so frame N of
+  the preview is frame N of the render. FFmpeg decodes up to N and stops.
+- **No encoding:** no codec, no audio, no container; a PNG.
+- **The sample clip** is what previews draw on before a video is chosen:
+  `color` plus a faint `drawgrid`, encoded once per shape with FFmpeg's own
+  MPEG-4 encoder into `<home>/work/previews/`.
+- **Capability:** `trim`, `color` and `drawgrid`
+  (`process/preview-filters`, all LGPL) give the engine `:preview
+  #{:frame :sample}`. A build without them renders as before and reports no
+  preview. A trimmed FFmpeg (ADR 0008, section 4) must keep them.
+- **Tested:** `compile_test` checks that a preview plan is the render's plan
+  plus that chain and uses no other filter; `ffmpeg_preview_test` renders
+  real frames and finds preview and render equal in luma (mean difference
+  under 1 level, 99.9% of pixels within 3), for v1 and v2, before, during and
+  after a flip and inside and outside a text window.
+
 ## Verification
 
 **Re-run after the engine refactor**, with FFmpeg 6.1.1 unless noted:

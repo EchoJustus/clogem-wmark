@@ -19,11 +19,17 @@
     :jobs           in-process queue                durable queue + workers
     :entitlements   offline license                 account plan
     :secret-for     <home>/secret.key               per-tenant secret (KMS)"
-  (:require [watermark.config :as config]
+  (:require [clojure.java.io :as io]
+            [clojure.string :as str]
+            [watermark.config :as config]
             [watermark.core.features :as features]
+            [watermark.core.form :as form]
             [watermark.core.jobs :as jobs]
             [watermark.core.schema :as schema]
-            [watermark.engine :as engine]))
+            [watermark.engine :as engine])
+  (:import (java.io File)
+           (java.nio.charset StandardCharsets)
+           (java.util UUID)))
 
 (set! *warn-on-reflection* true)
 
@@ -84,6 +90,132 @@
            :locked (->> (features/required-features s)
                         (remove #(features/entitled? (:entitlements sys) %))
                         sort vec))))
+
+(defn- entitled-fn [sys] (fn [feature] (features/entitled? (:entitlements sys) feature)))
+
+(defn settings-form
+  "The settings form of profile `name` (docs/adr/0011, section 3): a row per
+  setting with its value and where it came from, text layers as cards, Pro
+  choices marked. Every UI renders this same model (watermark.core.form).
+  `settings`, when given, are unsaved edits shown on top."
+  ([sys ctx name] (settings-form sys ctx name nil))
+  ([sys ctx name settings]
+   (let [doc (get-profile sys ctx name)
+         r   (resolve-settings sys ctx {:profile (:profile/slug doc) :settings settings})]
+     {:profile  (select-keys doc [:profile/name :profile/slug :profile/rev :profile/auto?])
+      :form     (form/model r {:entitled? (entitled-fn sys)})
+      :locked   (:locked r)
+      :warnings (:warnings r)})))
+
+(defn edit-profile!
+  "Apply one form edit (watermark.core.form/edit: set or reset one setting,
+  add, remove or move a text layer) to profile `name` and save it, only if
+  it's still at revision `if-rev` when given (a stale edit is a 409). Returns
+  the saved document."
+  [sys ctx name {:keys [if-rev] :as edit}]
+  (let [doc       (get-profile sys ctx name)
+        effective (:settings (resolve-settings sys ctx {:profile (:profile/slug doc)}))
+        settings  (form/edit (:settings doc) effective edit)]
+    (save-profile! sys ctx (:profile/slug doc) settings {:if-rev (or if-rev (:profile/rev doc))})))
+
+;; ---------------------------------------------------------------------------
+;; Preview: one frame through the real pipeline (docs/adr/0011, section 5)
+
+(def sample-aspects
+  "Sample clips shown before a video is chosen, by aspect."
+  {"16:9" {:width 1280 :height 720}
+   "9:16" {:width 720 :height 1280}
+   "1:1"  {:width 1080 :height 1080}})
+
+(def ^:private sample-seconds 12)
+
+(def ^:private ^bytes sample-secret
+  "The demonstration key for keyed layers on the sample clip. The sample isn't
+  anyone's evidence, and the studio's own key stays out of it."
+  (.getBytes "wmark sample preview: not a studio key" StandardCharsets/UTF_8))
+
+(defn- preview-dir ^File [sys]
+  (or (some-> (:preview-dir sys) str io/file)
+      (throw (ex-info "Previews aren't set up in this deployment." {:wmark/error :unsupported}))))
+
+(defn- sample-clip!
+  "The sample clip for `aspect`, made once by the engine."
+  [sys ^File dir aspect]
+  (let [{:keys [width height]} (or (sample-aspects aspect) (sample-aspects "16:9"))
+        f (io/file dir (str "sample-" width "x" height ".mp4"))]
+    (when-not (.isFile f)
+      (when-not (satisfies? engine/SampleSource (:engine sys))
+        (throw (ex-info "This engine can't make a sample clip; choose a video to preview on."
+                        {:wmark/error :unsupported})))
+      (.mkdirs dir)
+      (engine/sample-video (:engine sys) {:width width :height height :fps 25 :seconds sample-seconds} (str f)))
+    (str f)))
+
+(def ^:private preview-id #"[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}")
+
+(defn- prune-previews!
+  "Keep the newest `keep-n` previews."
+  [^File dir keep-n]
+  (let [pngs (->> (.listFiles dir) (filter #(re-matches #".*\.png" (.getName ^File %)))
+                  (sort-by #(.lastModified ^File %) >))]
+    (doseq [^File f (drop keep-n pngs)] (.delete f))))
+
+(defn preview-frame
+  "One frame of what a run would produce: the settings of `profile` (plus
+  unsaved `settings`) drawn on the frame at `t` seconds of `source`, a video
+  path, or of the sample clip for `aspect` (\"16:9\", \"9:16\", \"1:1\").
+  It is the render's own plan cut to one frame, so the preview is the output.
+  Returns {:id :frame :t :width :height :duration-s :sample? :aspect :notes};
+  the PNG is
+  `preview-file`. Pro layers the plan doesn't cover are left out and named in
+  :notes; on the sample clip, keyed layers use a demonstration key."
+  [sys ctx {:keys [profile settings source t aspect]}]
+  (let [dir     (preview-dir sys)
+        caps    (get-in (engine/info (:engine sys)) [:capabilities :preview] #{})
+        _       (when-not (contains? caps :frame)
+                  (throw (ex-info "This engine can't draw previews." {:wmark/error :unsupported})))
+        r       (resolve-settings sys ctx {:profile profile :settings settings})
+        locked  (set (:locked r))
+        shown?  #(not (locked (keyword "text.mode" (name (features/canonical-mode (:mode %))))))
+        s       (update (:settings r) :texts #(vec (filter shown? %)))
+        sample? (str/blank? (str source))
+        aspect  (if (sample-aspects aspect) aspect "16:9")
+        input   (if sample? (sample-clip! sys dir aspect) (str source))
+        env     (cond-> sys sample? (assoc :secret-for (constantly sample-secret)))
+        id      (str (UUID/randomUUID))
+        out     (io/file dir (str id ".png"))
+        _       (.mkdirs dir)
+        planned (jobs/plan-frame env ctx s input {:t (or t 0.0) :out out})]
+    (try
+      (let [outcome (deref (engine/outcome (engine/execute! (:engine sys) (:plan planned) nil)))]
+        (when-not (and (= :done (:status outcome)) (.isFile out))
+          (throw (ex-info (str "The preview failed. " (get-in outcome [:error :message]))
+                          {:wmark/error :unavailable})))
+        (prune-previews! dir 24)
+        (let [{:keys [fps-num fps-den width height]} (:media planned)
+              keyed? (some #(#{:subliminal :random} (features/canonical-mode (:mode %))) (:texts s))]
+          {:id      id
+           :frame   (:frame planned)
+           :t       (/ (* (double (:frame planned)) fps-den) fps-num)
+           :width   width
+           :height  height
+           :duration-s (:duration-s (:media planned))
+           :sample? sample?
+           :aspect  (when sample? aspect)
+           :notes   (cond-> []
+                      (seq locked) (conj (str "Not shown, because they need wmark Pro: "
+                                              (str/join ", " (map #(get-in features/catalog [% :title] (str %)) (sort locked)))
+                                              "."))
+                      (and sample? keyed?) (conj "Keyed layers use a sample key on the sample clip; each real video gets its own times."))}))
+      (finally (jobs/release! sys planned)))))
+
+(defn preview-file
+  "The PNG of preview `id`, or :not-found."
+  ^File [sys _ctx id]
+  (let [f (when (re-matches preview-id (str id)) (io/file (preview-dir sys) (str id ".png")))]
+    (if (and f (.isFile ^File f))
+      f
+      (throw (ex-info "No such preview." {:wmark/error :not-found})))))
 
 (defn- prepare!
   "Everything that must hold before any encoding starts."

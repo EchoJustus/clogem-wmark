@@ -22,6 +22,7 @@ watermark.core.jobs ── plan-input ─► watermark.render/build ─► rende
 | `(info e)` | `{:engine/id :engine/version :available? :problems :warnings :capabilities :binaries}` | Never throws. Cheap after the first call. `wmark doctor` and `/api/v1/health` show it. |
 | `(probe e source)` | media facts: `:kind :width :height :fps-num :fps-den :frames :duration-s :start-s :vfr? :has-audio? :rotation` | Must handle still images (the logo) as well as video. Width and height are *display* dimensions, with rotation applied. |
 | `(decode-still e source)` | `{:width :height :px}`: straight RGBA8, row-major | The `StillDecoder` protocol, for engines that take render spec v2: the host draws the logo's bitmaps from these pixels. |
+| `(sample-video e opts path)` | `path` | The optional `SampleSource` protocol: a neutral clip (`{:width :height :fps :seconds}`) that previews draw on before a video is chosen. Engines with it declare `:preview #{:sample}`. |
 | `(prepare e request)` | an engine plan: plain, serializable data | Capability check first (`engine/check!`), then compile. Nothing is written. Dry runs print it. |
 | `(execute! e plan listener)` | a `RenderHandle`, returned immediately | `listener` receives `{:event :progress :fraction :frame}` on any thread. |
 | `(cancel! handle)` / `(outcome handle)` | outcome deferred: `{:status :done/:failed/:cancelled :error}` | On the JVM, deref blocks until the render ends. |
@@ -40,6 +41,15 @@ watermark.core.jobs ── plan-input ─► watermark.render/build ─► rende
 **Output names and publishing are not the engine's job.** The job pipeline asks
 `watermark.media` for a temporary path, and commits it after `:done` or
 discards it otherwise.
+
+**A preview is the same request cut to one frame**
+([ADR 0011](adr/0011-web-ui-product-overhaul.md), section 5):
+`:output {:path "/abs/preview.png" :frame 125}` asks for frame 125 of that
+render, and nothing else, as a PNG. Same spec, same plan up to the output;
+`requirements` then asks for `[:preview :frame]` instead of a codec and a
+container. The test that frame n of a preview equals frame n of the full
+render (`test/watermark/engine/ffmpeg_preview_test.clj`, through the
+harness's `preview!`) is what an engine's preview must pass.
 
 ## The render spec
 
@@ -105,7 +115,8 @@ host draws the text, so every engine shows the same pixels.
 {:layers #{:image :text} :animations #{:flip-y}
  :timing #{:always :windows :periodic} :placement #{:fixed :burst-scatter :per-window}
  :codecs #{:h264 :hevc} :containers #{"mp4" "mov" "mkv"}
- :audio #{:copy :aac :none} :sources #{:file :url}}
+ :audio #{:copy :aac :none} :sources #{:file :url}
+ :preview #{:frame :sample}}          ; optional: stills, and a sample clip
 ```
 
 The pipeline calls `engine/check!` before any work. A gap becomes an

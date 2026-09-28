@@ -225,6 +225,33 @@
     (= audio :aac) ["-map" "0:a?" "-c:a" "aac" "-b:a" "192k"]
     :else          ["-map" "0:a?" "-c:a" "copy"]))
 
+(defn- still-chains
+  "A preview (docs/adr/0011, section 5): the graph's frame `frame` alone.
+  `trim` counts the frames the graph produced, from 0, exactly as the
+  render's own `n` does (frames pass through, see frame-sync-args), so the
+  still is that frame of the render."
+  [{:keys [frame]}]
+  (when frame
+    [(g/chain ["vout"] [(g/f "trim" :start_frame frame :end_frame (inc frame))] ["still"])]))
+
+(defn- output-args
+  "Everything after the filtergraph: a still PNG for a preview, else the
+  encoded video."
+  [{:keys [output encode media]} {:keys [version encoder canvas fps strip-metadata?]}]
+  (if (:frame output)
+    (concat ["-map" "[still]" "-an" "-frames:v" "1" "-c:v" "png" "-pix_fmt" "rgb24"]
+            (frame-sync-args version)
+            ["-f" "image2" "-update" "1" (str (:path output))])
+    (let [container (:container output "mp4")]
+      (concat ["-map" "[vout]"]
+              (audio-args (:audio encode :copy) (:has-audio? media true))
+              (video-args encode encoder canvas fps)
+              ["-pix_fmt" "yuv420p"]
+              (frame-sync-args version)
+              (when strip-metadata? ["-map_metadata" "-1"])
+              (when (#{"mp4" "mov"} container) ["-movflags" "+faststart"])
+              [(str (:path output))]))))
+
 ;; ---------------------------------------------------------------------------
 ;; The whole invocation
 
@@ -232,7 +259,7 @@
   "Engine plan for a render request (see watermark.engine). `env`:
     :ffmpeg the executable, :version / :encoders from describe-binary,
     :workdir a fresh scratch directory for the graph and text files."
-  [{:keys [spec source media output encode strip-metadata?]} {:keys [ffmpeg version encoders workdir]}]
+  [{:keys [spec source media output encode strip-metadata?] :as request} {:keys [ffmpeg version encoders workdir]}]
   (let [{:keys [canvas timebase layers]} spec
         first-frame (:first-frame timebase 0)
         fps-str     (str (:fps-num timebase) "/" (:fps-den timebase))
@@ -267,10 +294,10 @@
                                       (:chains image-chains)
                                       [(g/chain [(:last image-chains)]
                                                 (if (seq drawtexts) drawtexts [(g/f "null")])
-                                                ["vout"])]))
+                                                ["vout"])]
+                                      (still-chains output)))
         graph-file  (str (File. (str workdir) "graph.txt"))
-        encoder     (pick-encoder encode encoders)
-        container   (:container output "mp4")]
+        encoder     (when-not (:frame output) (pick-encoder encode encoders))]
     {:engine   :ffmpeg
      :workdir  (str workdir)
      :output   (:path output)
@@ -282,14 +309,8 @@
                              "-i" (str source)]
                             (mapcat (fn [img] ["-i" (get-in img [:source :path])]) images)
                             (process/script-args version graph-file)
-                            ["-map" "[vout]"]
-                            (audio-args (:audio encode :copy) (:has-audio? media true))
-                            (video-args encode encoder canvas fps)
-                            ["-pix_fmt" "yuv420p"]
-                            (frame-sync-args version)
-                            (when strip-metadata? ["-map_metadata" "-1"])
-                            (when (#{"mp4" "mov"} container) ["-movflags" "+faststart"])
-                            [(str (:path output))]))}))
+                            (output-args request {:version version :encoder encoder :canvas canvas
+                                                  :fps fps :strip-metadata? strip-metadata?})))}))
 
 ;; ---------------------------------------------------------------------------
 ;; Render spec v2: composite host-rendered bitmaps with overlay only (docs/adr/0006)
@@ -329,7 +350,7 @@
   "Engine plan for a v2 render request: every draw is one `overlay` of a
   still RGBA bitmap (rawvideo input), in yuv444 so positions stay exact
   (yuv420 would round them to even pixels)."
-  [{:keys [spec source media output encode strip-metadata?]} {:keys [ffmpeg version encoders workdir]}]
+  [{:keys [spec source media output encode strip-metadata?] :as request} {:keys [ffmpeg version encoders workdir]}]
   (let [{:keys [canvas timebase layers bitmaps]} spec
         first-frame (:first-frame timebase 0)
         fps-str     (str (:fps-num timebase) "/" (:fps-den timebase))
@@ -354,10 +375,10 @@
         graph       (g/render (concat normalize
                                       (if (seq draws)
                                         overlays
-                                        [(g/chain [base] [(g/f "null")] ["vout"])])))
+                                        [(g/chain [base] [(g/f "null")] ["vout"])])
+                                      (still-chains output)))
         graph-file  (str (File. (str workdir) "graph.txt"))
-        encoder     (pick-encoder encode encoders)
-        container   (:container output "mp4")]
+        encoder     (when-not (:frame output) (pick-encoder encode encoders))]
     {:engine   :ffmpeg
      :workdir  (str workdir)
      :output   (:path output)
@@ -373,11 +394,5 @@
                                          "-framerate" "1" "-i" (str path)]))
                                     draws)
                             (process/script-args version graph-file)
-                            ["-map" "[vout]"]
-                            (audio-args (:audio encode :copy) (:has-audio? media true))
-                            (video-args encode encoder canvas fps)
-                            ["-pix_fmt" "yuv420p"]
-                            (frame-sync-args version)
-                            (when strip-metadata? ["-map_metadata" "-1"])
-                            (when (#{"mp4" "mov"} container) ["-movflags" "+faststart"])
-                            [(str (:path output))]))}))
+                            (output-args request {:version version :encoder encoder :canvas canvas
+                                                  :fps fps :strip-metadata? strip-metadata?})))}))

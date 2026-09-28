@@ -76,7 +76,8 @@
      :rasterizer   (raster-local/local-rasterizer {:work-root (str (.resolve home "work"))})
      :spec-version (:render-spec opts)             ; nil: v1 where the engine takes it
      :secret-for   (fn [_ctx] @secret)            ; SaaS: per-tenant secret
-     :font         (delay (os/default-font (.resolve home "cache")))}))
+     :font         (delay (os/default-font (.resolve home "cache")))
+     :preview-dir  (str (.resolve home "work/previews"))}))  ; SaaS: object storage (M4)
 
 (defn with-jobs [sys]
   (let [n (if (features/entitled? (:entitlements sys) :jobs/parallel)

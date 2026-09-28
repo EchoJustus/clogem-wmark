@@ -88,6 +88,32 @@
    :settings (settings-in settings)
    :inputs   inputs})
 
+(defn- h-form [sys ctx _ {:keys [name]} _] (api/settings-form sys ctx name))
+
+(defn- h-edit
+  "{op, id?, value?, mode?, index?, delta?, if-rev?}: one form edit, saved.
+  Answers with the saved profile and its new form."
+  [sys ctx _ {:keys [name]} body]
+  (let [doc (api/edit-profile! sys ctx name (-> body
+                                                (assoc :if-rev (get body (keyword "if-rev")))
+                                                (dissoc (keyword "if-rev"))))]
+    (assoc (api/settings-form sys ctx (:profile/slug doc)) :saved doc)))
+
+(defn- h-preview [sys ctx _ _ {:keys [profile clean settings source t aspect]}]
+  (let [p (api/preview-frame sys ctx {:profile  (if clean :none profile)
+                                      :settings (settings-in settings)
+                                      :source   source
+                                      :t        (when (number? t) (double t))
+                                      :aspect   aspect})]
+    (assoc p :url (str "/api/v1/previews/" (:id p)))))
+
+(defn- h-preview-file [sys ctx _ {:keys [id]} _]
+  (let [f (api/preview-file sys ctx id)]
+    {::raw {:status  200
+            :headers {"Content-Type" "image/png" "Cache-Control" "private, max-age=3600"
+                      "X-Content-Type-Options" "nosniff"}
+            :body    f}}))
+
 (defn- h-resolve [sys ctx _ _ body] (api/resolve-settings sys ctx (request-of body)))
 (defn- h-plan [sys ctx _ _ body] (api/plan-batch sys ctx (request-of body)))
 (defn- h-submit [sys ctx _ _ body] [202 (api/submit-job! sys ctx (request-of body))])
@@ -106,6 +132,10 @@
    [:post   "/api/v1/profiles/:name/rename" h-rename-profile]    ; {to}
    [:post   "/api/v1/profiles/:name/copy"   h-copy-profile]      ; {to}
    [:delete "/api/v1/profiles/:name"        h-delete-profile]
+   [:get    "/api/v1/profiles/:name/form"   h-form]              ; the settings form model
+   [:post   "/api/v1/profiles/:name/edit"   h-edit]              ; {op, id, value, if-rev}
+   [:post   "/api/v1/preview"               h-preview]           ; {profile?, settings?, source?, t?, aspect?}
+   [:get    "/api/v1/previews/:id"          h-preview-file]      ; image/png
    [:post   "/api/v1/resolve"               h-resolve]           ; {profile?, clean?, settings?}
    [:post   "/api/v1/plan"                  h-plan]              ; + inputs: dry run
    [:post   "/api/v1/jobs"                  h-submit]            ; {inputs, profile?, settings?}
