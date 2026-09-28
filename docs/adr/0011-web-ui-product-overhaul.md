@@ -1,10 +1,7 @@
 # 0011. The web UI as a product: design system, a settings form, live preview
 
-- **Status:** Proposed. The owner reviews this direction before the UI is
-  rebuilt (2026-09-28: "Hold off on writing the massive UI refactoring code
-  until I approve the architectural direction"). The owner has since
-  confirmed that the Datastar UI is modernized for the open core
-  (ADR 0008, accepted); this record is its design.
+- **Status:** Accepted (owner, 2026-09-28), with the amendments below. The
+  first cut is built (see "Implementation").
 - **Date:** 2026-09-28
 
 ## Context
@@ -34,7 +31,7 @@
   - Clojure first (decision 9);
   - the UI works offline: no web fonts or CDNs.
 
-## Decision (proposed)
+## Decision
 
 ### 1. A small design system, in CSS we own
 
@@ -46,9 +43,18 @@
 - **TaskForge:** a warm off-white canvas (`#FAF8F4`, dark `#171511`),
   near-black text, one accent, the system UI font for text and a display
   face used sparingly, flat surfaces and dark primary buttons.
-- **"FeverStudio":** not identified unambiguously (searches return Fever,
-  the events app). The owner is asked for a link; the principles below
-  don't depend on it.
+- **FeverStudio** (https://feverstudio.io/): a partial reference for
+  layout and interactions (owner, 2026-09-28).
+
+**The owner's amendments (2026-09-28):**
+- **Light and dark themes are required,** in this UI and in any GUI app.
+  Both come from the same tokens; the person can follow the operating
+  system or pin either one.
+- **The overall look is clean and familiar, in the manner of Facebook:** a
+  light grey canvas, white cards, dark text and one blue accent, with the
+  card aesthetics of RedotPay and TaskForge.
+- **The accent is blue** (`#0866FF` in light, `#4C9AFF` in dark), replacing
+  wmark's earlier yellow.
 
 **Principles we take from them:**
 - **Tokens, not one-off values.** `web/resources/public/app.css` defines
@@ -269,9 +275,52 @@ Datastar UI shows. Steps 1 and 2 are pure and live in the core library.
 - **Previewing in the browser with a canvas:** JavaScript of our own, and
   an approximation.
 
-## Owner actions
+## Implementation (first cut, 2026-09-28)
 
-- Approve or amend the direction: the design principles, the layout, the
-  form model and the preview design.
-- Name the accent colour: keep wmark's yellow or pick another.
-- Send a link for "FeverStudio".
+**Built and tested:**
+- **The design system** (section 1): `app.css` as tokens and components; light
+  and dark themes with a System / Light / Dark switcher, remembered in a
+  cookie; WCAG AA contrast for every text pair in both themes, checked when
+  the palette was chosen.
+- **The app shell** (section 2): profiles, the form, the preview and the
+  queue as cards, reflowing to one column on narrow windows.
+- **The form model** (section 3) in the core library,
+  `watermark.core.form` (`.cljc`): the catalog of every setting's title,
+  description, control, bounds and choices, checked against the malli schema
+  by a test, and the pure edits. The API serves it at
+  `GET /api/v1/profiles/:name/form` and applies edits at
+  `POST /api/v1/profiles/:name/edit`, so a GUI app renders the same rows.
+- **The form in the browser:** click to edit; Enter, Save or a changed
+  choice saves one path with `if-rev`; Escape cancels; switches save on
+  change; selects for every enum, with locked Pro choices shown and
+  disabled; errors at the field; provenance badges and Reset; text layers as
+  cards (add, remove, reorder, change kind); search; "Edit as JSON" kept for
+  bulk edits.
+- **Live preview** (section 5): `api/preview-frame` and
+  `POST /api/v1/preview`; the engine's `:preview` capability and sample
+  clips (16:9, 9:16, 1:1); the panel redraws when the shape, the time, the
+  video or the saved settings change, newest request winning. The
+  conformance test that frame n of a preview equals frame n of a render
+  passes on real frames, for render spec v1 and v2.
+- **The browser suite** covers all of the above, both themes and the theme
+  surviving a reload, with no CSP violations or console errors.
+- **Screenshots:** `docs/img/ui-light.png` and `docs/img/ui-dark.png` (a
+  9:16 profile with two text layers, previewed on the sample clip).
+
+**Still to do, in P3 and P4:**
+- saving on blur, and a colour picker next to the colour field;
+- the logo picker and upload (section 4) and the server-side video picker;
+  today the logo and a preview video are full paths typed in;
+- caching the decoded source frame and drawn bitmaps per settings hash;
+- running the browser suite in WebKit too (with the desktop window, P5).
+
+**Found on the way:**
+- **Stale edits over REST were saved.** The edit route dropped `if-rev`,
+  so an edit made against an old revision overwrote a newer one. The Core
+  API refused it; only the route lost the revision. A GUI client's
+  integration test caught it; it's fixed, with a REST-level test.
+- **A text line wider than the frame runs off its edge.** Text is neither
+  wrapped nor shrunk to fit, and a 9:16 frame shows it first. The preview
+  makes it visible before a render; the fix (wrapping, or shrinking to a
+  maximum share of the frame's width) belongs in the kernel's text layout,
+  with golden vectors and the conformance harness, as a rendering change.

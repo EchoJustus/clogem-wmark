@@ -41,13 +41,20 @@
      :encode {:codec :h264 :quality :high :audio :copy :ffmpeg {...}}
      :strip-metadata? true}
 
+  A preview (docs/adr/0011, section 5) is the same request with
+  :output {:path \"/abs/preview.png\" :frame 125}: frame 125 of that render,
+  and nothing else, as a PNG. Engines that can declare
+  :preview #{:frame}; `requirements` then asks for that instead of a codec
+  and a container.
+
   Capabilities (data, from `info`)
 
     {:layers #{:image :text}  :animations #{:flip-y}
      :timing #{:always :windows :periodic}
      :placement #{:fixed :burst-scatter :per-window}
      :codecs #{:h264 :hevc}  :containers #{\"mp4\" \"mov\" \"mkv\"}
-     :audio #{:copy :aac :none}  :sources #{:file :url}}
+     :audio #{:copy :aac :none}  :sources #{:file :url}
+     :preview #{:frame :sample}}    ; optional: stills, and SampleSource
 
   An engine that lacks :text can still serve specs whose text layers were
   lowered to image layers first (text rasterised by the host) -- the escape
@@ -64,6 +71,13 @@
 (defprotocol RenderHandle
   (cancel! [handle])
   (outcome [handle]))
+
+(defprotocol SampleSource
+  (sample-video [engine opts path]
+    "Write a neutral sample clip to `path` and return its path: what the
+    preview draws on before any video is chosen. `opts` is
+    {:width :height :fps :seconds}. Engines with it declare
+    :preview #{:sample}."))
 
 (defprotocol StillDecoder
   (decode-still [engine source]
@@ -85,9 +99,11 @@
     (for [l (:layers spec) :when (:animation l)] [:animations (get-in l [:animation :type])])
     (for [l (:layers spec)] [:timing (get-in l [:timing :type])])
     (for [l (:layers spec) :when (:placement l)] [:placement (get-in l [:placement :type])])
-    [[:codecs (:codec encode :h264)]
-     [:containers (:container output "mp4")]
-     [:audio (:audio encode :copy)]])))
+    (if (:frame output)
+      [[:preview :frame]]
+      [[:codecs (:codec encode :h264)]
+       [:containers (:container output "mp4")]
+       [:audio (:audio encode :copy)]]))))
 
 (defn missing
   "Requirements of `request` that `capabilities` doesn't cover."

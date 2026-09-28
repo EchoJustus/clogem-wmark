@@ -166,12 +166,15 @@ paused M3 and opened a **productization and UX phase**.
      - Phase 2: the core library in-process on the Dart VM, with Dart
        adapters for files and for spawning FFmpeg, and no GraalVM engine.
        The same code base reaches mobile.
-4. **Proposed, for the owner's review:**
-   - **The community edition goes through package managers**
-     ([ADR 0009](adr/0009-community-distribution-through-package-managers.md)).
-   - **The web UI becomes a product:** a design system, a settings form
-     generated from the schema, a logo picker and live preview
-     ([ADR 0011](adr/0011-web-ui-product-overhaul.md)).
+4. **The web UI becomes a product**
+   ([ADR 0011](adr/0011-web-ui-product-overhaul.md), accepted with the
+   owner's amendments): a design system with light and dark themes (both
+   required), a clean look in the manner of Facebook with a blue accent and
+   FeverStudio as a partial reference, a settings form generated from the
+   schema, and live preview.
+5. **Proposed, for the owner's review:** the community edition goes through
+   package managers
+   ([ADR 0009](adr/0009-community-distribution-through-package-managers.md)).
 
 **P1 comes first:** these records, the TUI removal and the CLI's new
 commands (ADRs 0008–0011). After the owner approves it, two tracks run in
@@ -182,9 +185,9 @@ short status report.
 
 | # | Milestone | Record |
 |---|---|---|
-| P2 | Design system and app shell: tokens, light and dark themes, the layout | ADR 0011, sections 1–2 |
-| P3 | The settings form, generated from the schema, with titles and descriptions added to it. The form model is written in the core library and also served as JSON, so the GUI apps render the same rows | ADR 0011, section 3; ADR 0008, section 1 |
-| P4 | Logo upload, the video picker and live preview (the engine's preview capability), the preview being a Core API function with a REST route | ADR 0011, sections 4–5 |
+| P2 | Design system and app shell: tokens, light and dark themes, the layout (first cut built) | ADR 0011, sections 1–2 |
+| P3 | The settings form, generated from the schema, with titles and descriptions added to it. The form model is written in the core library and also served as JSON, so the GUI apps render the same rows (first cut built) | ADR 0011, section 3; ADR 0008, section 1 |
+| P4 | Logo upload, the video picker and live preview (the engine's preview capability), the preview being a Core API function with a REST route (the preview is built and passes its conformance test) | ADR 0011, sections 4–5 |
 | P5 | The desktop window: a spike, then the build | ADR 0008, section 2 |
 | P6 | The size diet: `-Os`, then shared FFmpeg, then trimmed FFmpeg, then a size budget in CI | ADR 0008, section 4 |
 | P7 | Package managers, Tier 1 | ADR 0009 |

@@ -1,7 +1,8 @@
 ;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
 ;; SPDX-License-Identifier: EPL-2.0
 (ns watermark.web.views-test
-  (:require [clojure.string :as str]
+  (:require [clojure.data.json :as json]
+            [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [watermark.web.html :as h]
             [watermark.web.views :as v]))
@@ -25,7 +26,7 @@
   (testing "slugs are letters of any script, digits and hyphens; encoding makes them ASCII"
     (is (= "%E6%A8%AA%E5%B1%8F-16-9" (v/path-segment "横屏-16-9")))
     (is (re-matches #"[A-Za-z0-9.*_%-]*" (v/path-segment "a'b\"c\\d </script> e+f"))))
-  (is (str/includes? (h/html (v/inspector-head {:profile/name "N" :profile/slug "横屏"}))
+  (is (str/includes? (h/html (v/editor {:profile/name "N" :profile/slug "横屏" :settings {}}))
                      "@put(&#39;/ui/profiles/%E6%A8%AA%E5%B1%8F&#39;)")
       "(quotes are escaped in the attribute; the browser decodes them before Datastar reads it)"))
 
@@ -55,6 +56,10 @@
                               :profiles [{:name hostile :slug "x" :auto? false}]
                               :doc {:profile/name hostile :profile/slug "x" :profile/rev 7 :settings {:texts [{:content hostile}]}}
                               :resolved nil :titles {} :jobs []}))]
-    (is (= ["{&quot;rev&quot;:7}"] (map second (re-seq #"data-signals=\"([^\"]*)\"" page))))
+    (let [signals (map second (re-seq #"data-signals=\"([^\"]*)\"" page))]
+      (is (= 1 (count signals)))
+      (is (= 7 (get (json/read-str (str/replace (first signals) "&quot;" "\"")) "rev")))
+      (is (every? number? (vals (json/read-str (str/replace (first signals) "&quot;" "\""))))
+          "numbers only: text signals come from element values"))
     (is (str/includes? page "data-nonce=\"n0nce\""))
     (is (= 1 (count (re-seq #"<script" page))) "one script: datastar.js")))

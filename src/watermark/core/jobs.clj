@@ -28,7 +28,8 @@
             [watermark.engine :as engine]
             [watermark.media :as media]
             [watermark.raster :as raster]
-            [watermark.render :as render])
+            [watermark.render :as render]
+            [watermark.util.num :as num])
   (:import (clojure.lang ExceptionInfo)))
 
 (set! *warn-on-reflection* true)
@@ -73,16 +74,11 @@
                     {:wmark/error :unsupported})))
   (raster/realize! rasterizer engine spec))
 
-(defn plan-input
-  "Everything up to (not including) rendering, for one input: probe, render
-  spec, output location, engine plan. Also what dry runs show. A v2 plan
-  holds bitmaps on disk until `release!`."
-  [{:keys [engine media entitlements secret-for font] :as env} ctx settings input]
-  (let [src       (media/open-input media ctx input)
-        info      (engine/probe engine (:location src))
-        _         (when (not= :video (:kind info))
-                    (throw (ex-info (str input " is not a video.") {:wmark/error :invalid :path (str input)})))
-        logo      (:logo settings)
+(defn- spec-of
+  "The render spec for one probed input: v1, or v2 drawn by the host where
+  the engine needs it."
+  [{:keys [engine entitlements secret-for font] :as env} ctx settings src info]
+  (let [logo      (:logo settings)
         logo-info (when (and (:enabled logo true) (:path logo))
                     (engine/probe engine (:path logo)))
         spec      (render/build {:settings     settings
@@ -90,22 +86,62 @@
                                  :logo-media   logo-info
                                  :seed-fn      (seeds/seed-fn (secret-for ctx) (:fingerprint src))
                                  :entitlements entitlements
-                                 :font         (force font)})
-        spec      (if (= 2 (spec-version (engine/info engine) spec (:spec-version env)))
-                    (host-render env spec)
-                    spec)
-        out       (media/open-output media ctx input settings)
-        plan      (try
-                    (engine/prepare engine {:spec            spec
-                                            :source          (:location src)
-                                            :media           info
-                                            :output          {:path (:temp out) :container (:container out)}
-                                            :encode          (:encode settings)
-                                            :strip-metadata? (get-in settings [:output :strip-metadata] true)})
-                    (catch Throwable t
-                      (release! env {:spec spec})
-                      (throw t)))]
+                                 :font         (force font)})]
+    (if (= 2 (spec-version (engine/info engine) spec (:spec-version env)))
+      (host-render env spec)
+      spec)))
+
+(defn- open-video [{:keys [engine media]} ctx input]
+  (let [src  (media/open-input media ctx input)
+        info (engine/probe engine (:location src))]
+    (when (not= :video (:kind info))
+      (throw (ex-info (str input " is not a video.") {:wmark/error :invalid :path (str input)})))
+    [src info]))
+
+(defn- prepare! [{:keys [engine] :as env} spec request]
+  (try
+    (engine/prepare engine (assoc request :spec spec))
+    (catch Throwable t
+      (release! env {:spec spec})
+      (throw t))))
+
+(defn plan-input
+  "Everything up to (not including) rendering, for one input: probe, render
+  spec, output location, engine plan. Also what dry runs show. A v2 plan
+  holds bitmaps on disk until `release!`."
+  [{:keys [media] :as env} ctx settings input]
+  (let [[src info] (open-video env ctx input)
+        spec       (spec-of env ctx settings src info)
+        out        (media/open-output media ctx input settings)
+        plan       (prepare! env spec {:source          (:location src)
+                                       :media           info
+                                       :output          {:path (:temp out) :container (:container out)}
+                                       :encode          (:encode settings)
+                                       :strip-metadata? (get-in settings [:output :strip-metadata] true)})]
     {:input (str input) :media info :spec spec :output out :plan plan}))
+
+(defn frame-at
+  "The frame showing at `t` seconds (the one whose start is at or before t),
+  within the clip."
+  [{:keys [fps-num fps-den frames duration-s]} t]
+  (let [fps (/ (double fps-num) fps-den)
+        end (dec (long (or frames (num/ceil-int (* fps (or duration-s 0.0))))))]
+    (num/clamp 0 (max 0 end) (num/floor-int (* fps (max 0.0 (double t)))))))
+
+(defn plan-frame
+  "A preview (docs/adr/0011, section 5): the render of `input` with
+  `settings`, cut to the frame at `t` seconds, as a PNG at `out`. Same spec,
+  same engine plan, one frame. Release it with `release!` like any plan."
+  [env ctx settings input {:keys [t out]}]
+  (let [[src info] (open-video env ctx input)
+        frame      (frame-at info (or t 0.0))
+        spec       (spec-of env ctx settings src info)
+        plan       (prepare! env spec {:source          (:location src)
+                                       :media           info
+                                       :output          {:path (str out) :frame frame}
+                                       :encode          (:encode settings)
+                                       :strip-metadata? true})]
+    {:input (str input) :media info :spec spec :frame frame :plan plan}))
 
 (defn render-input!
   "Plan, render and publish one input. Never throws: returns a result map

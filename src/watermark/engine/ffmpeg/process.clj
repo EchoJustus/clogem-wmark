@@ -26,6 +26,13 @@
   compositing, which LGPL builds (no `perspective`) have."
   #{"overlay" "fps" "null"})
 
+(def preview-filters
+  "Filters previews add (docs/adr/0011, section 5): `trim` picks one frame of
+  the graph; `color` and `drawgrid` draw the sample clip shown before any
+  video is chosen. All are LGPL. A build without them renders as usual and
+  reports no :preview capability."
+  #{"trim" "color" "drawgrid"})
+
 (defn exec
   "Run to completion, capturing stdout and stderr as UTF-8. Short commands only."
   [argv]

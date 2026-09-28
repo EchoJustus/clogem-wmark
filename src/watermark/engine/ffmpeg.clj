@@ -13,6 +13,7 @@
             [clojure.string :as str]
             [watermark.engine :as engine]
             [watermark.engine.ffmpeg.compile :as compile]
+            [watermark.engine.ffmpeg.graph :as g]
             [watermark.engine.ffmpeg.probe :as probe]
             [watermark.engine.ffmpeg.process :as process]
             [watermark.util.locate :as locate])
@@ -107,7 +108,8 @@
                           :codecs     codecs
                           :containers #{"mp4" "mov" "mkv"}
                           :audio      #{:copy :aac :none}
-                          :sources    #{:file :url}}}))))
+                          :sources    #{:file :url}
+                          :preview    (if (every? filters process/preview-filters) #{:frame :sample} #{})}}))))
 
 (defrecord FFmpegRender [result cancelled ^clojure.lang.Atom process]
   engine/RenderHandle
@@ -205,9 +207,30 @@
                       {:wmark/error :invalid :path (str source)})))
     {:width width :height height :px px}))
 
+(defn- sample-video
+  "A calm clip for previews before a video is chosen: neutral grey with a
+  faint grid, so marks of any colour show against it. FFmpeg's own MPEG-4
+  encoder, which every build has (LGPL builds lack x264)."
+  [eng {:keys [width height fps seconds]} path]
+  (let [ffmpeg (or (get-in (engine/info eng) [:binaries :ffmpeg :path])
+                   (throw (ex-info "FFmpeg not found." {:wmark/error :unavailable})))
+        graph  (g/render [(g/chain []
+                                   [(g/f "color" :c "0x5f6b78" :s (str width "x" height) :r fps :d seconds)
+                                    (g/f "drawgrid" :w 64 :h 64 :t 1 :c "white@0.14")]
+                                   ["v"])])
+        r      (process/exec [ffmpeg "-hide_banner" "-nostdin" "-y" "-loglevel" "error"
+                              "-filter_complex" graph "-map" "[v]"
+                              "-c:v" "mpeg4" "-q:v" "3" "-pix_fmt" "yuv420p" (str path)])]
+    (when-not (zero? (long (:exit r)))
+      (throw (ex-info (str "FFmpeg couldn't make the sample clip: " (str/trim (str (:err r))))
+                      {:wmark/error :unavailable})))
+    (str path)))
+
 (extend-type FFmpegProcessor
   engine/StillDecoder
-  (decode-still [eng source] (decode-still eng source)))
+  (decode-still [eng source] (decode-still eng source))
+  engine/SampleSource
+  (sample-video [eng opts path] (sample-video eng opts path)))
 
 (defn ffmpeg-engine
   "FFmpeg engine.

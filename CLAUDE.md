@@ -248,7 +248,8 @@ VM once M3a runs it in CI)
   - numbers are locale-independent;
   - executables are always invoked by absolute path;
   - `process/required-filters` must cover every filter the compiler emits
-    (tested).
+    (tested); a preview adds only `process/preview-filters`, which gate the
+    `:preview` capability (tested).
 
 **Orchestration and ports (tested)**
 - `watermark.core.*` requires no engine, media or store implementation, no OS
@@ -400,27 +401,32 @@ productization"). The MVP engine is validated by `v0.1.0-rc.1`.
   0010 (TUI removed) and 0011 (the web UI as a product);
 - the TUI removed, and the CLI's `profiles effective` and progress bar.
 
-**Track A: the open core's product** (the GraalVM host)
+**Track A: the open core's product** (the GraalVM host). P2–P4 have a
+first cut (ADR 0011, "Implementation"); what remains of them is listed there.
 1. **P2 · Design system and app shell** (ADR 0011, sections 1–2): CSS
-   tokens, light and dark themes, the rail, workbench and queue layout.
-   Screenshots go with the pull request.
+   tokens, light and dark themes (both required, owner 2026-09-28), the
+   rail, workbench and queue layout. Screenshots go with the pull request.
+   *First cut built.*
 2. **P3 · The settings form** (ADR 0011, section 3):
-   - generated from the schema, after adding titles, descriptions and
-     categories to it;
-   - the form model is a pure function in the core library, and the API
-     serves it as JSON too, for the GUI apps;
+   - the catalog and the form model are pure `.cljc` in the core library
+     (`watermark.core.form`), checked against the schema, and the API
+     serves them as JSON too, for the GUI apps;
    - click to edit, enums as `<select>`, text layers as cards, provenance
      badges and reset;
    - saved one path at a time with `if-rev`.
+
+   *First cut built;* still to do: saving on blur, a colour picker.
 3. **P4 · Files and live preview** (ADR 0011, sections 4–5):
    - the logo picker and upload (content-addressed assets);
    - the server-side video picker;
-   - `api/preview` with a REST route and the engine's preview capability,
-     with a conformance test that frame n of a preview equals frame n of a
-     render.
+   - `api/preview-frame` with a REST route and the engine's preview
+     capability, with a conformance test that frame n of a preview equals
+     frame n of a render. *Built and passing.*
 4. **P5 · The desktop window** (ADR 0008, section 2): a spike on all four
    platforms, then the build, with the fallbacks (browser app mode, then
-   the default browser). The browser suite also runs in WebKit.
+   the default browser). The browser suite also runs in WebKit. The window
+   opens only on an interactive launch: `serve` stays headless, and a build
+   can leave the window out (a GUI app's engine never opens it).
 5. **P6 · The size diet** (ADR 0008, section 4), each step measured:
    - `-Os`, after a check that host-side drawing isn't slower in a way users
      notice;

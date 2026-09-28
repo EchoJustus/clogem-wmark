@@ -25,7 +25,7 @@
   ^String [s]
   (str/replace (URLEncoder/encode (str s) StandardCharsets/UTF_8) "+" "%20"))
 
-(defn- act
+(defn act
   "A Datastar action expression, e.g. (act \"post\" \"/ui/jobs\")."
   [method & parts]
   (str "@" method "('" (apply str parts) "')"))
@@ -68,14 +68,30 @@
        :bad? true
        :title notes})))
 
+(def themes
+  "The theme switcher's choices, by the index the `theme` signal holds."
+  ["system" "light" "dark"])
+
+(defn theme-switcher []
+  [:div {:class "segmented" :role "group" :aria-label "Theme"}
+   (for [[i t] (map-indexed vector themes)]
+     [:button {:type "button" :title (str (str/capitalize t) " theme")
+               "data-class:active" (str "$theme === " i)
+               "data-on:click" (act "post" "/ui/theme/" i)}
+      (str/capitalize t)])])
+
 (defn header [health]
   (let [{:keys [text bad? title]} (engine-status health)]
-    [:header {:class "bar"}
-     [:div {:class "mark" :aria-hidden "true"} [:div {:class "mark-card"} "wm"]]
-     [:h1 "wmark"]
-     [:p {:class "status" :id "edition"}
-      (str (if (= :pro (:edition health)) "Pro" "Community") " edition " (:version health))]
-     [:p {:class (if bad? "status bad" "status") :id "engine" :title (not-empty title)} text]]))
+    [:header {:class "topbar"}
+     [:div {:class "brand"}
+      [:div {:class "mark" :aria-hidden "true"} [:div {:class "mark-card"} "wm"]]
+      [:h1 "wmark"]]
+     [:span {:class "badge" :id "edition"}
+      (str (if (= :pro (:edition health)) "Pro" "Community") " " (:version health))]
+     [:div {:class "spacer"}]
+     [:div {:class "status-line"}
+      [:span {:class (if bad? "badge bad engine" "badge ok engine") :id "engine" :title (not-empty title)} text]]
+     (theme-switcher)]))
 
 ;; ---------------------------------------------------------------------------
 ;; Profiles
@@ -106,31 +122,35 @@
         seg   (some-> slug path-segment)
         on?   (some? doc)
         auto? (true? (:profile/auto? doc))]
-    [:div {:id "inspector-head" :class "inspector-head"}
-     [:h2 {:id "profile-title"} (if on? (:profile/name doc) "No profile selected")]
+    [:div {:id "inspector-head" :class "profile-head"}
+     [:div
+      [:h2 {:id "profile-title"} (if on? (:profile/name doc) "No profile selected")]
+      (when auto? [:p {:class "hint"} "Saved by every run: what the last run used."])]
      [:div {:class "actions"}
-      [:button {:type "button" :class "primary" :id "save" :disabled (not on?)
-                "data-on:click" (when on? (act "put" "/ui/profiles/" seg))} "Save changes"]
       [:input {:type "text" :id "name" "data-bind:name" true :maxlength "80"
                :placeholder "New name" :aria-label "New name for rename or duplicate" :disabled (not on?)}]
       [:button {:type "button" :id "rename" :disabled (or (not on?) auto?)
                 "data-on:click" (when (and on? (not auto?)) (act "post" "/ui/profiles/" seg "/rename"))} "Rename"]
       [:button {:type "button" :id "duplicate" :disabled (not on?)
                 "data-on:click" (when on? (act "post" "/ui/profiles/" seg "/copy"))} "Duplicate"]
-      [:button {:type "button" :id "delete" :disabled (not on?)
+      [:button {:type "button" :id "delete" :class "danger" :disabled (not on?)
                 "data-on:click" (when on? (str "confirm('Delete this profile? It cannot be undone.') && "
                                                (act "delete" "/ui/profiles/" seg)))} "Delete"]]]))
 
 (defn editor
-  "The settings editor. Its text comes from the `settings` signal once the
-  page is live; the initial text here seeds that signal."
+  "The settings as JSON, for bulk edits. Its text comes from the `settings`
+  signal once the page is live; the initial text here seeds that signal."
   [doc]
   (let [seg (some-> (:profile/slug doc) path-segment)]
-    [:label {:class "editor" :id "editor"}
-     [:span "Settings as JSON. Anything left out is inherited from the defaults."]
+    [:div {:class "editor" :id "editor"}
+     [:label {:for "settings"}
+      [:span "Settings as JSON. Anything left out is inherited from the defaults."]]
      [:textarea {:id "settings" :spellcheck "false" "data-bind:settings" true :disabled (nil? doc)
                  "data-on:input__debounce.300ms" (when seg (act "post" "/ui/preview/" seg))}
-      (when doc (settings-text (:settings doc)))]]))
+      (when doc (settings-text (:settings doc)))]
+     [:div {:class "actions"}
+      [:button {:type "button" :class "primary" :id "save" :disabled (nil? doc)
+                "data-on:click" (when seg (act "put" "/ui/profiles/" seg))} "Save JSON"]]]))
 
 ;; ---------------------------------------------------------------------------
 ;; Effective settings
@@ -216,49 +236,66 @@
   [:ol {:id "activity" :aria-label "Activity"} (for [l lines] [:li l])])
 
 (defn queue-panel [jobs slug]
-  [:section {:class "queue" :aria-labelledby "queue-title"
+  [:section {:class "queue card" :aria-labelledby "queue-title"
              ;; a stream per visible tab: Datastar closes GET streams in hidden
              ;; tabs and reopens them, and every (re)open re-renders the queue
              "data-init" "@get('/ui/stream', {retry: 'always', retryMaxCount: 1000000})"}
-   [:h2 {:id "queue-title"} "Render queue"]
-   [:label {:class "inputs"}
-    [:span "Files to watermark, one full path per line. On Windows, Shift + right-click a file and choose “Copy as path”."]
-    [:textarea {:id "inputs" :rows "3" :spellcheck "false" "data-bind:inputs" true}]]
-   (run-button slug)
-   (job-list jobs)
-   [:h3 "Activity"]
-   (activity [])])
+   [:div {:class "card-head"} [:h2 {:id "queue-title"} "Render queue"]]
+   [:div {:class "queue-grid"}
+    [:div
+     [:label {:class "inputs"}
+      [:span "Files to watermark, one full path per line. On Windows, Shift + right-click a file and choose “Copy as path”."]
+      [:textarea {:id "inputs" :rows "3" :spellcheck "false" "data-bind:inputs" true}]]
+     (run-button slug)]
+    [:div
+     (job-list jobs)
+     [:h3 "Activity"]
+     (activity [])]]])
 
 ;; ---------------------------------------------------------------------------
 ;; The page
 
 (defn page
-  "The whole UI. `nonce` switches Datastar to CSP mode (no eval)."
-  [{:keys [nonce health profiles doc resolved titles jobs]}]
-  (let [slug (:profile/slug doc)]
+  "The whole UI. `nonce` switches Datastar to CSP mode (no eval). `form` is
+  the selected profile's settings form (watermark.core.api/settings-form);
+  `theme` the index into `themes`. The settings form and the preview panel
+  are rendered by `form-view` and `preview-view`, passed in so this
+  namespace doesn't depend on theirs."
+  [{:keys [nonce health profiles doc resolved titles jobs theme form-view preview-view]}]
+  (let [slug  (:profile/slug doc)
+        theme (if (contains? #{0 1 2} theme) theme 0)]
     [:html {:lang "en" "data-nonce" nonce}
      [:head
       [:meta {:charset "utf-8"}]
       [:meta {:name "viewport" :content "width=device-width, initial-scale=1"}]
+      [:meta {:name "color-scheme" :content "light dark"}]
       [:title "wmark"]
       [:link {:rel "stylesheet" :href "/app.css"}]
       [:script {:type "module" :src "/datastar.js"}]]
      ;; only numbers go into data-signals; text signals are created by
      ;; data-bind from the escaped element values
-     [:body {"data-signals" (json/write-str {:rev (or (:profile/rev doc) 0)})}
+     [:body {"data-signals" (json/write-str {:rev (or (:profile/rev doc) 0) :theme theme
+                                             :pv 0 :pa 0 :pt 0 :pu 0 :pmax 12})
+             :data-theme (themes theme)
+             "data-attr:data-theme" "['system', 'light', 'dark'][$theme]"}
       (header health)
-      [:main {:class "desk"}
-       [:nav {:class "bin" :aria-labelledby "bin-title"}
+      [:main {:class "shell"}
+       [:nav {:class "rail card" :aria-labelledby "bin-title"}
         [:h2 {:id "bin-title"} "Profiles"]
         (profile-list profiles slug)
         [:div {:class "namebar"}
          [:input {:type "text" :id "newname" "data-bind:newname" true :maxlength "80"
                   :placeholder "New profile name" :aria-label "New profile name"}]
          [:button {:type "button" :id "new-profile" "data-on:click" (act "post" "/ui/profiles")} "New profile"]]]
-       [:section {:class "inspector" :aria-labelledby "profile-title"}
-        (inspector-head doc)
-        (message)
-        [:div {:class "panes"}
-         (editor doc)
-         (if resolved (effective resolved titles false) (effective))]]
+       [:section {:class "work" :aria-labelledby "profile-title"}
+        [:div {:class "card"}
+         (inspector-head doc)
+         (message)]
+        form-view
+        [:details {:class "json card"}
+         [:summary "Edit as JSON"]
+         [:div {:class "panes"}
+          (editor doc)
+          (if resolved (effective resolved titles false) (effective))]]]
+       preview-view
        (queue-panel jobs slug)]]]))
