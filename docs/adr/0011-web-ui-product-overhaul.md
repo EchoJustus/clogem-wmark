@@ -313,3 +313,14 @@ Datastar UI shows. Steps 1 and 2 are pure and live in the core library.
   today the logo and a preview video are full paths typed in;
 - caching the decoded source frame and drawn bitmaps per settings hash;
 - running the browser suite in WebKit too (with the desktop window, P5).
+
+**Found on the way:**
+- **Stale edits over REST were saved.** The edit route dropped `if-rev`,
+  so an edit made against an old revision overwrote a newer one. The Core
+  API refused it; only the route lost the revision. A GUI client's
+  integration test caught it; it's fixed, with a REST-level test.
+- **A text line wider than the frame runs off its edge.** Text is neither
+  wrapped nor shrunk to fit, and a 9:16 frame shows it first. The preview
+  makes it visible before a render; the fix (wrapping, or shrinking to a
+  maximum share of the frame's width) belongs in the kernel's text layout,
+  with golden vectors and the conformance harness, as a rendering change.

@@ -424,7 +424,9 @@ first cut (ADR 0011, "Implementation"); what remains of them is listed there.
      frame n of a render. *Built and passing.*
 4. **P5 · The desktop window** (ADR 0008, section 2): a spike on all four
    platforms, then the build, with the fallbacks (browser app mode, then
-   the default browser). The browser suite also runs in WebKit.
+   the default browser). The browser suite also runs in WebKit. The window
+   opens only on an interactive launch: `serve` stays headless, and a build
+   can leave the window out (a GUI app's engine never opens it).
 5. **P6 · The size diet** (ADR 0008, section 4), each step measured:
    - `-Os`, after a check that host-side drawing isn't slower in a way users
      notice;

@@ -140,7 +140,11 @@ FFM (native engines, the webview window), and each platform's file dialogs.
     downcalls and upcalls (CI's native smoke test);
   - it adds well under 1 MB, and falls back to a browser's app mode, then
     the default browser;
-  - we write no C.
+  - we write no C;
+  - it opens only when a person launches the app. `serve`, and a sidecar's
+    `serve --announce json` above all, never opens it, and a build of the
+    core can leave it out entirely: a GUI app's engine runs headless
+    (owner, 2026-09-28).
 - **This host is the one package managers distribute** (ADR 0009), so its
   size is budgeted (section 4).
 
