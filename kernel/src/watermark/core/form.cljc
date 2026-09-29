@@ -100,6 +100,14 @@
     :title "Replace existing copies" :description "Overwrite a copy with the same name instead of stopping."}
    {:path [:output :strip-metadata] :kind :boolean
     :title "Remove metadata" :description "Drop the original's metadata (camera, location, tools) from the copy."}
+   {:path [:output :metadata :title] :kind :text :max 200
+    :title "Title" :description "The copy's title, as players and file browsers show it."}
+   {:path [:output :metadata :author] :kind :text :max 200
+    :title "Author" :description "Who made the video. Players show it as the artist or author."}
+   {:path [:output :metadata :copyright] :kind :text :max 200
+    :title "Copyright" :description "Who owns the video, such as \"© 2026 Studio A\"."}
+   {:path [:output :metadata :comment] :kind :text :max 1000 :multiline true
+    :title "Comment" :description "A note written into the file, such as a licence or a contact."}
 
    {:path [:encode :codec] :kind :enum :options [:h264 :hevc]
     :labels {:h264 "H.264" :hevc "HEVC (H.265)"}

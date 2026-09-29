@@ -234,10 +234,58 @@
   (when frame
     [(g/chain ["vout"] [(g/f "trim" :start_frame frame :end_frame (inc frame))] ["still"])]))
 
+;; ---------------------------------------------------------------------------
+;; Extras: tags and a cover picture (docs/FFMPEG_STRATEGY.md, "Metadata and
+;; the cover")
+
+(def metadata-tags
+  "Settings' metadata -> FFmpeg's tag names, in the order they're written.
+  `author` goes out as `artist`: the name MP4 (©ART), QuickTime and
+  Matroska players all show."
+  [[:title "title"] [:author "artist"] [:copyright "copyright"] [:comment "comment"]])
+
+(defn- ffmetadata-escape
+  "A value for an FFMETADATA1 file: equals signs, semicolons, hashes,
+  backslashes and newlines escaped with a backslash (FFmpeg's ffmetadata
+  format)."
+  [s]
+  (str/escape (str/replace s "\r\n" "\n") {\= "\\=" \; "\\;" \# "\\#" \\ "\\\\" \newline "\\\n" \return "\\\n"}))
+
+(defn ffmetadata
+  "`metadata`'s tags as an FFMETADATA1 file's text, or nil when there are
+  none. User text reaches FFmpeg in a UTF-8 file, never on the command line,
+  as drawtext's does: a JVM without a UTF-8 locale (a server, a container)
+  would turn \"©\" or Chinese into \"?\" in argv."
+  [metadata]
+  (when-let [lines (seq (for [[k tag] metadata-tags
+                              :let [v (str/trim (str (get metadata k "")))]
+                              :when (seq v)]
+                          (str tag "=" (ffmetadata-escape v))))]
+    (str ";FFMETADATA1\n" (str/join "\n" lines) "\n")))
+
+(defn- metadata-mapping
+  "Which global metadata the copy gets: the tags file's alone when the
+  original's is removed; else the tags file's first, then the original's
+  (the first mapping wins a clash, so the tags override)."
+  [meta-input strip-metadata?]
+  (cond
+    (and meta-input strip-metadata?) ["-map_metadata" (str meta-input)]
+    meta-input                       ["-map_metadata" (str meta-input) "-map_metadata" "0"]
+    strip-metadata?                  ["-map_metadata" "-1"]))
+
+(defn cover-args
+  "Input `index` (the cover still) as the file's cover picture: the second
+  video stream, a JPEG, marked attached_pic. Its stream-specific options
+  override the general ones the video's encoder set (-c:v, -pix_fmt, and
+  -tag:v, which x265's hvc1 would otherwise put on the JPEG)."
+  [index]
+  ["-map" (str index ":v") "-c:v:1" "mjpeg" "-q:v:1" "3" "-pix_fmt:v:1" "yuvj420p"
+   "-tag:v:1" "0" "-disposition:v:1" "attached_pic"])
+
 (defn- output-args
   "Everything after the filtergraph: a still PNG for a preview, else the
-  encoded video."
-  [{:keys [output encode media]} {:keys [version encoder canvas fps strip-metadata?]}]
+  encoded video (with its tags and cover picture, when asked)."
+  [{:keys [output encode media]} {:keys [version encoder canvas fps strip-metadata? cover-input meta-input]}]
   (if (:frame output)
     (concat ["-map" "[still]" "-an" "-frames:v" "1" "-c:v" "png" "-pix_fmt" "rgb24"]
             (frame-sync-args version)
@@ -248,12 +296,34 @@
               (video-args encode encoder canvas fps)
               ["-pix_fmt" "yuv420p"]
               (frame-sync-args version)
-              (when strip-metadata? ["-map_metadata" "-1"])
+              (when cover-input (cover-args cover-input))
+              (metadata-mapping meta-input strip-metadata?)
               (when (#{"mp4" "mov"} container) ["-movflags" "+faststart"])
               [(str (:path output))]))))
 
 ;; ---------------------------------------------------------------------------
 ;; The whole invocation
+
+(defn- cover-path
+  "The cover still of a render request (never of a preview's)."
+  [{:keys [cover output]}]
+  (when (and cover (not (:frame output))) (str (:path cover))))
+
+(defn- extras
+  "The extra inputs of a render after its `n` compositing inputs: the tags
+  file (FFmpeg's ffmetadata format) and the cover still, with their input
+  indexes, the argv that reads them, and the file to write."
+  [request workdir n]
+  (let [text      (when-not (get-in request [:output :frame]) (ffmetadata (:metadata request)))
+        meta-file (when text (str (File. (str workdir) "metadata.txt")))
+        cover     (cover-path request)
+        meta-in   (when meta-file (inc n))
+        cover-in  (when cover (+ 1 n (if meta-file 1 0)))]
+    {:argv        (concat (when meta-file ["-f" "ffmetadata" "-i" meta-file])
+                          (when cover ["-i" cover]))
+     :files       (when meta-file {meta-file text})
+     :meta-input  meta-in
+     :cover-input cover-in}))
 
 (defn compile-request
   "Engine plan for a render request (see watermark.engine). `env`:
@@ -297,20 +367,23 @@
                                                 ["vout"])]
                                       (still-chains output)))
         graph-file  (str (File. (str workdir) "graph.txt"))
-        encoder     (when-not (:frame output) (pick-encoder encode encoders))]
+        encoder     (when-not (:frame output) (pick-encoder encode encoders))
+        more        (extras request workdir (count images))]
     {:engine   :ffmpeg
      :workdir  (str workdir)
      :output   (:path output)
      :graph    graph
-     :files    (into {graph-file graph} (map vector textfiles (map :text texts)))
+     :files    (merge (into {graph-file graph} (map vector textfiles (map :text texts))) (:files more))
      :total-us (some-> (:duration-s media) (* 1e6) long)
      :argv     (vec (concat [ffmpeg "-hide_banner" "-nostdin" "-y" "-loglevel" "error"
                              "-progress" "pipe:1" "-nostats"
                              "-i" (str source)]
                             (mapcat (fn [img] ["-i" (get-in img [:source :path])]) images)
+                            (:argv more)
                             (process/script-args version graph-file)
                             (output-args request {:version version :encoder encoder :canvas canvas
-                                                  :fps fps :strip-metadata? strip-metadata?})))}))
+                                                  :fps fps :strip-metadata? strip-metadata?
+                                                  :meta-input (:meta-input more) :cover-input (:cover-input more)})))}))
 
 ;; ---------------------------------------------------------------------------
 ;; Render spec v2: composite host-rendered bitmaps with overlay only (docs/adr/0006)
@@ -378,12 +451,13 @@
                                         [(g/chain [base] [(g/f "null")] ["vout"])])
                                       (still-chains output)))
         graph-file  (str (File. (str workdir) "graph.txt"))
-        encoder     (when-not (:frame output) (pick-encoder encode encoders))]
+        encoder     (when-not (:frame output) (pick-encoder encode encoders))
+        more        (extras request workdir (count draws))]
     {:engine   :ffmpeg
      :workdir  (str workdir)
      :output   (:path output)
      :graph    graph
-     :files    {graph-file graph}
+     :files    (merge {graph-file graph} (:files more))
      :total-us (some-> (:duration-s media) (* 1e6) long)
      :argv     (vec (concat [ffmpeg "-hide_banner" "-nostdin" "-y" "-loglevel" "error"
                              "-progress" "pipe:1" "-nostats"
@@ -393,6 +467,8 @@
                                         ["-f" "rawvideo" "-pix_fmt" "rgba" "-video_size" (str width "x" height)
                                          "-framerate" "1" "-i" (str path)]))
                                     draws)
+                            (:argv more)
                             (process/script-args version graph-file)
                             (output-args request {:version version :encoder encoder :canvas canvas
-                                                  :fps fps :strip-metadata? strip-metadata?})))}))
+                                                  :fps fps :strip-metadata? strip-metadata?
+                                                  :meta-input (:meta-input more) :cover-input (:cover-input more)})))}))

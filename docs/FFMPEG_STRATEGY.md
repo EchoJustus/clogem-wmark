@@ -384,6 +384,59 @@ at the end of the graph, as data:
   under 1 level, 99.9% of pixels within 3), for v1 and v2, before, during and
   after a flip and inside and outside a text window.
 
+## Metadata and the cover
+
+Profiles can carry tags (`output.metadata`: title, author, copyright,
+comment), and a run can ask for a **cover picture**, the copy's frame at a
+chosen time (`cover {t}`), which file browsers show as the file's thumbnail.
+Both ride in the one FFmpeg invocation.
+
+**Tags reach FFmpeg in a file, never on the command line**, like drawtext's
+`textfile=`. A JVM without a UTF-8 locale (servers, containers) encodes argv
+as ASCII (`sun.jnu.encoding`), which turned "©" into "?" in a test run. The
+tags are written as an `FFMETADATA1` file (UTF-8; `=`, `;`, `#`, `\` and
+newlines escaped with a backslash) and read as an input:
+
+```
+... -f ffmetadata -i <workdir>/metadata.txt ...
+    -map_metadata 1                      # Remove metadata on: the tags alone
+    -map_metadata 1 -map_metadata 0      # off: the tags first, then the original's
+```
+
+The first mapping wins a clash, so the tags override the original's while
+its other tags stay (checked on FFmpeg 9.0.1 and 6.1.1). `author` goes out
+as `artist`: MP4's `©ART`, QuickTime's `©ART`, Matroska's `ARTIST`. In MP4
+the four land in the iTunes list (`moov/udta/meta/ilst`: `©nam`, `©ART`,
+`cprt`, `©cmt`); in MOV as QuickTime user data (`©nam`, `©ART`, `©cpy`,
+`©cmt`).
+
+**The cover** is drawn first, as a preview of the same render at t (so it
+shows the watermark), next to the output's temporary file, then embedded as
+the second video stream and deleted:
+
+```
+... -i <out>.part.mp4.cover.png ... -map N:v -c:v:1 mjpeg -q:v:1 3 -pix_fmt:v:1 yuvj420p
+    -tag:v:1 0 -disposition:v:1 attached_pic
+```
+
+The stream-specific options override the general ones the video's encoder
+set: `-c:v`, `-pix_fmt yuv420p`, and x265's `-tag:v hvc1`, which on the
+JPEG made the MP4 header fail (`-tag:v:1 0` resets it). The video's own
+frames are untouched (`extras_test` counts them). What FFmpeg does with an
+attached picture depends on the container, tested with FFmpeg 9.0.1:
+- **MP4:** a `covr` atom in the iTunes list. Windows Explorer and macOS
+  Finder / Quick Look use `covr` as the file's thumbnail (reported and
+  tested with `qlmanage -t` in
+  [lsegal/zvid#292](https://github.com/lsegal/zvid/pull/292)).
+- **MOV:** the picture is silently dropped.
+- **Matroska:** it becomes an ordinary one-frame video track.
+
+So the FFmpeg engine takes a cover for MP4 only and refuses one for MOV or
+MKV with an `:unsupported` error that says to choose MP4, rather than write a
+file without it (or with a stray track). The engine declares
+`:extras #{:metadata :cover}`, `:cover` only when the build has the `mjpeg`
+encoder (every default and LGPL build does).
+
 ## Verification
 
 **Re-run after the engine refactor**, with FFmpeg 6.1.1 unless noted:

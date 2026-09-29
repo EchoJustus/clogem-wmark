@@ -143,7 +143,7 @@
 ;; ---------------------------------------------------------------------------
 ;; Normalisation: JSON from the library -> the protocol's data shapes
 
-(def ^:private keyword-caps #{:layers :animations :timing :placement :codecs :audio :sources})
+(def ^:private keyword-caps #{:layers :animations :timing :placement :codecs :audio :sources :extras})
 
 (defn- normalize-info
   "An ABI 1 library takes render spec 1 only, whatever it says: v2 needs

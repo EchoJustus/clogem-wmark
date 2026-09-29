@@ -83,12 +83,20 @@
 (defn- h-copy-profile [sys ctx _ {:keys [name]} {:keys [to]}] [201 (api/copy-profile! sys ctx name to)])
 (defn- h-delete-profile [sys ctx _ {:keys [name]} _] (api/delete-profile! sys ctx name) {:deleted name})
 
-(defn- request-of [{:keys [profile clean settings inputs]}]
+(defn- request-of [{:keys [profile clean settings inputs cover]}]
   {:profile  (if clean :none profile)
    :settings (settings-in settings)
-   :inputs   inputs})
+   :inputs   inputs
+   :cover    cover})                    ; {t}: the frame at t becomes the cover
 
 (defn- h-form [sys ctx _ {:keys [name]} _] (api/settings-form sys ctx name))
+
+(defn- h-draft-form
+  "{settings, edit?}: the form of an unsaved draft of the profile, after one
+  more edit when given. Nothing is saved; the answer carries the draft's
+  settings and whether it differs from what is saved."
+  [sys ctx _ {:keys [name]} {:keys [settings edit]}]
+  (api/draft-form sys ctx name {:settings (settings-in settings) :edit edit}))
 
 (defn- h-edit
   "{op, id?, value?, mode?, index?, delta?, if-rev?}: one form edit, saved
@@ -132,12 +140,13 @@
    [:post   "/api/v1/profiles/:name/copy"   h-copy-profile]      ; {to}
    [:delete "/api/v1/profiles/:name"        h-delete-profile]
    [:get    "/api/v1/profiles/:name/form"   h-form]              ; the settings form model
+   [:post   "/api/v1/profiles/:name/form"   h-draft-form]        ; {settings, edit?}: an unsaved draft's form
    [:post   "/api/v1/profiles/:name/edit"   h-edit]              ; {op, id, value, if-rev}
    [:post   "/api/v1/preview"               h-preview]           ; {profile?, settings?, source?, t?, aspect?}
    [:get    "/api/v1/previews/:id"          h-preview-file]      ; image/png
    [:post   "/api/v1/resolve"               h-resolve]           ; {profile?, clean?, settings?}
    [:post   "/api/v1/plan"                  h-plan]              ; + inputs: dry run
-   [:post   "/api/v1/jobs"                  h-submit]            ; {inputs, profile?, settings?}
+   [:post   "/api/v1/jobs"                  h-submit]            ; {inputs, profile?, settings?, cover?}
    [:get    "/api/v1/jobs"                  h-jobs]
    [:delete "/api/v1/jobs/:id"              h-cancel]])
 

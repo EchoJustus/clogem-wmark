@@ -26,3 +26,10 @@
                (catch clojure.lang.ExceptionInfo e e))]
     (is (= :unsupported (:wmark/error (ex-data e))))
     (is (= "The tiny engine can't render this: layers text." (ex-message e)))))
+
+(deftest extras-are-negotiated-like-any-capability
+  (let [req (assoc request :metadata {:copyright "© Studio"} :cover {:path "/c.png"})]
+    (is (= [[:extras :metadata] [:extras :cover]] (engine/missing full req)))
+    (is (= [[:extras :cover]] (engine/missing (assoc full :extras #{:metadata}) req)))
+    (is (= [] (engine/missing (assoc full :extras #{:metadata :cover}) req)))
+    (is (= [] (engine/missing full (assoc request :metadata {}))) "no tags asked, nothing needed")))
