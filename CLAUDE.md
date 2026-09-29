@@ -216,7 +216,7 @@ its own matrix.
 `bb kernel-dart` and in CI, ADR 0012)
 - Runtime-specific behaviour lives in small host primitives with one
   `#?(:clj … :cljd …)` branch per runtime: `watermark.util.num` (numbers,
-  their formatting, 64-bit wrapping arithmetic), `watermark.core.seeds`
+  their text both ways, 64-bit wrapping arithmetic), `watermark.core.seeds`
   (HMAC), `watermark.raster` (SHA-256), `watermark.raster.image` (byte
   arrays), `watermark.raster.text` (code points), and the schema
   namespaces' `json-schema` (malli, JVM only). Elsewhere, reader
@@ -258,13 +258,13 @@ its own matrix.
   Any rendering change needs the conformance harness
   (`testkit/src/watermark/engine/conformance.clj`).
 - FFmpeg:
-  - graphs are built from data (`engine/ffmpeg/graph.clj`), never by string
-    splicing;
+  - graphs are built from data (`watermark.ffmpeg.graph`, in the core
+    library), never by string splicing;
   - text reaches FFmpeg only through `textfile=` with `expansion=none`;
   - numbers are locale-independent;
   - executables are always invoked by absolute path;
-  - `process/required-filters` must cover every filter the compiler emits
-    (tested); a preview adds only `process/preview-filters`, which gate the
+  - `plan/required-filters` must cover every filter the compiler emits
+    (tested); a preview adds only `plan/preview-filters`, which gate the
     `:preview` capability (tested).
 
 **Orchestration and ports (tested)**

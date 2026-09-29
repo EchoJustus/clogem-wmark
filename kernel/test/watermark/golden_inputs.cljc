@@ -12,6 +12,9 @@
             [watermark.core.resolve :as resolve]
             [watermark.core.schema :as schema]
             [watermark.core.seeds :as seeds]
+            [watermark.ffmpeg.graph :as graph]
+            [watermark.ffmpeg.parse :as parse]
+            [watermark.ffmpeg.plan :as plan]
             [watermark.raster :as raster]
             [watermark.raster.image :as image]
             [watermark.render :as render]
@@ -88,9 +91,11 @@
 
 (defn basic-spec
   "The render-basic spec: a flipping logo top right, a continuous and a
-  scheduled text."
-  []
-  (render/build {:settings     (resolve/deep-merge
+  scheduled text. `more`: render/build arguments to add (:first-frame)."
+  ([] (basic-spec {}))
+  ([more]
+  (render/build (merge
+                {:settings     (resolve/deep-merge
                                 schema/defaults
                                 {:logo  {:path "/logos/l.png" :anchor :top-right :offset {:x 30 :y 20}
                                          :animation {:type :flip-y :every-s 5.0 :duration-s 0.8}}
@@ -100,7 +105,8 @@
                  :logo-media   {:width 400 :height 160}
                  :seed-fn      (constantly 42)
                  :entitlements (features/community)
-                 :font         "/fonts/a.ttf"}))
+                 :font         "/fonts/a.ttf"}
+                more))))
 
 (defn- layer [spec id] (first (filter #(= id (:id %)) (:layers spec))))
 
@@ -218,6 +224,147 @@
                   (into (sorted-map) (for [c (:categories m) row (:rows c)] [(:id row) (:source row)])))
      :edits     (vec (for [e form-edits]
                        [e (outcome #(schema/validate! (form/edit form-profile effective e)))]))}))
+
+;; ---------------------------------------------------------------------------
+;; ffmpeg.edn: FFmpeg plans (filtergraph, argv, files), what FFmpeg prints
+;; read into data, and numbers as FFmpeg is given them
+
+(def ^:private decimal-cases
+  [0.0 -0.0 1.0 24.0 0.85 0.12 0.05 0.9 1e-4 1e-7 1e7 1e21 123456789.125
+   (+ 0.1 0.2) (/ 2.0 3.0) (/ 30000.0 1001.0) 29.97 -2.5 2.2250738585072014e-308 1.7976931348623157e308
+   24 -3 1000003])
+
+(def ^:private filters-text
+  {:ffmpeg-6-1 [" T.. = Timeline support"
+                " ... abench            A->A       Benchmark part of a filtergraph."
+                " T.C drawtext          V->V       Draw text on top of video frames."
+                " TSC overlay           VV->V      Overlay a video source on top of the input."
+                " TS. perspective       V->V       Correct the perspective of video."
+                " ... color             |->V       Provide an uniformly colored input."]
+   :ffmpeg-9-0 [" T.. = Timeline support"
+                " TS aap               AA->A      Apply Affine Projection algorithm."
+                " T. drawtext          V->V       Draw text on top of video frames."
+                " TS overlay           VV->V      Overlay a video source on top of the input."
+                " .. color             |->V       Provide an uniformly colored input."]})
+
+(def ^:private encoders-text
+  ["Encoders:" " V..... = Video" " ------"
+   " V....D libx264              libx264 H.264 / AVC"
+   " V....D libopenh264          OpenH264 H.264 / AVC"
+   " V....D h264_nvenc           NVIDIA NVENC H.264 encoder (codec h264)"
+   " A....D aac                  AAC (Advanced Audio Coding)"])
+
+(def ^:private probes
+  "ffprobe output, decoded with keyword keys."
+  {:phone-portrait {:streams [{:index 0 :codec_type "video" :width 1920 :height 1080
+                               :r_frame_rate "30/1" :avg_frame_rate "30/1" :nb_frames "300"
+                               :start_time "0.000000" :side_data_list [{:rotation -90}]}
+                              {:index 1 :codec_type "audio"}]
+                    :format {:duration "10.010000" :format_name "mov,mp4,m4a,3gp,3g2,mj2"}}
+   :variable-rate  {:streams [{:index 0 :codec_type "video" :width 1280 :height 720
+                               :r_frame_rate "60/1" :avg_frame_rate "2997/100" :start_time "0.021333"}]
+                    :format {:duration "4.500000" :format_name "matroska,webm"}}
+   :still          {:streams [{:index 0 :codec_type "video" :width 400 :height 160
+                               :r_frame_rate "25/1" :avg_frame_rate "0/0"}]
+                    :format {:format_name "png_pipe"}}})
+
+(defn- synthetic-v2
+  "`spec` as render spec v2 with made-up bitmaps (the plan needs their names
+  and sizes, not their pixels)."
+  [spec]
+  (let [reqs (v2/raster-requests spec)]
+    (v2/assemble spec (into {} (map-indexed
+                                (fn [i {:keys [key size kind]}]
+                                  (let [id     (str (apply str (repeat (- 64 (count (str i))) "0")) i)
+                                        [w h]  (if (= :text kind) [120 40] size)]
+                                    [key {:bitmap id :width w :height h :path (str "/work/bitmaps/" i ".rgba")}]))
+                                reqs)))))
+
+(defn- plan-cases []
+  (let [spec    (basic-spec)
+        media'  (assoc media :kind :video :duration-s 180.18 :start-s 0.0 :vfr? false :has-audio? true)
+        request {:spec spec :source "/in/clip.mov" :media media'
+                 :output {:path "/out/clip_wm.part.mp4" :container "mp4"}
+                 :encode (:encode schema/defaults) :strip-metadata? true}
+        env     {:ffmpeg "/opt/wmark/bin/ffmpeg" :version {:major 7 :minor 1}
+                 :encoders #{"libx264" "libx265" "h264_nvenc"} :workdir "/tmp/job"}
+        v2spec  (synthetic-v2 spec)
+        tags    {:title "Clip \"one\"" :author "Studio" :copyright "(c) 2026 A=B; #1"
+                 :comment "line one\nline two \\ ©"}]
+    [[:v1 request env]
+     [:v1-segment (assoc request :spec (basic-spec {:first-frame 150})) env]
+     [:v1-variable-rate-ffmpeg-6-lgpl
+      (-> request (assoc-in [:media :vfr?] true) (assoc-in [:media :has-audio?] false)
+          (assoc :encode {:codec :h264 :quality :compact :audio :copy}))
+      (assoc env :version {:major 6 :minor 1} :encoders #{"h264_mf" "libopenh264"})]
+     [:v1-ffmpeg-4-hevc
+      (assoc request :encode {:codec :hevc :quality :archival :audio :aac}
+                     :output {:path "/out/clip_wm.part.mov" :container "mov"})
+      (assoc env :version {:major 4 :minor 4})]
+     [:v1-overrides
+      (assoc request :encode {:codec :h264 :quality :balanced :audio :none
+                              :ffmpeg {:video-codec "h264_nvenc" :crf 25 :preset "p6"}})
+      env]
+     [:v2-tags-cover-windows
+      (assoc request :spec v2spec :metadata tags :cover {:path "C:\\Temp\\cover.png"}
+                     :strip-metadata? false)
+      (assoc env :version {:major nil} :encoders #{"libx264"}
+                 :workdir "C:\\Users\\A\\AppData\\Local\\Temp\\wmark-1")]
+     [:v2-videotoolbox
+      (assoc request :spec v2spec :metadata tags)
+      (assoc env :encoders #{"h264_videotoolbox" "hevc_videotoolbox"})]
+     [:v1-preview
+      (assoc request :output {:path "/work/previews/p.png" :frame 45} :cover {:path "/work/c.png"})
+      env]
+     [:v2-preview
+      (assoc request :spec v2spec :output {:path "/work/previews/p.png" :frame 45} :metadata tags)
+      env]]))
+
+(defn ffmpeg-vectors
+  "ffmpeg.edn."
+  []
+  {:numbers  (vec (for [x decimal-cases] [x (number/decimal-str x)]))
+   :parsed   {:ints     (vec (for [t ["12" "-3" "+4" "0x10" " 5" "1.0" "N/A" "99999999999999999999"]]
+                               [t (number/parse-int t)]))
+              :decimals (vec (for [t ["10.5" "-3" ".25" "1e-3" "5." "NaN" "Infinity" " 1" "0x1p3"]]
+                               [t (number/parse-decimal t)]))
+              :versions (vec (for [l ["ffmpeg version n9.0.1-11-ge47273f4d9-20260831 Copyright"
+                                      "ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023"
+                                      "ffmpeg version N-126342-gf88b741dbf-20260831 Copyright"]]
+                               (parse/parse-version l)))
+              :filters  (into (sorted-map)
+                              (for [[k lines] filters-text]
+                                [k (vec (sort (parse/parse-filters (apply str (interpose "\n" lines)))))]))
+              :encoders (vec (sort (parse/parse-encoders (apply str (interpose "\n" encoders-text)))))
+              :progress (vec (for [block [{"frame" "120" "out_time_us" "4004000" "speed" "2.01x" "progress" "continue"}
+                                          {"frame" "5400" "out_time_us" "180180000" "progress" "end"}
+                                          {"out_time_us" "N/A" "progress" "continue"}]]
+                               (parse/parse-progress block 180180000)))
+              :probes   (into (sorted-map) (for [[k p] probes] [k (parse/probe-facts p)]))}
+   :encoding {:video-args (vec (for [[encode enc] [[{:codec :h264 :quality :high} "libx264"]
+                                                   [{:codec :hevc :quality :archival} "libx265"]
+                                                   [{:codec :h264 :quality :compact} "h264_nvenc"]
+                                                   [{:codec :h264 :quality :balanced} "h264_videotoolbox"]
+                                                   [{:codec :hevc :quality :high} "hevc_mf"]
+                                                   [{:codec :h264 :quality :high :ffmpeg {:crf 30 :preset "slow"}} "libx264"]]]
+                                 [encode enc (plan/video-args encode enc {:width 1280 :height 720} 29.97)]))
+              :usable     (vec (sort (plan/usable-encoders
+                                      #{"h264_mf" "libopenh264" "h264_nvenc" "hevc_mf" "hevc_nvenc" "mpeg4"}
+                                      (fn [_ enc] (not (#{"h264_mf" "h264_nvenc"} enc))))))
+              :codecs     (vec (sort (plan/codecs-available #{"libx264" "hevc_nvenc"})))
+              :ffmetadata (plan/ffmetadata {:title "T" :author " A " :copyright "a=b;c#d\\e" :comment "x\r\ny"})}
+   :plans    (into (sorted-map)
+                   (for [[k request env] (plan-cases)]
+                     [k (select-keys ((if (= 2 (get-in request [:spec :spec/version]))
+                                        plan/compile-request-v2
+                                        plan/compile-request)
+                                      request env)
+                                     [:argv :graph :files :total-us :output :workdir])]))
+   :graph    (graph/render [(graph/chain ["0:v"]
+                                         [(graph/f "drawtext" :fontfile "C:/f.ttf" :x (graph/expr "w-tw-(24)")
+                                                   :fontcolor "white@0.85" :enable nil)
+                                          (graph/f "fps" :fps "30000/1001")]
+                                         ["out"])])})
 
 ;; ---------------------------------------------------------------------------
 ;; schema.edn: validation, messages and JSON decoding

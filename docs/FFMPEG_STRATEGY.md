@@ -6,9 +6,18 @@ in which every setting is already resolved to pixels and frame indices, and
 compiles it into one FFmpeg invocation per input. It never builds command
 strings by hand:
 
-- `engine.ffmpeg.graph` turns data into a filtergraph.
-- `engine.ffmpeg.compile` turns a render request into an argv.
+- `watermark.ffmpeg.graph` turns data into a filtergraph.
+- `watermark.ffmpeg.plan` turns a render request into an argv, the graph and
+  the scratch files FFmpeg reads.
+- `watermark.ffmpeg.parse` reads what FFmpeg and ffprobe print.
 - FFmpeg reads the graph from a script file.
+
+The first three are pure and part of the core library (`kernel/`,
+[ADR 0012](adr/0012-the-kernel-on-the-dart-vm.md) and ADR 0008): the JVM
+and the Dart VM compile the same plan, which `kernel/test/golden/ffmpeg.edn`
+pins argument by argument. The JVM's side (`watermark.engine.ffmpeg`,
+`.process`, `.probe`) finds the binaries, runs them, writes the files and
+decodes ffprobe's JSON.
 
 Everything below was checked against real renders; see "Verification".
 
@@ -375,7 +384,7 @@ at the end of the graph, as data:
   `color` plus a faint `drawgrid`, encoded once per shape with FFmpeg's own
   MPEG-4 encoder into `<home>/work/previews/`.
 - **Capability:** `trim`, `color` and `drawgrid`
-  (`process/preview-filters`, all LGPL) give the engine `:preview
+  (`plan/preview-filters`, all LGPL) give the engine `:preview
   #{:frame :sample}`. A build without them renders as before and reports no
   preview. A trimmed FFmpeg (ADR 0008, section 4) must keep them.
 - **Tested:** `compile_test` checks that a preview plan is the render's plan

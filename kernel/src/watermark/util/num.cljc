@@ -11,7 +11,8 @@
 
   The :cljd branches run on the Dart VM in CI (kernel/dart, the golden
   vectors)."
-  #?(:cljd (:require ["dart:math" :as math])))
+  (:require [clojure.string :as str]
+            #?(:cljd ["dart:math" :as math])))
 
 #?(:clj (set! *warn-on-reflection* true))
 
@@ -65,3 +66,56 @@
   "a * b, wrapping at 64 bits."
   [a b]
   #?(:clj (unchecked-multiply (long a) (long b)) :cljd (* ^int a ^int b)))
+
+;; ---------------------------------------------------------------------------
+;; Text: numbers written and read the same way on every host
+
+(defn parse-int
+  "Decimal integer text (an optional sign, then digits) as an integer, else
+  nil. Stricter than a host's parser: the Dart VM's also reads \"0x1F\" and
+  ignores surrounding spaces."
+  [s]
+  (when (and (string? s) (re-matches #"[+-]?[0-9]+" s))
+    (parse-long s)))
+
+(defn parse-decimal
+  "Decimal text (\"10.5\", \"-3\", \".25\", \"1e-3\") as a double, else nil.
+  Stricter than a host's parser: no \"NaN\", \"Infinity\", hexadecimal or
+  surrounding spaces."
+  [s]
+  (when (and (string? s) (re-matches #"[+-]?([0-9]+\.?[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?" s))
+    (parse-double s)))
+
+(defn- plain
+  "A host's shortest round-trip text of a finite double (\"1.0E-4\" on the
+  JVM, \"1e-7\" or \"1e+21\" on the Dart VM) as a plain decimal: no
+  exponent, no trailing zeros, no sign on zero."
+  [s]
+  (let [[m sign whole frac exp] (re-matches #"(-?)([0-9]+)(?:\.([0-9]*))?(?:[eE]([+-]?[0-9]+))?" s)
+        _      (when-not m
+                 (throw (ex-info (str "Not a finite number: " s) {:wmark/error :invalid})))
+        digits (str whole frac)
+        point  (+ (count whole) (if exp (parse-int (str/replace exp "+" "")) 0))
+        placed (cond (<= point 0)               (str "0." (apply str (repeat (- point) "0")) digits)
+                     (>= point (count digits))  (str digits (apply str (repeat (- point (count digits)) "0")))
+                     :else                      (str (subs digits 0 point) "." (subs digits point)))
+        [w f]  (str/split placed #"\." 2)
+        w      (or (second (re-matches #"0*([0-9]+)" w)) "0")
+        f      (str/replace (or f "") #"0+$" "")
+        text   (if (seq f) (str w "." f) w)]
+    (if (and (= sign "-") (not= text "0")) (str "-" text) text)))
+
+(defn decimal-str
+  "A number as the shortest plain decimal that reads back as the same
+  double: 24 -> \"24\", 24.0 -> \"24\", 0.85 -> \"0.85\", 1e-4 -> \"0.0001\".
+  Never locale-dependent (a German locale writes 0,85, and a comma
+  separates FFmpeg filters), never in exponent form. Both hosts start from
+  their shortest round-trip text of the double (Java 19+, Dart), whose
+  digits the double alone decides; kernel/test/golden/ffmpeg.edn checks
+  that they agree. One exception: a subnormal double (below 2.2e-308) that
+  one digit identifies, where Java picks the closest decimal of one or two
+  digits (4.9E-324, not 5e-324). No plan uses one."
+  [x]
+  (if (integer? x)
+    (str x)
+    (plain #?(:clj (Double/toString (double x)) :cljd (.toString (.toDouble ^num x))))))

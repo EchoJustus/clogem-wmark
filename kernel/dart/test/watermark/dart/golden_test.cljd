@@ -41,3 +41,6 @@
 
 (deftest form
   (check "form" (inputs/form-vectors)))
+
+(deftest ffmpeg
+  (check "ffmpeg" (inputs/ffmpeg-vectors)))

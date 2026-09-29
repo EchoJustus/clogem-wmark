@@ -12,8 +12,8 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [watermark.engine :as engine]
-            [watermark.engine.ffmpeg.compile :as compile]
-            [watermark.engine.ffmpeg.graph :as g]
+            [watermark.ffmpeg.graph :as g]
+            [watermark.ffmpeg.plan :as plan]
             [watermark.engine.ffmpeg.probe :as probe]
             [watermark.engine.ffmpeg.process :as process]
             [watermark.util.locate :as locate])
@@ -61,19 +61,19 @@
        :problems ["FFmpeg not found. Put ffmpeg and ffprobe next to wmark (or in its bin/ folder), on PATH, or pass --ffmpeg."]
        :capabilities {}}
       (let [{:keys [version filters] listed :encoders} (process/describe-binary (:path ffmpeg))
-            encoders  (compile/usable-encoders
+            encoders  (plan/usable-encoders
                        listed
                        (fn [codec enc]
                          (process/trial-encode? (:path ffmpeg)
-                                                (compile/video-args {:codec codec} enc {:width 256 :height 144} 30))))
+                                                (plan/video-args {:codec codec} enc {:width 256 :height 144} 30))))
             unusable  (sort (remove encoders listed))
-            missing   (remove filters process/required-filters)
+            missing   (remove filters plan/required-filters)
             v1?       (empty? missing)
             ;; spec v2 (host-rendered bitmaps) needs compositing only: LGPL
             ;; builds, which lack the GPL-only perspective filter, qualify
-            v2?       (every? filters process/required-filters-v2)
+            v2?       (every? filters plan/required-filters-v2)
             text?     (contains? filters "drawtext")
-            codecs    (compile/codecs-available encoders)]
+            codecs    (plan/codecs-available encoders)]
         {:engine/id      :ffmpeg
          :engine/version (or (second (re-find #"version\s+n?(\S+)" (str (:raw version)))) "unknown")
          :available?     (and (or v1? v2?) (seq codecs) true)
@@ -112,7 +112,7 @@
                           ;; written into the container: tags always; a cover
                           ;; frame as an attached JPEG, where mjpeg is built in
                           :extras     (cond-> #{:metadata} (contains? encoders "mjpeg") (conj :cover))
-                          :preview    (if (every? filters process/preview-filters) #{:frame :sample} #{})}}))))
+                          :preview    (if (every? filters plan/preview-filters) #{:frame :sample} #{})}}))))
 
 (defrecord FFmpegRender [result cancelled ^clojure.lang.Atom process]
   engine/RenderHandle
@@ -153,7 +153,7 @@
         (when-not (contains? (:encoders info) forced)
           (throw (ex-info (str "This FFmpeg build has no " forced " encoder.")
                           {:wmark/error :unsupported :missing [[:encoders forced]]}))))
-      ((if (= 2 (get-in request [:spec :spec/version])) compile/compile-request-v2 compile/compile-request)
+      ((if (= 2 (get-in request [:spec :spec/version])) plan/compile-request-v2 plan/compile-request)
        request {:ffmpeg   (get-in info [:binaries :ffmpeg :path])
                 :version  (:version info)
                 :encoders (:encoders info)
