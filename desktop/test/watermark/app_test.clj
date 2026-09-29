@@ -6,7 +6,7 @@
             [watermark.app :as app]
             [watermark.core.features :as features]
             [watermark.util.os :as os])
-  (:import (java.lang ProcessBuilder)
+  (:import (java.lang ProcessBuilder ProcessHandle)
            (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)
            (java.util List)))
@@ -28,6 +28,31 @@
       (.waitFor parent)
       (app/watch-parent! (.pid parent) #(deliver ended :ended))
       (is (= :ended (deref ended 1000 :timeout))))))
+
+(defn- alive-within? [procs ms]
+  (let [deadline (+ (System/currentTimeMillis) ms)]
+    (loop []
+      (let [alive (filter #(.isAlive ^ProcessHandle %) procs)]
+        (if (or (empty? alive) (> (System/currentTimeMillis) deadline))
+          (seq alive)
+          (do (Thread/sleep 50) (recur)))))))
+
+(deftest a-stopping-server-leaves-no-render-behind
+  (testing "everything under the server ends: asked first, then forced after the grace"
+    (when-not (os/windows?)
+      ;; a stand-in server with two long "renders"; the second ignores SIGTERM
+      (let [server (start "sh" "-c" "sleep 60 & sh -c 'trap \"\" TERM; sleep 60' & wait")
+            under  #(vec (iterator-seq (.iterator (.descendants (.toHandle server)))))]
+        (try
+          (loop [n 0] (when (and (< (count (under)) 2) (< n 100)) (Thread/sleep 50) (recur (inc n))))
+          (let [procs (under)
+                t0    (System/nanoTime)]
+            (is (<= 2 (count procs)) "the stand-in's children started")
+            (is (= (count procs) (app/end-descendants! (.toHandle server) 500)))
+            (is (< (quot (- (System/nanoTime) t0) 1000000) 3000) "a stubborn one is forced after the grace")
+            (is (nil? (alive-within? procs 3000)) "none is left running"))
+          (finally
+            (.destroyForcibly server)))))))
 
 (deftest run-help-is-what-the-main-help-promises
   (let [home    (str (Files/createTempDirectory "wmark-cli" (make-array FileAttribute 0)))

@@ -330,6 +330,14 @@ prints one JSON line (`url`, `token`, `version`, `edition`, `pid`) for the
 process that launched it, and exits when that process exits, so a crashed GUI
 never leaves an orphaned server.
 
+**No orphaned renders.** When the server exits, its shutdown hook ends every
+process it started, FFmpeg included (`watermark.app/end-descendants!`):
+asked first, then forced after two seconds. That covers Ctrl+C, SIGTERM and
+the parent watch. Without it, FFmpeg kept rendering alone after the server
+was gone, and its unfinished `.part` file stayed. A hard kill of the server
+itself (SIGKILL, `taskkill /F`) runs no hook, so a GUI shell ends the whole
+process tree when it stops the server.
+
 ## Open-core boundary
 
 Pro features are protected twice:
@@ -415,7 +423,7 @@ web UI end to end, on the JVM and against the native binary, and
 | HTTP | A live server: 401, 421, cookie bootstrap, 403 for a foreign Origin, CRUD, stale `if-rev`, the doctor route, the built-in UI's protection, an external UI with SPA fallback, traversal |
 | Web UI | The official Datastar SDK wire-format cases; escaping of hostile names and texts; only numbers in `data-signals`; the page's CSP nonce; token and `Datastar-Request` checks; editing with revisions, live preview and validation messages; a render followed over the queue stream to "done" and the activity log |
 | Core API | Jobs are tenant-scoped: list, cancel and subscribe |
-| Sidecar | A server started with `--parent-pid` exits when its parent ends, including a parent that was gone before the watch began |
+| Sidecar | A server started with `--parent-pid` exits when its parent ends, including a parent that was gone before the watch began; an exiting server ends everything under it, a process that ignores SIGTERM included |
 | CLI | `run --help` and `--progress`; the progress display's bar, lines and quiet modes against a fake clock; `profiles show` and `profiles effective` (values, where each came from, locked features, canary by name); canary refused on the community plan |
 | FFmpeg discovery | `-filters`, `-encoders` and `-version` output from 6.1 and 9.0 builds (9.0 dropped a flag column) |
 | Build | The uberjar carries every component's resources; FFmpeg pins must be https with a SHA-256; licenses through parent POMs; the SDK's ABI tag matches the header |
