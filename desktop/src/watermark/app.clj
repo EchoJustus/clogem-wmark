@@ -33,7 +33,8 @@
             [watermark.util.fs :as fs]
             [watermark.util.os :as os])
   (:import (java.lang ProcessHandle)
-           (java.nio.file Path)))
+           (java.nio.file Path)
+           (java.util.concurrent TimeUnit)))
 
 (set! *warn-on-reflection* true)
 
@@ -242,11 +243,35 @@
      (.thenRun (.onExit ^ProcessHandle parent) ^Runnable on-exit)
      (on-exit))))
 
+(defn end-descendants!
+  "End every process under `root` (default: this one), children and theirs:
+  FFmpeg during a render. Each is asked to stop first (SIGTERM; on Windows
+  `destroy` already terminates), and whatever is still running after
+  `grace-ms` is forced. Returns how many there were.
+
+  A server that exits -- Ctrl+C, SIGTERM, or its parent gone (`--parent-pid`)
+  -- would otherwise leave a render running on its own: FFmpeg keeps writing
+  when the JVM that started it is gone."
+  ([] (end-descendants! (ProcessHandle/current) 2000))
+  ([^ProcessHandle root grace-ms]
+   (let [procs    (vec (iterator-seq (.iterator (.descendants root))))
+         deadline (+ (System/nanoTime) (* 1000000 (long grace-ms)))]
+     (doseq [^ProcessHandle p procs] (.destroy p))
+     (doseq [^ProcessHandle p procs]
+       (let [left-ms (quot (- deadline (System/nanoTime)) 1000000)]
+         (when (pos? left-ms)
+           (try (.get (.orTimeout (.onExit p) left-ms TimeUnit/MILLISECONDS))
+                (catch Exception _ nil)))
+         (when (.isAlive p) (.destroyForcibly p))))
+     (count procs))))
+
 (defn- cmd-serve [sys opts open?]
   (let [sys (with-jobs sys)
         srv (http/start! sys opts)
         url (str (:url srv) "/?token=" (:token srv))]
-    (.addShutdownHook (Runtime/getRuntime) (Thread. #(http/stop! sys srv)))
+    ;; on every exit the JVM sees (Ctrl+C, SIGTERM, the parent watch's exit):
+    ;; renders first, so no FFmpeg outlives the server, then the listener
+    (.addShutdownHook (Runtime/getRuntime) (Thread. ^Runnable (fn [] (end-descendants!) (http/stop! sys srv))))
     (when-let [pid (:parent-pid opts)] (watch-parent! pid))
     (if (= "json" (:announce opts))
       ;; one machine-readable line for the process that launched us
