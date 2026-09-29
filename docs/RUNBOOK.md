@@ -32,6 +32,7 @@ tool (`build/`).
 | C toolchain for native-image | Linux: `gcc`, zlib headers; macOS: Xcode Command Line Tools; Windows: Visual Studio 2022 Build Tools ("Desktop development with C++") | native binaries | |
 | C compiler (`cc`) | any | native-engine tests (optional) | `cc --version` |
 | Python 3 + Playwright | any recent | browser smoke test (optional) | `python3 -m playwright --version` |
+| Dart SDK | 3.13.4 (CI's pin; `scripts/cloud-setup.sh` installs it, checksum-verified) | the kernel on the Dart VM, `bb kernel-dart` (optional locally; CI runs it) | `dart --version` |
 
 **No Node.js, npm or JavaScript build anywhere.** The web UI's only script is
 the vendored `web/resources/public/datastar.js`. Playwright is test tooling;
@@ -135,6 +136,7 @@ Clash's external-ui. It replaces the built-in one and talks to `/api/v1`.
 bb test        # every test namespace (clojure -M:dev:test)
 bb lint        # build matrix vs repository
 bb e2e         # browser smoke test of the web UI (ffmpeg + Python Playwright)
+bb kernel-dart # the kernel compiled by ClojureDart, its golden vectors on the Dart VM (Dart SDK)
 ```
 
 `bb test` runs 120 tests (11,081 assertions) in 34 namespaces (**verified**,
@@ -149,12 +151,26 @@ tools are missing:
 | Native engine (C mock through Java's FFM API, ABI 1 to 3 builds, v2 frames) | `cc` | install a C compiler |
 | v2 conformance on the C mock | `cc` and `ffmpeg` | both of the above |
 
-**Golden vectors.** `kernel/test/golden/*.edn` pin the kernel's outputs
-(PRNG, seeds, render specs, and render spec v2 down to every bitmap's
-SHA-256). They are
-what a Dart or Swift port must reproduce. After an intentional change,
-regenerate them with `WMARK_UPDATE_GOLDEN=1 bb test` and review the diff like
-code.
+**Golden vectors.** `kernel/test/golden/*.edn` pin the kernel's outputs:
+the PRNG, seeds, render specs, render spec v2 down to every bitmap's
+SHA-256, the settings schema's verdicts and messages (`schema.edn`), and the
+settings form (`form.edn`). Both runtimes compute them from the same inputs
+(`kernel/test/watermark/golden_inputs.cljc`): `bb test` on the JVM, and
+`bb kernel-dart` on the Dart VM, which compares strictly (24 is not 24.0).
+They are also what a Swift or Rust port must reproduce. After an
+intentional change, regenerate them with `WMARK_UPDATE_GOLDEN=1 bb test`,
+review the diff like code, and run `bb kernel-dart`.
+
+**The kernel on the Dart VM** ([ADR 0012](adr/0012-the-kernel-on-the-dart-vm.md)).
+`kernel/dart` is a ClojureDart project (0.9.20260917, pinned by commit) that
+compiles the kernel and two test namespaces to Dart and runs them with
+`dart test`: every golden file, every kernel namespace loaded, and what
+differs by host. It fetches ClojureDart (a git dependency) and its pub
+packages (`crypto`, `test`) once, then compiles ClojureDart's core and the
+kernel on every run. **Verified** on 2026-09-29: 10 tests, no warnings, 38 s
+from a clean checkout with those caches warm. A compile error
+there usually breaks one of the rules in CLAUDE.md, "Core library
+portability".
 
 **Single namespace:**
 ```bash

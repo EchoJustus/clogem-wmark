@@ -29,7 +29,7 @@
             [watermark.media :as media]
             [watermark.raster :as raster]
             [watermark.render :as render]
-            [watermark.util.num :as num])
+            [watermark.util.num :as number])
   (:import (clojure.lang ExceptionInfo)))
 
 (set! *warn-on-reflection* true)
@@ -138,8 +138,8 @@
   within the clip."
   [{:keys [fps-num fps-den frames duration-s]} t]
   (let [fps (/ (double fps-num) fps-den)
-        end (dec (long (or frames (num/ceil-int (* fps (or duration-s 0.0))))))]
-    (num/clamp 0 (max 0 end) (num/floor-int (* fps (max 0.0 (double t)))))))
+        end (dec (long (or frames (number/ceil-int (* fps (or duration-s 0.0))))))]
+    (number/clamp 0 (max 0 end) (number/floor-int (* fps (max 0.0 (double t)))))))
 
 (defn plan-frame
   "A preview (docs/adr/0011, section 5): the render of `input` with

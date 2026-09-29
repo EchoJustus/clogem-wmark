@@ -5,8 +5,8 @@
 
   A registry of functions, not a multimethod: ClojureDart has no multimethods,
   and this namespace must run there when a GUI plans renders in-process
-  (Stages 3-4). The open core registers :continuous and :scheduled; the Pro
-  tree registers :subliminal and :random when its namespace loads. Under
+  (Stages 3-4). The open core's :continuous and :scheduled are built in; the
+  Pro tree registers :subliminal and :random when its namespace loads. Under
   native-image that happens at build time, so the registry baked into the Pro
   binary already holds them, while the community binary -- compiled without
   the Pro tree -- reports them as unavailable.
@@ -21,7 +21,20 @@
 
 #?(:clj (set! *warn-on-reflection* true))
 
-(defonce ^:private registry (atom {}))
+(defn- continuous [ctx layer] (layout/text-layer ctx layer))
+
+(defn- scheduled [{:keys [fps timebase] :as ctx} {:keys [at duration-s] :as layer}]
+  (assoc (layout/text-layer ctx layer)
+         :timing {:type    :windows
+                  :windows (layout/normalize-windows
+                            (keep #(layout/seconds->window fps % duration-s) at)
+                            (:frames timebase))}))
+
+;; The open core's modes are in the registry from the start: the Dart VM runs
+;; no top-level forms when a library loads, so a register! call here would
+;; never happen there. Code that registers modes on the Dart VM calls
+;; register! when its host starts.
+(defonce ^:private registry (atom {:continuous continuous :scheduled scheduled}))
 
 (defn register!
   "Install `f` as the implementation of text mode `mode`."
@@ -41,14 +54,3 @@
       (throw (ex-info (str "The \"" (features/mode-display-name (:mode layer)) "\" text mode is part of wmark Pro.")
                       {:wmark/error :feature-unavailable
                        :mode        (:mode layer)})))))
-
-(register! :continuous
-           (fn [ctx layer] (layout/text-layer ctx layer)))
-
-(register! :scheduled
-           (fn [{:keys [fps timebase] :as ctx} {:keys [at duration-s] :as layer}]
-             (assoc (layout/text-layer ctx layer)
-                    :timing {:type    :windows
-                             :windows (layout/normalize-windows
-                                       (keep #(layout/seconds->window fps % duration-s) at)
-                                       (:frames timebase))})))

@@ -9,23 +9,25 @@
   (non-premultiplied) RGBA, row-major. Intermediate results are
   premultiplied doubles in [0, 1], so averaging never darkens edges where
   colour meets transparency. Every rounding goes through watermark.util.num."
-  (:require [watermark.util.num :as num]))
+  (:require [watermark.util.num :as number]
+            #?(:cljd ["dart:typed_data" :as td])))
 
 #?(:clj (set! *warn-on-reflection* true))
 
 (defn u8-array
-  "A zeroed byte array for n channel values."
+  "A zeroed byte array for n channel values: byte[] on the JVM (signed, hence
+  `u8`), a Uint8List on the Dart VM."
   [n]
-  (byte-array n))
+  #?(:clj (byte-array n) :cljd (td/Uint8List n)))
 
 (defn u8
   "Channel i of an RGBA byte array, as 0..255."
-  [#?(:clj ^bytes a :default a) i]
+  [#?(:clj ^bytes a :cljd ^List a :default a) i]
   (bit-and 0xff (aget a i)))
 
 (defn u8!
   "Set channel i of an RGBA byte array to v in 0..255."
-  [#?(:clj ^bytes a :default a) i v]
+  [#?(:clj ^bytes a :cljd ^List a :default a) i v]
   (aset a i #?(:clj (unchecked-byte v) :default v)))
 
 (defn premultiply
@@ -45,7 +47,7 @@
 (defn area-scale
   "Resample premultiplied `src` (sw x sh) to dw x dh by area averaging: each
   target pixel is the coverage-weighted mean of the source pixels under it."
-  [#?(:clj ^doubles src :default src) sw sh dw dh]
+  [#?(:clj ^doubles src :cljd ^List src :default src) sw sh dw dh]
   (let [out (double-array (* 4 dw dh))
         acc (double-array 4)
         fx  (/ (* 1.0 sw) dw)
@@ -56,10 +58,10 @@
         (dotimes [tx dw]
           (let [x0 (* tx fx) x1 (+ x0 fx)]
             (dotimes [c 4] (aset acc c 0.0))
-            (loop [sy (num/floor-int y0)]
+            (loop [sy (number/floor-int y0)]
               (when (and (< sy y1) (< sy sh))
                 (let [wy (- (min y1 (inc sy)) (max y0 sy))]
-                  (loop [sx (num/floor-int x0)]
+                  (loop [sx (number/floor-int x0)]
                     (when (and (< sx x1) (< sx sw))
                       (let [wgt (* wy (- (min x1 (inc sx)) (max x0 sx)))
                             o   (* 4 (+ sx (* sy sw)))]
@@ -98,8 +100,9 @@
   "Bilinear sample of premultiplied `src` at (x, y) in pixel-centre
   coordinates into `out`. Outside the image counts as transparent, so the
   card's edges come out antialiased."
-  [#?(:clj ^doubles src :default src) sw sh x y #?(:clj ^doubles out :default out)]
-  (let [x0 (num/floor-int x) y0 (num/floor-int y)
+  [#?(:clj ^doubles src :cljd ^List src :default src) sw sh x y
+   #?(:clj ^doubles out :cljd ^List out :default out)]
+  (let [x0 (number/floor-int x) y0 (number/floor-int y)
         fx (- x x0) fy (- y y0)]
     (dotimes [c 4] (aset out c 0.0))
     (doseq [[xx yy wgt] [[x0 y0 (* (- 1.0 fx) (- 1.0 fy))] [(inc x0) y0 (* fx (- 1.0 fy))]
@@ -133,11 +136,11 @@
 (defn- q8
   "A [0, 1] value as 0..255, halves up."
   [v]
-  (max 0 (min 255 (num/round-half-up (* 255.0 v)))))
+  (max 0 (min 255 (number/round-half-up (* 255.0 v)))))
 
 (defn to-rgba8
   "Premultiplied doubles -> a straight RGBA8 image, alpha times `opacity`."
-  [#?(:clj ^doubles pm :default pm) w h opacity]
+  [#?(:clj ^doubles pm :cljd ^List pm :default pm) w h opacity]
   (let [n  (* w h)
         px (u8-array (* 4 n))]
     (dotimes [i n]

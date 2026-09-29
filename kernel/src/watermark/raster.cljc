@@ -15,9 +15,13 @@
   and deletes them after the render."
   (:require [watermark.raster.image :as image]
             [watermark.raster.text :as text])
-  #?(:clj (:import (java.nio.charset StandardCharsets)
-                   (java.security MessageDigest)
-                   (java.util HexFormat))))
+  ;; :cljd first: ClojureDart's macro pass reads both branches' features
+  #?(:cljd (:require ["dart:convert" :as convert]
+                     ["dart:typed_data" :as td]
+                     ["package:crypto/crypto.dart" :as crypto])
+     :clj  (:import (java.nio.charset StandardCharsets)
+                    (java.security MessageDigest)
+                    (java.util HexFormat))))
 
 #?(:clj (set! *warn-on-reflection* true))
 
@@ -37,9 +41,13 @@
              (.update md (.getBytes (str width "x" height ":") StandardCharsets/UTF_8))
              (.update md ^bytes px)
              (.formatHex (HexFormat/of) (.digest md)))
-     ;; Dart: package:crypto's sha256.convert(utf8.encode(prefix) + px).toString()
-     :default (throw (ex-info "bitmap-id is not implemented on this host yet."
-                              {:wmark/error :unavailable}))))
+     :cljd (let [^List prefix (.encode convert/utf8 (str width "x" height ":"))
+                 ^List px px
+                 n (.-length prefix)
+                 all (td/Uint8List (+ n (.-length px)))]
+             (.setRange all 0 n prefix)
+             (.setRange all n (.-length all) px)
+             (.toString (.convert crypto/sha256 all)))))
 
 (defn draw
   "One raster request as a straight RGBA8 image {:width :height :px}.

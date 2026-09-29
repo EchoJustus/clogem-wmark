@@ -1,0 +1,201 @@
+{:settings
+ {:animation-without-type
+  {:decoded {:logo {:animation {:every-s 10.0}}},
+   :errors {:logo {:animation {:type ["missing required key"]}}}},
+  :bad-colour
+  {:decoded
+   {:texts [{:mode :continuous, :content "x", :color "#12345"}]},
+   :errors {:texts [{:color ["should match regex"]}]}},
+  :colour-with-newline
+  {:decoded
+   {:texts [{:mode :continuous, :content "x", :color "red\n"}]},
+   :errors {:texts [{:color ["should match regex"]}]}},
+  :crf-not-whole
+  {:decoded {:encode {:ffmpeg {:crf 23.5}}},
+   :errors {:encode {:ffmpeg {:crf ["should be an integer"]}}}},
+  :defaults
+  {:decoded
+   {:output
+    {:suffix "_wm",
+     :container "mp4",
+     :overwrite? false,
+     :strip-metadata true},
+    :encode {:codec :h264, :quality :high, :audio :copy},
+    :logo
+    {:enabled true,
+     :anchor :bottom-right,
+     :offset {:x 24, :y 24},
+     :width-ratio 0.12,
+     :opacity 0.85,
+     :animation {:type :flip-y, :every-s 60.0, :duration-s 1.0}},
+    :texts []},
+   :errors nil},
+  :empty {:decoded {}, :errors nil},
+  :empty-path
+  {:decoded {:logo {:path ""}},
+   :errors {:logo {:path ["should be at least 1 character"]}}},
+  :every-text-mode
+  {:decoded
+   {:texts
+    [{:mode :continuous,
+      :content "(c) Studio",
+      :size-ratio 0.04,
+      :color "#FFFFFF",
+      :opacity 1.0,
+      :border 2,
+      :anchor :top-left,
+      :offset {:x 0, :y -3}}
+     {:mode :scheduled,
+      :content "Scheduled",
+      :at [2.0 90.5],
+      :duration-s 1.5,
+      :id "s"}
+     {:mode :subliminal, :content "Canary", :every-s 30.0, :frames 2}
+     {:mode :subliminal, :content "Wire id"}
+     {:mode :random,
+      :content "Random",
+      :min-duration-s 1.0,
+      :max-duration-s 3.0,
+      :min-gap-s 10.0,
+      :max-gap-s 20.0}]},
+   :errors nil},
+  :ffmpeg
+  {:decoded
+   {:encode
+    {:codec :hevc,
+     :quality :archival,
+     :audio :none,
+     :ffmpeg {:video-codec "libx265", :crf 23, :preset "slow"}}},
+   :errors nil},
+  :frames-out-of-range
+  {:decoded {:texts [{:mode :subliminal, :content "x", :frames 4}]},
+   :errors {:texts [{:frames ["should be at most 3"]}]}},
+  :metadata
+  {:decoded
+   {:output
+    {:metadata
+     {:title "T", :author "A", :copyright "(c) 2026", :comment ""}}},
+   :errors nil},
+  :missing-content
+  {:decoded {:texts [{:mode :continuous}]},
+   :errors {:texts [{:content ["missing required key"]}]}},
+  :negative-time
+  {:decoded
+   {:texts
+    [{:mode :scheduled, :content "x", :at [-1.0], :duration-s 1.0}]},
+   :errors {:texts [{:at [["should be at least 0.0"]]}]}},
+  :no-mode
+  {:decoded {:texts [{:content "x"}]},
+   :errors {:texts [{:mode ["invalid dispatch value"]}]}},
+  :not-a-map
+  {:decoded {:logo "logo.png"}, :errors {:logo ["invalid type"]}},
+  :offset-out-of-range
+  {:decoded {:logo {:offset {:x 10001, :y "0"}}},
+   :errors
+   {:logo
+    {:offset
+     {:x ["should be at most 10000"], :y ["should be an integer"]}}}},
+  :opacity-a-string
+  {:decoded {:logo {:opacity "high"}},
+   :errors {:logo {:opacity ["should be a double"]}}},
+  :opacity-too-high
+  {:decoded {:logo {:opacity 1.5}},
+   :errors {:logo {:opacity ["should be at most 1.0"]}}},
+  :second-text-bad
+  {:decoded
+   {:texts
+    [{:mode :continuous, :content "ok"}
+     {:mode :scheduled, :content "", :at [], :duration-s 0.01}]},
+   :errors
+   {:texts
+    [nil
+     {:content ["should be at least 1 character"],
+      :at ["should have at least 1 elements"],
+      :duration-s ["should be at least 0.04"]}]}},
+  :several-errors
+  {:decoded
+   {:logo {:opacity -1.0, :anchor :top, :enabled "yes"},
+    :output {:overwrite? 1},
+    :texts [{:mode :scheduled, :content "x"}]},
+   :errors
+   {:output {:overwrite? ["should be a boolean"]},
+    :logo
+    {:enabled ["should be a boolean"],
+     :anchor
+     ["should be either :top-left, :top-center, :top-right, :center-left, :center, :center-right, :bottom-left, :bottom-center or :bottom-right"],
+     :opacity ["should be at least 0.0"]},
+    :texts
+    [{:at ["missing required key"],
+      :duration-s ["missing required key"]}]}},
+  :suffix-too-long
+  {:decoded
+   {:output {:suffix "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}},
+   :errors {:output {:suffix ["should be at most 40 characters"]}}},
+  :text-not-a-map
+  {:decoded {:texts ["x"]},
+   :errors {:texts [["invalid dispatch value"]]}},
+  :texts-not-a-vector
+  {:decoded {:texts {:mode "continuous"}},
+   :errors {:texts ["invalid type"]}},
+  :too-many-texts
+  {:decoded
+   {:texts
+    [{:mode :continuous, :content "x"}
+     {:mode :continuous, :content "x"}
+     {:mode :continuous, :content "x"}
+     {:mode :continuous, :content "x"}
+     {:mode :continuous, :content "x"}
+     {:mode :continuous, :content "x"}
+     {:mode :continuous, :content "x"}
+     {:mode :continuous, :content "x"}
+     {:mode :continuous, :content "x"}]},
+   :errors {:texts ["should have at most 8 elements"]}},
+  :unknown-anchor
+  {:decoded {:logo {:anchor :middle}},
+   :errors
+   {:logo
+    {:anchor
+     ["should be either :top-left, :top-center, :top-right, :center-left, :center, :center-right, :bottom-left, :bottom-center or :bottom-right"]}}},
+  :unknown-container
+  {:decoded {:output {:container "avi"}},
+   :errors
+   {:output
+    {:container ["should be either \"mp4\", \"mov\" or \"mkv\""]}}},
+  :unknown-key
+  {:decoded {:logo {:size 3}, :extra true},
+   :errors
+   {:logo {:size ["disallowed key"]}, :extra ["disallowed key"]}},
+  :unknown-mode
+  {:decoded {:texts [{:mode :hologram, :content "x"}]},
+   :errors {:texts [{:mode ["invalid dispatch value"]}]}},
+  :width-too-small
+  {:decoded {:logo {:width-ratio 0.001}},
+   :errors {:logo {:width-ratio ["should be at least 0.02"]}}}},
+ :specs
+ {:bad-easing
+  {:errors {:layers [{:animation {:easing ["should be :cosine"]}}]}},
+  :extra-key {:errors {:comment ["disallowed key"]}},
+  :fps-a-float
+  {:errors {:timebase {:fps-num ["should be a positive int"]}}},
+  :negative-width
+  {:errors {:canvas {:width ["should be a positive int"]}}},
+  :no-version {:errors {:spec/version ["should be 1 or 2, not nil"]}},
+  :placement-points
+  {:errors
+   {:layers
+    [nil
+     {:placement
+      {:points
+       [nil
+        ["invalid tuple size 1, expected 2"]
+        [["should be at most 1.0"]]]}}]}},
+  :unknown-kind
+  {:errors {:layers [{:kind ["invalid dispatch value"]}]}},
+  :v1 {:errors nil},
+  :version-3 {:errors {:spec/version ["should be 1 or 2, not 3"]}},
+  :version-float
+  {:errors {:spec/version ["should be 1 or 2, not 1.0"]}},
+  :window-missing-end
+  {:errors
+   {:layers
+    [nil nil {:timing {:windows [{:end ["missing required key"]}]}}]}}}}

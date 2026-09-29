@@ -1,0 +1,5 @@
+;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
+;; SPDX-License-Identifier: EPL-2.0
+;; The kernel's tests as a library, for the Dart VM harness (kernel/dart),
+;; which computes the golden vectors from watermark.golden-inputs.
+{:paths ["."]}

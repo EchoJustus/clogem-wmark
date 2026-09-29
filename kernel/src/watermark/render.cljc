@@ -28,7 +28,7 @@
   (:require [watermark.core.features :as features]
             [watermark.core.modes :as modes]
             [watermark.render.layout :as layout]
-            [watermark.util.num :as num]))
+            [watermark.util.num :as number]))
 
 #?(:clj (set! *warn-on-reflection* true))
 
@@ -119,7 +119,7 @@
   [{:keys [start period duration]} n]
   (if (and (>= n start) (< (mod (- n start) period) duration))
     (let [p (mod (- n start) period)]
-      (* num/pi (- 1.0 (num/cos (/ (* num/pi p) duration)))))
+      (* number/pi (- 1.0 (number/cos (/ (* number/pi p) duration)))))
     0.0))
 
 (defn logo-corners
@@ -142,10 +142,10 @@
     (if-not animation
       [[x y] [(+ x width) y] [x (+ y height)] [(+ x width) (+ y height)]]
       (let [theta (flip-angle animation n)
-            c0    (num/cos theta)
+            c0    (number/cos theta)
             m     (:min-cos animation 0.0)
             c     (if (< (if (neg? c0) (- c0) c0) m) (if (neg? c0) (- m) m) c0)
-            s     (num/sin theta)
+            s     (number/sin theta)
             d     (:distance animation)
             corner (fn [X Y]
                      (let [w (/ d (- d (* X s)))]

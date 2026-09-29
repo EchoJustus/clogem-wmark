@@ -22,7 +22,7 @@
             [watermark.raster.color :as color]
             [watermark.raster.image :as image]
             [watermark.raster.truetype :as tt]
-            [watermark.util.num :as num]))
+            [watermark.util.num :as number]))
 
 #?(:clj (set! *warn-on-reflection* true))
 
@@ -31,7 +31,7 @@
   [s]
   #?(:clj  (vec (.toArray (.codePoints ^String s)))
      :cljs (mapv #(.codePointAt % 0) (js/Array.from s))
-     :cljd (vec (.-runes s))))
+     :cljd (vec (.-runes ^String s))))
 
 ;; ---------------------------------------------------------------------------
 ;; Outlines -> line segments in pixels
@@ -41,7 +41,7 @@
   about a third of a pixel of the curve."
   [[x0 y0] [cx cy] [x1 y1]]
   (let [dx (+ x0 (* -2.0 cx) x1) dy (+ y0 (* -2.0 cy) y1)
-        n  (+ 1 (num/floor-int (num/sqrt (num/sqrt (* 3.0 (+ (* dx dx) (* dy dy)))))))]
+        n  (+ 1 (number/floor-int (number/sqrt (number/sqrt (* 3.0 (+ (* dx dx) (* dy dy)))))))]
     (for [i (range 1 (inc n))
           :let [t (/ (* 1.0 i) n) u (- 1.0 t)]]
       [(+ (* u u x0) (* 2.0 t u cx) (* t t x1))
@@ -95,7 +95,7 @@
 ;; ---------------------------------------------------------------------------
 ;; Coverage by signed-area accumulation
 
-(defn- add! [#?(:clj ^doubles a :default a) i v]
+(defn- add! [#?(:clj ^doubles a :cljd ^List a :default a) i v]
   (when (< -1 i (alength a)) (aset a i (+ (aget a i) v))))
 
 (defn- edge!
@@ -105,15 +105,15 @@
   (when-not (== y0 y1)
     (let [[dir ax ay bx by] (if (< y0 y1) [1.0 x0 y0 x1 y1] [-1.0 x1 y1 x0 y0])
           dxdy (/ (- bx ax) (- by ay))]
-      (loop [y (max 0 (num/floor-int ay))
+      (loop [y (max 0 (number/floor-int ay))
              x (if (< ay 0.0) (- ax (* ay dxdy)) ax)]
-        (when (< y (min h (num/ceil-int by)))
+        (when (< y (min h (number/ceil-int by)))
           (let [row   (* y w)
                 dy    (- (min (+ y 1.0) by) (max (* 1.0 y) ay))
                 xnext (+ x (* dxdy dy))
                 d     (* dy dir)
                 lo    (min x xnext) hi (max x xnext)
-                lo-f  (num/floor-int lo) hi-c (num/ceil-int hi)]
+                lo-f  (number/floor-int lo) hi-c (number/ceil-int hi)]
             (if (<= hi-c (inc lo-f))
               (let [xm (- (* 0.5 (+ x xnext)) lo-f)]
                 (add! a (+ row lo-f) (- d (* d xm)))
@@ -152,10 +152,10 @@
 (defn dilate
   "Coverage grown by a disc of radius r px with a one-pixel soft edge: each
   pixel takes the strongest coverage within reach, weighted by distance."
-  [#?(:clj ^doubles cov :default cov) w h r]
+  [#?(:clj ^doubles cov :cljd ^List cov :default cov) w h r]
   (let [reach  (inc r)
         taps   (vec (for [dy (range (- reach) (inc reach)) dx (range (- reach) (inc reach))
-                          :let [wt (min 1.0 (max 0.0 (- (+ r 0.5) (num/sqrt (+ (* dx dx) (* dy dy))))))]
+                          :let [wt (min 1.0 (max 0.0 (- (+ r 0.5) (number/sqrt (+ (* dx dx) (* dy dy))))))]
                           :when (pos? wt)]
                       [dx dy wt]))
         n      (count taps)
@@ -187,17 +187,17 @@
     (if (empty? pts)
       {:width 1 :height 1 :px (image/u8-array 4)}
       (let [pad (+ (or border 0) 2)
-            x0 (num/floor-int (apply min (map first pts)))  y0 (num/floor-int (apply min (map second pts)))
-            x1 (num/ceil-int (apply max (map first pts)))   y1 (num/ceil-int (apply max (map second pts)))
+            x0 (number/floor-int (apply min (map first pts)))  y0 (number/floor-int (apply min (map second pts)))
+            x1 (number/ceil-int (apply max (map first pts)))   y1 (number/ceil-int (apply max (map second pts)))
             w  (+ (- x1 x0) (* 2 pad)) h (+ (- y1 y0) (* 2 pad))
             shifted (mapv (fn [poly] (mapv (fn [[x y]] [(+ (- x x0) pad) (+ (- y y0) pad)]) poly)) polys)
-            #?(:clj ^doubles cov :default cov) (coverage shifted w h)
+            #?(:clj ^doubles cov :cljd ^List cov :default cov) (coverage shifted w h)
             halo?  (pos? (or border 0))
-            #?(:clj ^doubles halo :default halo) (if halo? (dilate cov w h border) (double-array 0))
+            #?(:clj ^doubles halo :cljd ^List halo :default halo) (if halo? (dilate cov w h border) (double-array 0))
             [tr tg tb] (color/rgb color)
             [br bg bb] (if halo? (color/rgb border-color) [0 0 0])
             px     (image/u8-array (* 4 w h))
-            q8     (fn [v] (max 0 (min 255 (num/round-half-up (* 255.0 v)))))]
+            q8     (fn [v] (max 0 (min 255 (number/round-half-up (* 255.0 v)))))]
         (dotimes [i (* w h)]
           (let [ta (* (aget cov i) opacity)
                 ba (if halo? (* (aget halo i) border-opacity) 0.0)

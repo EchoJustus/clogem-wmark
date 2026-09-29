@@ -741,6 +741,8 @@
    ["kernel/test/golden/seeds.edn"    "golden/seeds.edn"]
    ["kernel/test/golden/render-basic.edn" "golden/render-basic.edn"]
    ["kernel/test/golden/render-v2.edn" "golden/render-v2.edn"]
+   ["kernel/test/golden/schema.edn"   "golden/schema.edn"]
+   ["kernel/test/golden/form.edn"     "golden/form.edn"]
    ["resources/fonts/wmark.ttf"       "golden/fonts/wmark.ttf"]     ; render-v2's text
    ["licenses/FiraSans-OFL.txt"       "golden/fonts/OFL.txt"]
    ["native/README.md"                "README.md"]

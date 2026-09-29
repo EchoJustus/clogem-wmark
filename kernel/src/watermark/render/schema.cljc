@@ -6,11 +6,12 @@
   `json-schema` is exported to native/render-spec.schema.json (version 1)
   and native/render-spec-v2.schema.json (version 2) so engine authors
   working in Swift, Kotlin or Rust (behind the C ABI in
-  native/include/wmark_engine.h) validate against the same definition. Kept
-  apart from watermark.render so hosts without malli can still plan renders."
-  (:require [malli.core :as m]
-            [malli.error :as me]
-            [malli.json-schema :as mjs]))
+  native/include/wmark_engine.h) validate against the same definition.
+  `validate!` runs on every host (watermark.util.schema, docs/adr/0012);
+  `json-schema` needs malli, so the JVM."
+  ;; malli on the JVM only (see watermark.core.schema)
+  (:require #?@(:cljd [] :clj [[malli.json-schema :as mjs]])
+            [watermark.util.schema :as s]))
 
 #?(:clj (set! *warn-on-reflection* true))
 
@@ -137,24 +138,25 @@
                       [:flipbook FlipbookLayer]
                       [:bitmap BitmapLayer]]]]])
 
-(def ^:private validators {1 (m/validator Spec) 2 (m/validator SpecV2)})
-(def ^:private explainers {1 (m/explainer Spec) 2 (m/explainer SpecV2)})
+(def ^:private schemas {1 (s/schema Spec) 2 (s/schema SpecV2)})
 
 (defn validate!
   "The spec (version 1 or 2), or an :invalid error saying which part is
   malformed."
   [spec]
-  (let [v (:spec/version spec)]
-    (if ((validators v (constantly false)) spec)
-      spec
-      (throw (ex-info "Malformed render spec."
-                      {:wmark/error :invalid
-                       :errors      (if-let [e (explainers v)]
-                                      (me/humanize (e spec))
-                                      {:spec/version [(str "should be 1 or 2, not " (pr-str v))]})})))))
+  (let [v      (:spec/version spec)
+        errors (if-let [schema (when (integer? v) (schemas v))]
+                 (s/errors schema spec)
+                 {:spec/version [(str "should be 1 or 2, not " (pr-str v))]})]
+    (if errors
+      (throw (ex-info "Malformed render spec." {:wmark/error :invalid :errors errors}))
+      spec)))
 
 (defn json-schema
   "JSON Schema of render spec `version` (default 1): native/render-spec.schema.json
   and native/render-spec-v2.schema.json."
   ([] (json-schema 1))
-  ([version] (mjs/transform (if (= 2 version) SpecV2 Spec))))
+  ([version]
+   #?(:clj  (mjs/transform (if (= 2 version) SpecV2 Spec))
+      :cljd (throw (ex-info "The render spec's JSON Schema comes from the JVM (native/)."
+                            {:wmark/error :unavailable})))))

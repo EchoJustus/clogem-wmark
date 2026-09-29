@@ -1,0 +1,19 @@
+;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
+;; SPDX-License-Identifier: EPL-2.0
+;;
+;; The kernel on the Dart VM (ADR 0008, M3a). ClojureDart compiles the kernel
+;; (../src) and the golden-vector test (test/) to Dart, and `dart test` runs
+;; it against the same files the JVM checks (../test/golden/*.edn).
+;;
+;;   clojure -M:cljd test      from kernel/dart, with the Dart SDK on PATH
+;;
+;; ClojureDart is pinned by tag and full commit sha; the Dart SDK by the
+;; pubspec's constraint and the version CI installs (.github/workflows).
+{:paths ["test"]
+ :deps  {tensegritics/clojuredart {:git/url "https://github.com/tensegritics/ClojureDart.git"
+                                   :git/tag "0.9.20260917" :git/sha "9f9cef5e0735026b667c28372e6967dcf43dc13e"}
+         wmark/kernel             {:local/root ".."}
+         ;; the inputs the JVM's golden tests use (watermark.golden-inputs)
+         wmark/kernel-test        {:local/root "../test"}}
+ :aliases {:cljd {:main-opts ["-m" "cljd.build"]}}
+ :cljd/opts {:kind :dart}}

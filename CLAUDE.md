@@ -51,7 +51,7 @@ shells (sidecar mode) and hosted APIs built on the same core.
 
 | Directory | Role | Language / runs on |
 |---|---|---|
-| `kernel/` | The core library's start (decision 11): settings schema and resolution, render spec (v1, v2) and reference semantics, the v2 rasterizer (TrueType, text, warp), keyed seeds, SplitMix64 PRNG, text-mode registry, `VideoEngine` protocol, feature catalog | `.cljc` only: GraalVM/JVM now, the Dart VM through ClojureDart (Track B) |
+| `kernel/` | The core library's start (decision 11): settings schema and resolution, render spec (v1, v2) and reference semantics, the v2 rasterizer (TrueType, text, warp), keyed seeds, SplitMix64 PRNG, text-mode registry, `VideoEngine` protocol, feature catalog, the settings form | `.cljc` only: GraalVM/JVM, and the Dart VM through ClojureDart (`kernel/dart` runs its golden vectors there) |
 | `src/` | Host core: profile rules, store/media/queue ports and local adapters, job pipeline, Core API, FFmpeg and native engines, REST routes | JVM |
 | `web/` | Built-in web UI: server-rendered HTML plus Datastar over SSE (vendored `datastar.js`, no npm) | JVM |
 | `desktop/` | CLI, http-kit server, loopback security, sidecar mode, native-image metadata | JVM / GraalVM |
@@ -198,24 +198,40 @@ its own matrix.
 **Kernel (tested by `architecture_test`)**
 - `.cljc` only. It requires nothing outside the kernel except
   `clojure.string`, plus malli in exactly `watermark.core.schema` and
-  `watermark.render.schema`.
+  `watermark.render.schema`, for JSON Schema on the JVM.
+  `watermark.util.schema` validates and decodes on every runtime, in malli's
+  words (ADR 0012).
 - No multimethods: ClojureDart has none. Extension points are registries
   (`watermark.core.modes/register!`).
 - Deterministic numerics:
   - randomness only from `watermark.util.prng` (SplitMix64, identical to
     `java.util.SplittableRandom`);
   - rounding only through `watermark.util.num`.
-- Golden vectors (`kernel/test/golden`) pin outputs for Dart, Swift and Rust
-  ports. Regenerate them (`WMARK_UPDATE_GOLDEN=1`) only for an intended
-  change, and review the diff.
+- Golden vectors (`kernel/test/golden`) pin outputs for both runtimes and for
+  Swift and Rust ports, computed from `watermark.golden-inputs` on the JVM
+  and the Dart VM alike. Regenerate them (`WMARK_UPDATE_GOLDEN=1`) only for
+  an intended change, and review the diff.
 
-**Core library portability** (decision 11; reviewed now, tested on the Dart
-VM once M3a runs it in CI)
+**Core library portability** (decision 11; tested on the Dart VM by
+`bb kernel-dart` and in CI, ADR 0012)
 - Runtime-specific behaviour lives in small host primitives with one
-  `#?(:clj … :cljd …)` branch per runtime: `watermark.util.num` (numbers and
-  their formatting), `watermark.core.seeds` (HMAC), `watermark.raster`
-  (SHA-256), `watermark.raster.text` (code points). Elsewhere, reader
+  `#?(:clj … :cljd …)` branch per runtime: `watermark.util.num` (numbers,
+  their formatting, 64-bit wrapping arithmetic), `watermark.core.seeds`
+  (HMAC), `watermark.raster` (SHA-256), `watermark.raster.image` (byte
+  arrays), `watermark.raster.text` (code points), and the schema
+  namespaces' `json-schema` (malli, JVM only). Elsewhere, reader
   conditionals carry only type hints and the reflection flag.
+- ClojureDart's rules (each found by a failing build, ADR 0012):
+  - in ns forms the `:cljd` branch comes first, and a JVM-only require is
+    `#?@(:cljd [] :clj [...])`: its macro pass reads both features;
+  - no alias spelt like a Dart type (`num`, `int`, `double`): `num/x` is a
+    static member of `num` (tested). `watermark.util.num` is `number`;
+  - nothing happens at load: the Dart VM runs no top-level forms, so
+    registries start with their built-in entries;
+  - side effects are sequenced with `let`, never by a map literal, whose
+    values ClojureDart evaluates in another order;
+  - `(= 1 1.0)` is true on the Dart VM; compare golden data with
+    `watermark.golden-inputs/strict=`.
 - No `format`, `java.*` or ratios outside those primitives, and only regular
   expressions both runtimes read the same way.
 - Logic moving into the library brings golden vectors with it (FFmpeg argv
@@ -335,6 +351,8 @@ VM once M3a runs it in CI)
   - `bb lint` green;
   - for UI changes, `bb e2e` green;
   - for rendering changes, the conformance tests green;
+  - for kernel changes, `bb kernel-dart` green (CI runs it on every pull
+    request);
   - the relevant doc updated (ARCHITECTURE, ENGINE, FFMPEG_STRATEGY, RUNBOOK,
     ROADMAP).
 - **A test that disagrees with an invariant is a finding.** Report it; don't
@@ -358,6 +376,7 @@ VM once M3a runs it in CI)
 bb test          # all tests (C compiler and FFmpeg groups skip themselves if absent)
 bb lint          # build matrix and component deps.edn files vs repository
 bb e2e           # Chromium smoke test of the web UI (ffmpeg + Python Playwright)
+bb kernel-dart   # the kernel on the Dart VM: ClojureDart compiles it, golden vectors (Dart SDK 3.13.4)
 bb dev           # engine from source, opens the web UI     bb dev doctor | bb dev run ...
 bb native        # GraalVM binary for this OS (GRAALVM_HOME)
 bb ffmpeg        # the pinned FFmpeg for this OS -> target/ffmpeg/<platform> (SHA-256 verified)
@@ -369,7 +388,7 @@ clojure -M:dev:test -n watermark.web.sse-test               # one namespace
 
 **In a Claude Code cloud session:**
 - The environment should run `scripts/cloud-setup.sh` as its setup script: JDK
-  25, FFmpeg, Babashka and the Clojure CLI.
+  25, FFmpeg, Babashka, the Clojure CLI and the Dart SDK (`bb kernel-dart`).
 - It needs **Custom** network access: the Trusted defaults plus `clojars.org`
   and `repo.clojars.org`.
 - If `java -version` isn't 25, run the setup script by hand (as root).
@@ -438,11 +457,13 @@ first cut (ADR 0011, "Implementation"); what remains of them is listed there.
    workflow. The owner provides the repositories and credentials.
 
 **Track B: M3 restarted, the core library on the Dart VM** (ADR 0008)
-1. **M3a · The kernel on the Dart VM:** ClojureDart and the Dart SDK pinned
-   (by full commit SHA and version), the kernel compiled for the Dart VM, and
-   `kernel/test/golden/*.edn` passing there in CI: the `util/num` `:cljd`
-   branches, HMAC-SHA256 through `package:crypto`, and malli or a small
-   validator of our own driven by the same schema data.
+1. **M3a · The kernel on the Dart VM:** *done* (ADR 0012). ClojureDart
+   0.9.20260917 and Dart 3.13.4 pinned; every kernel namespace compiles for
+   the Dart VM without a warning, and all six golden files pass there, in CI
+   (`kernel-dart`): the PRNG, keyed seeds through `package:crypto`, render
+   spec v1, every v2 bitmap, the schema corpus and the settings form.
+   `watermark.util.schema` validates on both runtimes in malli's words; malli
+   stays for JSON Schema on the JVM.
 2. **M3b · The GUI apps' sidecar shell** (Phase 1), built with the commercial
    editions. The core's part: `serve --announce json --parent-pid` stays
    stable, and the form model and preview routes of P3–P4 serve it.

@@ -18,3 +18,9 @@ updates:
         patterns: ["*"]
     commit-message:
       prefix: ci
+  # the kernel's Dart VM harness: its one package, crypto (ClojureDart is a
+  # git dependency in kernel/dart/deps.edn, bumped by hand like deps.edn)
+  - package-ecosystem: pub
+    directory: /kernel/dart
+    schedule:
+      interval: weekly

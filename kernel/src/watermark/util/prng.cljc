@@ -14,7 +14,9 @@
 
   Needs 64-bit two's-complement integers with wrapping multiplication: the JVM
   and Dart VM/AOT (Flutter) qualify; JavaScript numbers do not, so this
-  namespace is not for ClojureScript.")
+  namespace is not for ClojureScript. The wrapping operations are
+  watermark.util.num's."
+  (:require [watermark.util.num :as number]))
 
 #?(:clj (set! *warn-on-reflection* true))
 
@@ -24,8 +26,8 @@
 (def ^:private mix-b -7723592293110705685)
 
 (defn- mix64 [z]
-  (let [z (unchecked-multiply (bit-xor z (unsigned-bit-shift-right z 30)) mix-a)
-        z (unchecked-multiply (bit-xor z (unsigned-bit-shift-right z 27)) mix-b)]
+  (let [z (number/mul-wrap (bit-xor z (unsigned-bit-shift-right z 30)) mix-a)
+        z (number/mul-wrap (bit-xor z (unsigned-bit-shift-right z 27)) mix-b)]
     (bit-xor z (unsigned-bit-shift-right z 31))))
 
 (defn generator
@@ -37,7 +39,7 @@
 (defn next-long!
   "Next 64-bit value (SplittableRandom.nextLong())."
   [g]
-  (mix64 (vswap! g #(unchecked-add % golden-gamma))))
+  (mix64 (vswap! g #(number/add-wrap % golden-gamma))))
 
 (defn next-below!
   "Uniform value in [0, bound), bound > 0 (SplittableRandom.nextLong(bound)):
@@ -49,7 +51,7 @@
       (bit-and r m)
       (loop [u (unsigned-bit-shift-right r 1)]
         (let [r (rem u bound)]
-          (if (neg? (unchecked-subtract (unchecked-add u m) r))
+          (if (neg? (number/sub-wrap (number/add-wrap u m) r))
             (recur (unsigned-bit-shift-right (next-long! g) 1))
             r))))))
 

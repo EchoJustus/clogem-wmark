@@ -6,6 +6,7 @@
             [watermark.core.schema :as schema]
             [watermark.core.resolve :as resolve]
             [watermark.golden :as golden]
+            [watermark.golden-inputs :as inputs]
             [watermark.render :as render]
             [watermark.render.layout :as layout]
             [watermark.render.schema :as spec-schema]))
@@ -94,17 +95,4 @@
               (catch clojure.lang.ExceptionInfo e (:wmark/error (ex-data e)))))))
 
 (deftest golden-render-spec
-  (let [spec (spec-for {:logo  {:path "/logos/l.png" :anchor :top-right :offset {:x 30 :y 20}
-                                :animation {:type :flip-y :every-s 5.0 :duration-s 0.8}}
-                        :texts [{:mode :continuous :content "(c) Studio" :anchor :bottom-center}
-                                {:mode :scheduled :content "Scheduled" :at [2.0 90.5] :duration-s 1.5}]}
-                       :media {:width 1280 :height 720 :fps-num 30000 :fps-den 1001 :frames 5400})
-        logo (layer spec "logo")]
-    (golden/check "render-basic"
-                  {:spec    spec
-                   ;; reference samples every engine must reproduce
-                   :logo-bounds (into (sorted-map)
-                                      (for [n [0 149 150 155 160 165 170 173 174 300]]
-                                        [n (mapv #(/ (Math/round (* 1000.0 %)) 1000.0) (render/logo-bounds logo n))]))
-                   :scheduled-frames (let [t (layer spec "text-1")]
-                                       (vec (filter #(render/active? (:timing t) %) (range 5400))))})))
+  (golden/check "render-basic" (inputs/render-basic)))

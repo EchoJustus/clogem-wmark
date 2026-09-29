@@ -1,0 +1,1849 @@
+{:model
+ {:categories
+  [{:id :logo,
+    :title "Logo",
+    :description
+    "An image that flips in 3D now and then, so a fixed box can't erase it.",
+    :rows
+    [{:description "Draw the logo on every video.",
+      :path [:logo :enabled],
+      :value true,
+      :source :default,
+      :title "Show the logo",
+      :id "logo.enabled",
+      :kind :boolean,
+      :input true,
+      :text "On"}
+     {:description "A PNG or JPEG file. A transparent PNG looks best.",
+      :path [:logo :path],
+      :value "/logos/l.png",
+      :source :set-here,
+      :title "Logo image",
+      :id "logo.path",
+      :kind :file,
+      :input "/logos/l.png",
+      :text "/logos/l.png"}
+     {:description "The corner or edge the logo keeps to.",
+      :path [:logo :anchor],
+      :value :top-left,
+      :source :set-here,
+      :title "Position",
+      :id "logo.anchor",
+      :kind :enum,
+      :options
+      [{:value "top-left", :label "Top left"}
+       {:value "top-center", :label "Top center"}
+       {:value "top-right", :label "Top right"}
+       {:value "center-left", :label "Center left"}
+       {:value "center", :label "Center"}
+       {:value "center-right", :label "Center right"}
+       {:value "bottom-left", :label "Bottom left"}
+       {:value "bottom-center", :label "Bottom center"}
+       {:value "bottom-right", :label "Bottom right"}],
+      :input "top-left",
+      :text "Top left"}
+     {:description "Pixels between the logo and the side it keeps to.",
+      :path [:logo :offset :x],
+      :min -10000,
+      :unit "px",
+      :value 24,
+      :source :default,
+      :title "Horizontal margin",
+      :max 10000,
+      :id "logo.offset.x",
+      :kind :integer,
+      :input "24",
+      :text "24 px"}
+     {:description
+      "Pixels between the logo and the top or bottom it keeps to.",
+      :path [:logo :offset :y],
+      :min -10000,
+      :unit "px",
+      :value 24,
+      :source :default,
+      :title "Vertical margin",
+      :max 10000,
+      :id "logo.offset.y",
+      :kind :integer,
+      :input "24",
+      :text "24 px"}
+     {:description "The logo's width as a share of the video's width.",
+      :path [:logo :width-ratio],
+      :min 2.0,
+      :unit "%",
+      :value 0.12,
+      :source :default,
+      :title "Size",
+      :max 60.0,
+      :id "logo.width-ratio",
+      :kind :number,
+      :input "12",
+      :step 1.0,
+      :slider true,
+      :text "12%"}
+     {:description
+      "How solid the logo is. Lower values show more of the video through it.",
+      :path [:logo :opacity],
+      :min 0.0,
+      :unit "%",
+      :value 0.5,
+      :source :set-here,
+      :title "Opacity",
+      :max 100.0,
+      :id "logo.opacity",
+      :kind :number,
+      :input "50",
+      :step 5.0,
+      :slider true,
+      :text "50%"}
+     {:description
+      "The flip that keeps inpainting from erasing the logo.",
+      :path [:logo :animation :type],
+      :value :flip-y,
+      :source :default,
+      :title "Animation",
+      :id "logo.animation.type",
+      :kind :enum,
+      :options
+      [{:value "none", :label "No animation"}
+       {:value "flip-y", :label "Flip in 3D"}],
+      :input "flip-y",
+      :text "Flip in 3D"}
+     {:description "Seconds between flips.",
+      :path [:logo :animation :every-s],
+      :min 2.0,
+      :unit "s",
+      :value 60.0,
+      :source :default,
+      :title "Flip every",
+      :id "logo.animation.every-s",
+      :kind :number,
+      :input "60",
+      :step 0.5,
+      :text "60 s"}
+     {:description "How long one flip takes.",
+      :path [:logo :animation :duration-s],
+      :min 0.2,
+      :unit "s",
+      :value 1.0,
+      :source :default,
+      :title "Flip duration",
+      :max 5.0,
+      :id "logo.animation.duration-s",
+      :kind :number,
+      :input "1",
+      :step 0.1,
+      :text "1 s"}
+     {:description
+      "Seconds into the video. Empty: after one interval.",
+      :path [:logo :animation :phase-s],
+      :min 0.0,
+      :unit "s",
+      :value nil,
+      :source :unset,
+      :title "First flip at",
+      :id "logo.animation.phase-s",
+      :kind :number,
+      :input "",
+      :step 0.5,
+      :text ""}]}
+   {:id :texts,
+    :title "Text layers",
+    :description
+    "Warning text drawn over the video, each layer on its own schedule.",
+    :rows []}
+   {:id :output,
+    :title "Output",
+    :description
+    "Where watermarked copies go and what they're called.",
+    :rows
+    [{:description
+      "Where copies are written. Empty: next to each original.",
+      :path [:output :dir],
+      :value nil,
+      :source :unset,
+      :title "Output folder",
+      :id "output.dir",
+      :kind :folder,
+      :input "",
+      :text ""}
+     {:description
+      "Added to each original's name, before the extension.",
+      :path [:output :suffix],
+      :value "_mark",
+      :source :set-here,
+      :title "File name suffix",
+      :max 40,
+      :id "output.suffix",
+      :kind :text,
+      :input "_mark",
+      :text "_mark"}
+     {:description "The container of the watermarked copy.",
+      :path [:output :container],
+      :value "mp4",
+      :source :default,
+      :title "File format",
+      :id "output.container",
+      :kind :enum,
+      :options
+      [{:value "mp4", :label "MP4"}
+       {:value "mov", :label "QuickTime (MOV)"}
+       {:value "mkv", :label "Matroska (MKV)"}],
+      :input "mp4",
+      :text "MP4"}
+     {:description
+      "Overwrite a copy with the same name instead of stopping.",
+      :path [:output :overwrite?],
+      :value false,
+      :source :default,
+      :title "Replace existing copies",
+      :id "output.overwrite?",
+      :kind :boolean,
+      :input false,
+      :text "Off"}
+     {:description
+      "Drop the original's metadata (camera, location, tools) from the copy.",
+      :path [:output :strip-metadata],
+      :value true,
+      :source :default,
+      :title "Remove metadata",
+      :id "output.strip-metadata",
+      :kind :boolean,
+      :input true,
+      :text "On"}
+     {:description
+      "The copy's title, as players and file browsers show it.",
+      :path [:output :metadata :title],
+      :value nil,
+      :source :unset,
+      :title "Title",
+      :max 200,
+      :id "output.metadata.title",
+      :kind :text,
+      :input "",
+      :text ""}
+     {:description
+      "Who made the video. Players show it as the artist or author.",
+      :path [:output :metadata :author],
+      :value nil,
+      :source :unset,
+      :title "Author",
+      :max 200,
+      :id "output.metadata.author",
+      :kind :text,
+      :input "",
+      :text ""}
+     {:description "Who owns the video, such as \"© 2026 Studio A\".",
+      :path [:output :metadata :copyright],
+      :value "(c) Studio",
+      :source :set-here,
+      :title "Copyright",
+      :max 200,
+      :id "output.metadata.copyright",
+      :kind :text,
+      :input "(c) Studio",
+      :text "(c) Studio"}
+     {:description
+      "A note written into the file, such as a licence or a contact.",
+      :path [:output :metadata :comment],
+      :value nil,
+      :source :unset,
+      :multiline true,
+      :title "Comment",
+      :max 1000,
+      :id "output.metadata.comment",
+      :kind :text,
+      :input "",
+      :text ""}]}
+   {:id :encode,
+    :title "Encoding",
+    :description "Codec, quality and sound of the watermarked copies.",
+    :rows
+    [{:description
+      "H.264 plays everywhere. HEVC is smaller at the same quality.",
+      :path [:encode :codec],
+      :value :h264,
+      :source :default,
+      :title "Codec",
+      :id "encode.codec",
+      :kind :enum,
+      :options
+      [{:value "h264", :label "H.264"}
+       {:value "hevc", :label "HEVC (H.265)"}],
+      :input "h264",
+      :text "H.264"}
+     {:description "Higher quality means larger files.",
+      :path [:encode :quality],
+      :value :high,
+      :source :default,
+      :title "Quality",
+      :id "encode.quality",
+      :kind :enum,
+      :options
+      [{:value "archival", :label "Archival"}
+       {:value "high", :label "High"}
+       {:value "balanced", :label "Balanced"}
+       {:value "compact", :label "Compact"}],
+      :input "high",
+      :text "High"}
+     {:description "What happens to the original's audio.",
+      :path [:encode :audio],
+      :value :copy,
+      :source :default,
+      :title "Sound",
+      :id "encode.audio",
+      :kind :enum,
+      :options
+      [{:value "copy", :label "Keep unchanged"}
+       {:value "aac", :label "Re-encode as AAC"}
+       {:value "none", :label "Remove sound"}],
+      :input "copy",
+      :text "Keep unchanged"}
+     {:description
+      "Force one encoder. Empty: the best one this FFmpeg has.",
+      :path [:encode :ffmpeg :video-codec],
+      :value nil,
+      :advanced true,
+      :source :unset,
+      :title "FFmpeg encoder",
+      :id "encode.ffmpeg.video-codec",
+      :kind :enum,
+      :options
+      [{:value "libx264", :label "Libx264"}
+       {:value "libx265", :label "Libx265"}
+       {:value "h264_nvenc", :label "H264_nvenc"}
+       {:value "hevc_nvenc", :label "Hevc_nvenc"}
+       {:value "h264_qsv", :label "H264_qsv"}
+       {:value "hevc_qsv", :label "Hevc_qsv"}
+       {:value "h264_amf", :label "H264_amf"}
+       {:value "hevc_amf", :label "Hevc_amf"}
+       {:value "h264_videotoolbox", :label "H264_videotoolbox"}
+       {:value "hevc_videotoolbox", :label "Hevc_videotoolbox"}],
+      :input "",
+      :text ""}
+     {:description
+      "Constant rate factor for x264 and x265. Empty: from the quality.",
+      :path [:encode :ffmpeg :crf],
+      :min 0,
+      :value nil,
+      :advanced true,
+      :source :unset,
+      :title "FFmpeg CRF",
+      :max 51,
+      :id "encode.ffmpeg.crf",
+      :kind :integer,
+      :input "",
+      :text ""}
+     {:description "The encoder's speed preset, such as \"slow\".",
+      :path [:encode :ffmpeg :preset],
+      :value nil,
+      :advanced true,
+      :source :unset,
+      :title "FFmpeg preset",
+      :max 20,
+      :id "encode.ffmpeg.preset",
+      :kind :text,
+      :input "",
+      :text ""}]}],
+  :texts
+  {:layers
+   [{:index 0,
+     :id "texts.0",
+     :mode "continuous",
+     :title "Text layer 1",
+     :subtitle "Continuous",
+     :rows
+     [{:description "When the text shows.",
+       :path [:mode],
+       :value :continuous,
+       :source :set-here,
+       :title "Kind",
+       :id "texts.0.mode",
+       :kind :enum,
+       :options
+       [{:value "continuous", :label "Continuous"}
+        {:value "scheduled", :label "Scheduled"}
+        {:value "subliminal",
+         :label "Canary",
+         :tier "pro",
+         :locked false}
+        {:value "random",
+         :label "Random",
+         :tier "pro",
+         :locked false}],
+       :input "continuous",
+       :text "Continuous"}
+      {:description "What the layer says.",
+       :path [:content],
+       :value "(c) Studio",
+       :source :set-here,
+       :multiline true,
+       :title "Text",
+       :max 500,
+       :id "texts.0.content",
+       :kind :text,
+       :input "(c) Studio",
+       :text "(c) Studio"}
+      {:description "The corner or edge the text keeps to.",
+       :path [:anchor],
+       :value nil,
+       :source :set-here,
+       :title "Position",
+       :id "texts.0.anchor",
+       :kind :enum,
+       :options
+       [{:value "top-left", :label "Top left"}
+        {:value "top-center", :label "Top center"}
+        {:value "top-right", :label "Top right"}
+        {:value "center-left", :label "Center left"}
+        {:value "center", :label "Center"}
+        {:value "center-right", :label "Center right"}
+        {:value "bottom-left", :label "Bottom left"}
+        {:value "bottom-center", :label "Bottom center"}
+        {:value "bottom-right", :label "Bottom right"}],
+       :input "bottom-left",
+       :text "Bottom left (default)"}
+      {:description
+       "Pixels between the text and the side it keeps to.",
+       :path [:offset :x],
+       :min -10000,
+       :unit "px",
+       :value nil,
+       :source :set-here,
+       :title "Horizontal margin",
+       :max 10000,
+       :id "texts.0.offset.x",
+       :kind :integer,
+       :input "24",
+       :text "24 px (default)"}
+      {:description
+       "Pixels between the text and the top or bottom it keeps to.",
+       :path [:offset :y],
+       :min -10000,
+       :unit "px",
+       :value nil,
+       :source :set-here,
+       :title "Vertical margin",
+       :max 10000,
+       :id "texts.0.offset.y",
+       :kind :integer,
+       :input "24",
+       :text "24 px (default)"}
+      {:description "Text height as a share of the video's height.",
+       :path [:size-ratio],
+       :min 1.0,
+       :unit "%",
+       :value 0.04,
+       :source :set-here,
+       :title "Size",
+       :max 30.0,
+       :id "texts.0.size-ratio",
+       :kind :number,
+       :input "4",
+       :step 0.5,
+       :slider true,
+       :text "4%"}
+      {:description "A colour name or #RRGGBB.",
+       :path [:color],
+       :value nil,
+       :source :set-here,
+       :title "Colour",
+       :id "texts.0.color",
+       :kind :color,
+       :input "white",
+       :text "white (default)"}
+      {:description "How solid the text is.",
+       :path [:opacity],
+       :min 0.0,
+       :unit "%",
+       :value nil,
+       :source :set-here,
+       :title "Opacity",
+       :max 100.0,
+       :id "texts.0.opacity",
+       :kind :number,
+       :input "80",
+       :step 5.0,
+       :slider true,
+       :text "80% (default)"}
+      {:description
+       "Width of the dark outline that keeps text readable on bright frames.",
+       :path [:border],
+       :min 0,
+       :unit "px",
+       :value nil,
+       :source :set-here,
+       :title "Outline",
+       :max 20,
+       :id "texts.0.border",
+       :kind :integer,
+       :input "2",
+       :text "2 px (default)"}
+      {:description "A TrueType font file. Empty: the bundled font.",
+       :path [:font-path],
+       :value nil,
+       :advanced true,
+       :source :set-here,
+       :title "Font",
+       :id "texts.0.font-path",
+       :kind :file,
+       :input "",
+       :text ""}]}
+    {:index 1,
+     :id "texts.1",
+     :mode "scheduled",
+     :title "Text layer 2",
+     :subtitle "Scheduled",
+     :rows
+     [{:description "When the text shows.",
+       :path [:mode],
+       :value :scheduled,
+       :source :set-here,
+       :title "Kind",
+       :id "texts.1.mode",
+       :kind :enum,
+       :options
+       [{:value "continuous", :label "Continuous"}
+        {:value "scheduled", :label "Scheduled"}
+        {:value "subliminal",
+         :label "Canary",
+         :tier "pro",
+         :locked false}
+        {:value "random",
+         :label "Random",
+         :tier "pro",
+         :locked false}],
+       :input "scheduled",
+       :text "Scheduled"}
+      {:description "What the layer says.",
+       :path [:content],
+       :value "Scheduled",
+       :source :set-here,
+       :multiline true,
+       :title "Text",
+       :max 500,
+       :id "texts.1.content",
+       :kind :text,
+       :input "Scheduled",
+       :text "Scheduled"}
+      {:description "Start times in seconds, separated by commas.",
+       :path [:at],
+       :min 0.0,
+       :value [2.0 90.5],
+       :source :set-here,
+       :title "Shown at",
+       :id "texts.1.at",
+       :kind :seconds-list,
+       :input "2, 90.5",
+       :text "2, 90.5"}
+      {:description "Seconds each showing lasts.",
+       :path [:duration-s],
+       :min 0.04,
+       :unit "s",
+       :value 1.5,
+       :source :set-here,
+       :title "Shown for",
+       :max 600.0,
+       :id "texts.1.duration-s",
+       :kind :number,
+       :input "1.5",
+       :step 0.5,
+       :text "1.5 s"}
+      {:description "The corner or edge the text keeps to.",
+       :path [:anchor],
+       :value nil,
+       :source :set-here,
+       :title "Position",
+       :id "texts.1.anchor",
+       :kind :enum,
+       :options
+       [{:value "top-left", :label "Top left"}
+        {:value "top-center", :label "Top center"}
+        {:value "top-right", :label "Top right"}
+        {:value "center-left", :label "Center left"}
+        {:value "center", :label "Center"}
+        {:value "center-right", :label "Center right"}
+        {:value "bottom-left", :label "Bottom left"}
+        {:value "bottom-center", :label "Bottom center"}
+        {:value "bottom-right", :label "Bottom right"}],
+       :input "bottom-left",
+       :text "Bottom left (default)"}
+      {:description
+       "Pixels between the text and the side it keeps to.",
+       :path [:offset :x],
+       :min -10000,
+       :unit "px",
+       :value nil,
+       :source :set-here,
+       :title "Horizontal margin",
+       :max 10000,
+       :id "texts.1.offset.x",
+       :kind :integer,
+       :input "24",
+       :text "24 px (default)"}
+      {:description
+       "Pixels between the text and the top or bottom it keeps to.",
+       :path [:offset :y],
+       :min -10000,
+       :unit "px",
+       :value nil,
+       :source :set-here,
+       :title "Vertical margin",
+       :max 10000,
+       :id "texts.1.offset.y",
+       :kind :integer,
+       :input "24",
+       :text "24 px (default)"}
+      {:description "Text height as a share of the video's height.",
+       :path [:size-ratio],
+       :min 1.0,
+       :unit "%",
+       :value nil,
+       :source :set-here,
+       :title "Size",
+       :max 30.0,
+       :id "texts.1.size-ratio",
+       :kind :number,
+       :input "3.5",
+       :step 0.5,
+       :slider true,
+       :text "3.5% (default)"}
+      {:description "A colour name or #RRGGBB.",
+       :path [:color],
+       :value nil,
+       :source :set-here,
+       :title "Colour",
+       :id "texts.1.color",
+       :kind :color,
+       :input "white",
+       :text "white (default)"}
+      {:description "How solid the text is.",
+       :path [:opacity],
+       :min 0.0,
+       :unit "%",
+       :value nil,
+       :source :set-here,
+       :title "Opacity",
+       :max 100.0,
+       :id "texts.1.opacity",
+       :kind :number,
+       :input "80",
+       :step 5.0,
+       :slider true,
+       :text "80% (default)"}
+      {:description
+       "Width of the dark outline that keeps text readable on bright frames.",
+       :path [:border],
+       :min 0,
+       :unit "px",
+       :value nil,
+       :source :set-here,
+       :title "Outline",
+       :max 20,
+       :id "texts.1.border",
+       :kind :integer,
+       :input "2",
+       :text "2 px (default)"}
+      {:description "A TrueType font file. Empty: the bundled font.",
+       :path [:font-path],
+       :value nil,
+       :advanced true,
+       :source :set-here,
+       :title "Font",
+       :id "texts.1.font-path",
+       :kind :file,
+       :input "",
+       :text ""}]}
+    {:index 2,
+     :id "texts.2",
+     :mode "subliminal",
+     :title "Text layer 3",
+     :subtitle "Canary",
+     :rows
+     [{:description "When the text shows.",
+       :path [:mode],
+       :value :subliminal,
+       :source :set-here,
+       :title "Kind",
+       :id "texts.2.mode",
+       :kind :enum,
+       :options
+       [{:value "continuous", :label "Continuous"}
+        {:value "scheduled", :label "Scheduled"}
+        {:value "subliminal",
+         :label "Canary",
+         :tier "pro",
+         :locked false}
+        {:value "random",
+         :label "Random",
+         :tier "pro",
+         :locked false}],
+       :input "subliminal",
+       :text "Canary"}
+      {:description "What the layer says.",
+       :path [:content],
+       :value "Canary",
+       :source :set-here,
+       :multiline true,
+       :title "Text",
+       :max 500,
+       :id "texts.2.content",
+       :kind :text,
+       :input "Canary",
+       :text "Canary"}
+      {:description
+       "Average seconds between canary frames. The exact times are keyed to each video.",
+       :path [:every-s],
+       :min 1.0,
+       :unit "s",
+       :value nil,
+       :source :set-here,
+       :title "Canary every",
+       :max 600.0,
+       :id "texts.2.every-s",
+       :kind :number,
+       :input "",
+       :step 1.0,
+       :text ""}
+      {:description "Frames per canary, 1 to 3.",
+       :path [:frames],
+       :min 1,
+       :unit "frames",
+       :value 2,
+       :source :set-here,
+       :title "Canary length",
+       :max 3,
+       :id "texts.2.frames",
+       :kind :integer,
+       :input "2",
+       :text "2 frames"}
+      {:description "The corner or edge the text keeps to.",
+       :path [:anchor],
+       :value nil,
+       :source :set-here,
+       :title "Position",
+       :id "texts.2.anchor",
+       :kind :enum,
+       :options
+       [{:value "top-left", :label "Top left"}
+        {:value "top-center", :label "Top center"}
+        {:value "top-right", :label "Top right"}
+        {:value "center-left", :label "Center left"}
+        {:value "center", :label "Center"}
+        {:value "center-right", :label "Center right"}
+        {:value "bottom-left", :label "Bottom left"}
+        {:value "bottom-center", :label "Bottom center"}
+        {:value "bottom-right", :label "Bottom right"}],
+       :input "bottom-left",
+       :text "Bottom left (default)"}
+      {:description
+       "Pixels between the text and the side it keeps to.",
+       :path [:offset :x],
+       :min -10000,
+       :unit "px",
+       :value nil,
+       :source :set-here,
+       :title "Horizontal margin",
+       :max 10000,
+       :id "texts.2.offset.x",
+       :kind :integer,
+       :input "24",
+       :text "24 px (default)"}
+      {:description
+       "Pixels between the text and the top or bottom it keeps to.",
+       :path [:offset :y],
+       :min -10000,
+       :unit "px",
+       :value nil,
+       :source :set-here,
+       :title "Vertical margin",
+       :max 10000,
+       :id "texts.2.offset.y",
+       :kind :integer,
+       :input "24",
+       :text "24 px (default)"}
+      {:description "Text height as a share of the video's height.",
+       :path [:size-ratio],
+       :min 1.0,
+       :unit "%",
+       :value nil,
+       :source :set-here,
+       :title "Size",
+       :max 30.0,
+       :id "texts.2.size-ratio",
+       :kind :number,
+       :input "3.5",
+       :step 0.5,
+       :slider true,
+       :text "3.5% (default)"}
+      {:description "A colour name or #RRGGBB.",
+       :path [:color],
+       :value nil,
+       :source :set-here,
+       :title "Colour",
+       :id "texts.2.color",
+       :kind :color,
+       :input "white",
+       :text "white (default)"}
+      {:description "How solid the text is.",
+       :path [:opacity],
+       :min 0.0,
+       :unit "%",
+       :value nil,
+       :source :set-here,
+       :title "Opacity",
+       :max 100.0,
+       :id "texts.2.opacity",
+       :kind :number,
+       :input "80",
+       :step 5.0,
+       :slider true,
+       :text "80% (default)"}
+      {:description
+       "Width of the dark outline that keeps text readable on bright frames.",
+       :path [:border],
+       :min 0,
+       :unit "px",
+       :value nil,
+       :source :set-here,
+       :title "Outline",
+       :max 20,
+       :id "texts.2.border",
+       :kind :integer,
+       :input "2",
+       :text "2 px (default)"}
+      {:description "A TrueType font file. Empty: the bundled font.",
+       :path [:font-path],
+       :value nil,
+       :advanced true,
+       :source :set-here,
+       :title "Font",
+       :id "texts.2.font-path",
+       :kind :file,
+       :input "",
+       :text ""}],
+     :tier "pro",
+     :locked false}],
+   :modes
+   [{:value "continuous", :label "Continuous"}
+    {:value "scheduled", :label "Scheduled"}
+    {:value "subliminal", :label "Canary", :tier "pro", :locked false}
+    {:value "random", :label "Random", :tier "pro", :locked false}],
+   :source :set-here},
+  :sources
+  {:set-here "Set here",
+   :last-run "From your last run",
+   :unsaved "Not saved yet",
+   :default "Built-in default",
+   :unset "Not set"}},
+ :community
+ {:categories
+  [{:id :logo,
+    :title "Logo",
+    :description
+    "An image that flips in 3D now and then, so a fixed box can't erase it.",
+    :rows
+    [{:description "Draw the logo on every video.",
+      :path [:logo :enabled],
+      :value true,
+      :source :default,
+      :title "Show the logo",
+      :id "logo.enabled",
+      :kind :boolean,
+      :input true,
+      :text "On"}
+     {:description "A PNG or JPEG file. A transparent PNG looks best.",
+      :path [:logo :path],
+      :value "/logos/l.png",
+      :source :set-here,
+      :title "Logo image",
+      :id "logo.path",
+      :kind :file,
+      :input "/logos/l.png",
+      :text "/logos/l.png"}
+     {:description "The corner or edge the logo keeps to.",
+      :path [:logo :anchor],
+      :value :top-left,
+      :source :set-here,
+      :title "Position",
+      :id "logo.anchor",
+      :kind :enum,
+      :options
+      [{:value "top-left", :label "Top left"}
+       {:value "top-center", :label "Top center"}
+       {:value "top-right", :label "Top right"}
+       {:value "center-left", :label "Center left"}
+       {:value "center", :label "Center"}
+       {:value "center-right", :label "Center right"}
+       {:value "bottom-left", :label "Bottom left"}
+       {:value "bottom-center", :label "Bottom center"}
+       {:value "bottom-right", :label "Bottom right"}],
+      :input "top-left",
+      :text "Top left"}
+     {:description "Pixels between the logo and the side it keeps to.",
+      :path [:logo :offset :x],
+      :min -10000,
+      :unit "px",
+      :value 24,
+      :source :default,
+      :title "Horizontal margin",
+      :max 10000,
+      :id "logo.offset.x",
+      :kind :integer,
+      :input "24",
+      :text "24 px"}
+     {:description
+      "Pixels between the logo and the top or bottom it keeps to.",
+      :path [:logo :offset :y],
+      :min -10000,
+      :unit "px",
+      :value 24,
+      :source :default,
+      :title "Vertical margin",
+      :max 10000,
+      :id "logo.offset.y",
+      :kind :integer,
+      :input "24",
+      :text "24 px"}
+     {:description "The logo's width as a share of the video's width.",
+      :path [:logo :width-ratio],
+      :min 2.0,
+      :unit "%",
+      :value 0.12,
+      :source :default,
+      :title "Size",
+      :max 60.0,
+      :id "logo.width-ratio",
+      :kind :number,
+      :input "12",
+      :step 1.0,
+      :slider true,
+      :text "12%"}
+     {:description
+      "How solid the logo is. Lower values show more of the video through it.",
+      :path [:logo :opacity],
+      :min 0.0,
+      :unit "%",
+      :value 0.5,
+      :source :set-here,
+      :title "Opacity",
+      :max 100.0,
+      :id "logo.opacity",
+      :kind :number,
+      :input "50",
+      :step 5.0,
+      :slider true,
+      :text "50%"}
+     {:description
+      "The flip that keeps inpainting from erasing the logo.",
+      :path [:logo :animation :type],
+      :value :flip-y,
+      :source :default,
+      :title "Animation",
+      :id "logo.animation.type",
+      :kind :enum,
+      :options
+      [{:value "none", :label "No animation"}
+       {:value "flip-y", :label "Flip in 3D"}],
+      :input "flip-y",
+      :text "Flip in 3D"}
+     {:description "Seconds between flips.",
+      :path [:logo :animation :every-s],
+      :min 2.0,
+      :unit "s",
+      :value 60.0,
+      :source :default,
+      :title "Flip every",
+      :id "logo.animation.every-s",
+      :kind :number,
+      :input "60",
+      :step 0.5,
+      :text "60 s"}
+     {:description "How long one flip takes.",
+      :path [:logo :animation :duration-s],
+      :min 0.2,
+      :unit "s",
+      :value 1.0,
+      :source :default,
+      :title "Flip duration",
+      :max 5.0,
+      :id "logo.animation.duration-s",
+      :kind :number,
+      :input "1",
+      :step 0.1,
+      :text "1 s"}
+     {:description
+      "Seconds into the video. Empty: after one interval.",
+      :path [:logo :animation :phase-s],
+      :min 0.0,
+      :unit "s",
+      :value nil,
+      :source :unset,
+      :title "First flip at",
+      :id "logo.animation.phase-s",
+      :kind :number,
+      :input "",
+      :step 0.5,
+      :text ""}]}
+   {:id :texts,
+    :title "Text layers",
+    :description
+    "Warning text drawn over the video, each layer on its own schedule.",
+    :rows []}
+   {:id :output,
+    :title "Output",
+    :description
+    "Where watermarked copies go and what they're called.",
+    :rows
+    [{:description
+      "Where copies are written. Empty: next to each original.",
+      :path [:output :dir],
+      :value nil,
+      :source :unset,
+      :title "Output folder",
+      :id "output.dir",
+      :kind :folder,
+      :input "",
+      :text ""}
+     {:description
+      "Added to each original's name, before the extension.",
+      :path [:output :suffix],
+      :value "_mark",
+      :source :set-here,
+      :title "File name suffix",
+      :max 40,
+      :id "output.suffix",
+      :kind :text,
+      :input "_mark",
+      :text "_mark"}
+     {:description "The container of the watermarked copy.",
+      :path [:output :container],
+      :value "mp4",
+      :source :default,
+      :title "File format",
+      :id "output.container",
+      :kind :enum,
+      :options
+      [{:value "mp4", :label "MP4"}
+       {:value "mov", :label "QuickTime (MOV)"}
+       {:value "mkv", :label "Matroska (MKV)"}],
+      :input "mp4",
+      :text "MP4"}
+     {:description
+      "Overwrite a copy with the same name instead of stopping.",
+      :path [:output :overwrite?],
+      :value false,
+      :source :default,
+      :title "Replace existing copies",
+      :id "output.overwrite?",
+      :kind :boolean,
+      :input false,
+      :text "Off"}
+     {:description
+      "Drop the original's metadata (camera, location, tools) from the copy.",
+      :path [:output :strip-metadata],
+      :value true,
+      :source :default,
+      :title "Remove metadata",
+      :id "output.strip-metadata",
+      :kind :boolean,
+      :input true,
+      :text "On"}
+     {:description
+      "The copy's title, as players and file browsers show it.",
+      :path [:output :metadata :title],
+      :value nil,
+      :source :unset,
+      :title "Title",
+      :max 200,
+      :id "output.metadata.title",
+      :kind :text,
+      :input "",
+      :text ""}
+     {:description
+      "Who made the video. Players show it as the artist or author.",
+      :path [:output :metadata :author],
+      :value nil,
+      :source :unset,
+      :title "Author",
+      :max 200,
+      :id "output.metadata.author",
+      :kind :text,
+      :input "",
+      :text ""}
+     {:description "Who owns the video, such as \"© 2026 Studio A\".",
+      :path [:output :metadata :copyright],
+      :value "(c) Studio",
+      :source :set-here,
+      :title "Copyright",
+      :max 200,
+      :id "output.metadata.copyright",
+      :kind :text,
+      :input "(c) Studio",
+      :text "(c) Studio"}
+     {:description
+      "A note written into the file, such as a licence or a contact.",
+      :path [:output :metadata :comment],
+      :value nil,
+      :source :unset,
+      :multiline true,
+      :title "Comment",
+      :max 1000,
+      :id "output.metadata.comment",
+      :kind :text,
+      :input "",
+      :text ""}]}
+   {:id :encode,
+    :title "Encoding",
+    :description "Codec, quality and sound of the watermarked copies.",
+    :rows
+    [{:description
+      "H.264 plays everywhere. HEVC is smaller at the same quality.",
+      :path [:encode :codec],
+      :value :h264,
+      :source :default,
+      :title "Codec",
+      :id "encode.codec",
+      :kind :enum,
+      :options
+      [{:value "h264", :label "H.264"}
+       {:value "hevc", :label "HEVC (H.265)"}],
+      :input "h264",
+      :text "H.264"}
+     {:description "Higher quality means larger files.",
+      :path [:encode :quality],
+      :value :high,
+      :source :default,
+      :title "Quality",
+      :id "encode.quality",
+      :kind :enum,
+      :options
+      [{:value "archival", :label "Archival"}
+       {:value "high", :label "High"}
+       {:value "balanced", :label "Balanced"}
+       {:value "compact", :label "Compact"}],
+      :input "high",
+      :text "High"}
+     {:description "What happens to the original's audio.",
+      :path [:encode :audio],
+      :value :copy,
+      :source :default,
+      :title "Sound",
+      :id "encode.audio",
+      :kind :enum,
+      :options
+      [{:value "copy", :label "Keep unchanged"}
+       {:value "aac", :label "Re-encode as AAC"}
+       {:value "none", :label "Remove sound"}],
+      :input "copy",
+      :text "Keep unchanged"}
+     {:description
+      "Force one encoder. Empty: the best one this FFmpeg has.",
+      :path [:encode :ffmpeg :video-codec],
+      :value nil,
+      :advanced true,
+      :source :unset,
+      :title "FFmpeg encoder",
+      :id "encode.ffmpeg.video-codec",
+      :kind :enum,
+      :options
+      [{:value "libx264", :label "Libx264"}
+       {:value "libx265", :label "Libx265"}
+       {:value "h264_nvenc", :label "H264_nvenc"}
+       {:value "hevc_nvenc", :label "Hevc_nvenc"}
+       {:value "h264_qsv", :label "H264_qsv"}
+       {:value "hevc_qsv", :label "Hevc_qsv"}
+       {:value "h264_amf", :label "H264_amf"}
+       {:value "hevc_amf", :label "Hevc_amf"}
+       {:value "h264_videotoolbox", :label "H264_videotoolbox"}
+       {:value "hevc_videotoolbox", :label "Hevc_videotoolbox"}],
+      :input "",
+      :text ""}
+     {:description
+      "Constant rate factor for x264 and x265. Empty: from the quality.",
+      :path [:encode :ffmpeg :crf],
+      :min 0,
+      :value nil,
+      :advanced true,
+      :source :unset,
+      :title "FFmpeg CRF",
+      :max 51,
+      :id "encode.ffmpeg.crf",
+      :kind :integer,
+      :input "",
+      :text ""}
+     {:description "The encoder's speed preset, such as \"slow\".",
+      :path [:encode :ffmpeg :preset],
+      :value nil,
+      :advanced true,
+      :source :unset,
+      :title "FFmpeg preset",
+      :max 20,
+      :id "encode.ffmpeg.preset",
+      :kind :text,
+      :input "",
+      :text ""}]}],
+  :texts
+  {:layers
+   [{:index 0,
+     :id "texts.0",
+     :mode "continuous",
+     :title "Text layer 1",
+     :subtitle "Continuous",
+     :rows
+     [{:description "When the text shows.",
+       :path [:mode],
+       :value :continuous,
+       :source :set-here,
+       :title "Kind",
+       :id "texts.0.mode",
+       :kind :enum,
+       :options
+       [{:value "continuous", :label "Continuous"}
+        {:value "scheduled", :label "Scheduled"}
+        {:value "subliminal",
+         :label "Canary",
+         :tier "pro",
+         :locked true}
+        {:value "random", :label "Random", :tier "pro", :locked true}],
+       :input "continuous",
+       :text "Continuous"}
+      {:description "What the layer says.",
+       :path [:content],
+       :value "(c) Studio",
+       :source :set-here,
+       :multiline true,
+       :title "Text",
+       :max 500,
+       :id "texts.0.content",
+       :kind :text,
+       :input "(c) Studio",
+       :text "(c) Studio"}
+      {:description "The corner or edge the text keeps to.",
+       :path [:anchor],
+       :value nil,
+       :source :set-here,
+       :title "Position",
+       :id "texts.0.anchor",
+       :kind :enum,
+       :options
+       [{:value "top-left", :label "Top left"}
+        {:value "top-center", :label "Top center"}
+        {:value "top-right", :label "Top right"}
+        {:value "center-left", :label "Center left"}
+        {:value "center", :label "Center"}
+        {:value "center-right", :label "Center right"}
+        {:value "bottom-left", :label "Bottom left"}
+        {:value "bottom-center", :label "Bottom center"}
+        {:value "bottom-right", :label "Bottom right"}],
+       :input "bottom-left",
+       :text "Bottom left (default)"}
+      {:description
+       "Pixels between the text and the side it keeps to.",
+       :path [:offset :x],
+       :min -10000,
+       :unit "px",
+       :value nil,
+       :source :set-here,
+       :title "Horizontal margin",
+       :max 10000,
+       :id "texts.0.offset.x",
+       :kind :integer,
+       :input "24",
+       :text "24 px (default)"}
+      {:description
+       "Pixels between the text and the top or bottom it keeps to.",
+       :path [:offset :y],
+       :min -10000,
+       :unit "px",
+       :value nil,
+       :source :set-here,
+       :title "Vertical margin",
+       :max 10000,
+       :id "texts.0.offset.y",
+       :kind :integer,
+       :input "24",
+       :text "24 px (default)"}
+      {:description "Text height as a share of the video's height.",
+       :path [:size-ratio],
+       :min 1.0,
+       :unit "%",
+       :value 0.04,
+       :source :set-here,
+       :title "Size",
+       :max 30.0,
+       :id "texts.0.size-ratio",
+       :kind :number,
+       :input "4",
+       :step 0.5,
+       :slider true,
+       :text "4%"}
+      {:description "A colour name or #RRGGBB.",
+       :path [:color],
+       :value nil,
+       :source :set-here,
+       :title "Colour",
+       :id "texts.0.color",
+       :kind :color,
+       :input "white",
+       :text "white (default)"}
+      {:description "How solid the text is.",
+       :path [:opacity],
+       :min 0.0,
+       :unit "%",
+       :value nil,
+       :source :set-here,
+       :title "Opacity",
+       :max 100.0,
+       :id "texts.0.opacity",
+       :kind :number,
+       :input "80",
+       :step 5.0,
+       :slider true,
+       :text "80% (default)"}
+      {:description
+       "Width of the dark outline that keeps text readable on bright frames.",
+       :path [:border],
+       :min 0,
+       :unit "px",
+       :value nil,
+       :source :set-here,
+       :title "Outline",
+       :max 20,
+       :id "texts.0.border",
+       :kind :integer,
+       :input "2",
+       :text "2 px (default)"}
+      {:description "A TrueType font file. Empty: the bundled font.",
+       :path [:font-path],
+       :value nil,
+       :advanced true,
+       :source :set-here,
+       :title "Font",
+       :id "texts.0.font-path",
+       :kind :file,
+       :input "",
+       :text ""}]}
+    {:index 1,
+     :id "texts.1",
+     :mode "scheduled",
+     :title "Text layer 2",
+     :subtitle "Scheduled",
+     :rows
+     [{:description "When the text shows.",
+       :path [:mode],
+       :value :scheduled,
+       :source :set-here,
+       :title "Kind",
+       :id "texts.1.mode",
+       :kind :enum,
+       :options
+       [{:value "continuous", :label "Continuous"}
+        {:value "scheduled", :label "Scheduled"}
+        {:value "subliminal",
+         :label "Canary",
+         :tier "pro",
+         :locked true}
+        {:value "random", :label "Random", :tier "pro", :locked true}],
+       :input "scheduled",
+       :text "Scheduled"}
+      {:description "What the layer says.",
+       :path [:content],
+       :value "Scheduled",
+       :source :set-here,
+       :multiline true,
+       :title "Text",
+       :max 500,
+       :id "texts.1.content",
+       :kind :text,
+       :input "Scheduled",
+       :text "Scheduled"}
+      {:description "Start times in seconds, separated by commas.",
+       :path [:at],
+       :min 0.0,
+       :value [2.0 90.5],
+       :source :set-here,
+       :title "Shown at",
+       :id "texts.1.at",
+       :kind :seconds-list,
+       :input "2, 90.5",
+       :text "2, 90.5"}
+      {:description "Seconds each showing lasts.",
+       :path [:duration-s],
+       :min 0.04,
+       :unit "s",
+       :value 1.5,
+       :source :set-here,
+       :title "Shown for",
+       :max 600.0,
+       :id "texts.1.duration-s",
+       :kind :number,
+       :input "1.5",
+       :step 0.5,
+       :text "1.5 s"}
+      {:description "The corner or edge the text keeps to.",
+       :path [:anchor],
+       :value nil,
+       :source :set-here,
+       :title "Position",
+       :id "texts.1.anchor",
+       :kind :enum,
+       :options
+       [{:value "top-left", :label "Top left"}
+        {:value "top-center", :label "Top center"}
+        {:value "top-right", :label "Top right"}
+        {:value "center-left", :label "Center left"}
+        {:value "center", :label "Center"}
+        {:value "center-right", :label "Center right"}
+        {:value "bottom-left", :label "Bottom left"}
+        {:value "bottom-center", :label "Bottom center"}
+        {:value "bottom-right", :label "Bottom right"}],
+       :input "bottom-left",
+       :text "Bottom left (default)"}
+      {:description
+       "Pixels between the text and the side it keeps to.",
+       :path [:offset :x],
+       :min -10000,
+       :unit "px",
+       :value nil,
+       :source :set-here,
+       :title "Horizontal margin",
+       :max 10000,
+       :id "texts.1.offset.x",
+       :kind :integer,
+       :input "24",
+       :text "24 px (default)"}
+      {:description
+       "Pixels between the text and the top or bottom it keeps to.",
+       :path [:offset :y],
+       :min -10000,
+       :unit "px",
+       :value nil,
+       :source :set-here,
+       :title "Vertical margin",
+       :max 10000,
+       :id "texts.1.offset.y",
+       :kind :integer,
+       :input "24",
+       :text "24 px (default)"}
+      {:description "Text height as a share of the video's height.",
+       :path [:size-ratio],
+       :min 1.0,
+       :unit "%",
+       :value nil,
+       :source :set-here,
+       :title "Size",
+       :max 30.0,
+       :id "texts.1.size-ratio",
+       :kind :number,
+       :input "3.5",
+       :step 0.5,
+       :slider true,
+       :text "3.5% (default)"}
+      {:description "A colour name or #RRGGBB.",
+       :path [:color],
+       :value nil,
+       :source :set-here,
+       :title "Colour",
+       :id "texts.1.color",
+       :kind :color,
+       :input "white",
+       :text "white (default)"}
+      {:description "How solid the text is.",
+       :path [:opacity],
+       :min 0.0,
+       :unit "%",
+       :value nil,
+       :source :set-here,
+       :title "Opacity",
+       :max 100.0,
+       :id "texts.1.opacity",
+       :kind :number,
+       :input "80",
+       :step 5.0,
+       :slider true,
+       :text "80% (default)"}
+      {:description
+       "Width of the dark outline that keeps text readable on bright frames.",
+       :path [:border],
+       :min 0,
+       :unit "px",
+       :value nil,
+       :source :set-here,
+       :title "Outline",
+       :max 20,
+       :id "texts.1.border",
+       :kind :integer,
+       :input "2",
+       :text "2 px (default)"}
+      {:description "A TrueType font file. Empty: the bundled font.",
+       :path [:font-path],
+       :value nil,
+       :advanced true,
+       :source :set-here,
+       :title "Font",
+       :id "texts.1.font-path",
+       :kind :file,
+       :input "",
+       :text ""}]}
+    {:index 2,
+     :id "texts.2",
+     :mode "subliminal",
+     :title "Text layer 3",
+     :subtitle "Canary",
+     :rows
+     [{:description "When the text shows.",
+       :path [:mode],
+       :value :subliminal,
+       :source :set-here,
+       :title "Kind",
+       :id "texts.2.mode",
+       :kind :enum,
+       :options
+       [{:value "continuous", :label "Continuous"}
+        {:value "scheduled", :label "Scheduled"}
+        {:value "subliminal",
+         :label "Canary",
+         :tier "pro",
+         :locked true}
+        {:value "random", :label "Random", :tier "pro", :locked true}],
+       :input "subliminal",
+       :text "Canary"}
+      {:description "What the layer says.",
+       :path [:content],
+       :value "Canary",
+       :source :set-here,
+       :multiline true,
+       :title "Text",
+       :max 500,
+       :id "texts.2.content",
+       :kind :text,
+       :input "Canary",
+       :text "Canary"}
+      {:description
+       "Average seconds between canary frames. The exact times are keyed to each video.",
+       :path [:every-s],
+       :min 1.0,
+       :unit "s",
+       :value nil,
+       :source :set-here,
+       :title "Canary every",
+       :max 600.0,
+       :id "texts.2.every-s",
+       :kind :number,
+       :input "",
+       :step 1.0,
+       :text ""}
+      {:description "Frames per canary, 1 to 3.",
+       :path [:frames],
+       :min 1,
+       :unit "frames",
+       :value 2,
+       :source :set-here,
+       :title "Canary length",
+       :max 3,
+       :id "texts.2.frames",
+       :kind :integer,
+       :input "2",
+       :text "2 frames"}
+      {:description "The corner or edge the text keeps to.",
+       :path [:anchor],
+       :value nil,
+       :source :set-here,
+       :title "Position",
+       :id "texts.2.anchor",
+       :kind :enum,
+       :options
+       [{:value "top-left", :label "Top left"}
+        {:value "top-center", :label "Top center"}
+        {:value "top-right", :label "Top right"}
+        {:value "center-left", :label "Center left"}
+        {:value "center", :label "Center"}
+        {:value "center-right", :label "Center right"}
+        {:value "bottom-left", :label "Bottom left"}
+        {:value "bottom-center", :label "Bottom center"}
+        {:value "bottom-right", :label "Bottom right"}],
+       :input "bottom-left",
+       :text "Bottom left (default)"}
+      {:description
+       "Pixels between the text and the side it keeps to.",
+       :path [:offset :x],
+       :min -10000,
+       :unit "px",
+       :value nil,
+       :source :set-here,
+       :title "Horizontal margin",
+       :max 10000,
+       :id "texts.2.offset.x",
+       :kind :integer,
+       :input "24",
+       :text "24 px (default)"}
+      {:description
+       "Pixels between the text and the top or bottom it keeps to.",
+       :path [:offset :y],
+       :min -10000,
+       :unit "px",
+       :value nil,
+       :source :set-here,
+       :title "Vertical margin",
+       :max 10000,
+       :id "texts.2.offset.y",
+       :kind :integer,
+       :input "24",
+       :text "24 px (default)"}
+      {:description "Text height as a share of the video's height.",
+       :path [:size-ratio],
+       :min 1.0,
+       :unit "%",
+       :value nil,
+       :source :set-here,
+       :title "Size",
+       :max 30.0,
+       :id "texts.2.size-ratio",
+       :kind :number,
+       :input "3.5",
+       :step 0.5,
+       :slider true,
+       :text "3.5% (default)"}
+      {:description "A colour name or #RRGGBB.",
+       :path [:color],
+       :value nil,
+       :source :set-here,
+       :title "Colour",
+       :id "texts.2.color",
+       :kind :color,
+       :input "white",
+       :text "white (default)"}
+      {:description "How solid the text is.",
+       :path [:opacity],
+       :min 0.0,
+       :unit "%",
+       :value nil,
+       :source :set-here,
+       :title "Opacity",
+       :max 100.0,
+       :id "texts.2.opacity",
+       :kind :number,
+       :input "80",
+       :step 5.0,
+       :slider true,
+       :text "80% (default)"}
+      {:description
+       "Width of the dark outline that keeps text readable on bright frames.",
+       :path [:border],
+       :min 0,
+       :unit "px",
+       :value nil,
+       :source :set-here,
+       :title "Outline",
+       :max 20,
+       :id "texts.2.border",
+       :kind :integer,
+       :input "2",
+       :text "2 px (default)"}
+      {:description "A TrueType font file. Empty: the bundled font.",
+       :path [:font-path],
+       :value nil,
+       :advanced true,
+       :source :set-here,
+       :title "Font",
+       :id "texts.2.font-path",
+       :kind :file,
+       :input "",
+       :text ""}],
+     :tier "pro",
+     :locked true}],
+   :modes
+   [{:value "continuous", :label "Continuous"}
+    {:value "scheduled", :label "Scheduled"}
+    {:value "subliminal", :label "Canary", :tier "pro", :locked true}
+    {:value "random", :label "Random", :tier "pro", :locked true}],
+   :source :set-here},
+  :sources
+  {:set-here "Set here",
+   :last-run "From your last run",
+   :unsaved "Not saved yet",
+   :default "Built-in default",
+   :unset "Not set"}},
+ :last-run
+ {"encode.audio" :default,
+  "encode.codec" :default,
+  "encode.ffmpeg.crf" :unset,
+  "encode.ffmpeg.preset" :unset,
+  "encode.ffmpeg.video-codec" :unset,
+  "encode.quality" :default,
+  "logo.anchor" :default,
+  "logo.animation.duration-s" :default,
+  "logo.animation.every-s" :default,
+  "logo.animation.phase-s" :unset,
+  "logo.animation.type" :default,
+  "logo.enabled" :default,
+  "logo.offset.x" :default,
+  "logo.offset.y" :default,
+  "logo.opacity" :last-run,
+  "logo.path" :unset,
+  "logo.width-ratio" :default,
+  "output.container" :default,
+  "output.dir" :unset,
+  "output.metadata.author" :unset,
+  "output.metadata.comment" :unset,
+  "output.metadata.copyright" :unset,
+  "output.metadata.title" :unset,
+  "output.overwrite?" :default,
+  "output.strip-metadata" :default,
+  "output.suffix" :default},
+ :edits
+ [[{:op :set, :id "logo.opacity", :value "70"}
+   {:ok
+    {:logo {:opacity 0.7, :anchor :top-left, :path "/logos/l.png"},
+     :output {:suffix "_mark", :metadata {:copyright "(c) Studio"}},
+     :texts
+     [{:mode :continuous, :content "(c) Studio", :size-ratio 0.04}
+      {:mode :scheduled,
+       :content "Scheduled",
+       :at [2.0 90.5],
+       :duration-s 1.5}
+      {:mode :subliminal, :content "Canary", :frames 2}]}}]
+  [{:op :set, :id "logo.animation.every-s", :value "30"}
+   {:ok
+    {:logo
+     {:opacity 0.5,
+      :anchor :top-left,
+      :path "/logos/l.png",
+      :animation {:type :flip-y, :every-s 30.0}},
+     :output {:suffix "_mark", :metadata {:copyright "(c) Studio"}},
+     :texts
+     [{:mode :continuous, :content "(c) Studio", :size-ratio 0.04}
+      {:mode :scheduled,
+       :content "Scheduled",
+       :at [2.0 90.5],
+       :duration-s 1.5}
+      {:mode :subliminal, :content "Canary", :frames 2}]}}]
+  [{:op :set, :id "output.dir", :value " /out "}
+   {:ok
+    {:logo {:opacity 0.5, :anchor :top-left, :path "/logos/l.png"},
+     :output
+     {:suffix "_mark",
+      :metadata {:copyright "(c) Studio"},
+      :dir "/out"},
+     :texts
+     [{:mode :continuous, :content "(c) Studio", :size-ratio 0.04}
+      {:mode :scheduled,
+       :content "Scheduled",
+       :at [2.0 90.5],
+       :duration-s 1.5}
+      {:mode :subliminal, :content "Canary", :frames 2}]}}]
+  [{:op :set, :id "output.container", :value "mkv"}
+   {:ok
+    {:logo {:opacity 0.5, :anchor :top-left, :path "/logos/l.png"},
+     :output
+     {:suffix "_mark",
+      :metadata {:copyright "(c) Studio"},
+      :container "mkv"},
+     :texts
+     [{:mode :continuous, :content "(c) Studio", :size-ratio 0.04}
+      {:mode :scheduled,
+       :content "Scheduled",
+       :at [2.0 90.5],
+       :duration-s 1.5}
+      {:mode :subliminal, :content "Canary", :frames 2}]}}]
+  [{:op :set, :id "texts.1.at", :value "5, 12.5"}
+   {:ok
+    {:logo {:opacity 0.5, :anchor :top-left, :path "/logos/l.png"},
+     :output {:suffix "_mark", :metadata {:copyright "(c) Studio"}},
+     :texts
+     [{:mode :continuous, :content "(c) Studio", :size-ratio 0.04}
+      {:mode :scheduled,
+       :content "Scheduled",
+       :at [5.0 12.5],
+       :duration-s 1.5}
+      {:mode :subliminal, :content "Canary", :frames 2}]}}]
+  [{:op :set, :id "texts.0.color", :value "#FF8800"}
+   {:ok
+    {:logo {:opacity 0.5, :anchor :top-left, :path "/logos/l.png"},
+     :output {:suffix "_mark", :metadata {:copyright "(c) Studio"}},
+     :texts
+     [{:mode :continuous,
+       :content "(c) Studio",
+       :size-ratio 0.04,
+       :color "#FF8800"}
+      {:mode :scheduled,
+       :content "Scheduled",
+       :at [2.0 90.5],
+       :duration-s 1.5}
+      {:mode :subliminal, :content "Canary", :frames 2}]}}]
+  [{:op :set, :id "texts.1.mode", :value "continuous"}
+   {:ok
+    {:logo {:opacity 0.5, :anchor :top-left, :path "/logos/l.png"},
+     :output {:suffix "_mark", :metadata {:copyright "(c) Studio"}},
+     :texts
+     [{:mode :continuous, :content "(c) Studio", :size-ratio 0.04}
+      {:content "Scheduled", :mode :continuous}
+      {:mode :subliminal, :content "Canary", :frames 2}]}}]
+  [{:op :unset, :id "logo.opacity"}
+   {:ok
+    {:logo {:anchor :top-left, :path "/logos/l.png"},
+     :output {:suffix "_mark", :metadata {:copyright "(c) Studio"}},
+     :texts
+     [{:mode :continuous, :content "(c) Studio", :size-ratio 0.04}
+      {:mode :scheduled,
+       :content "Scheduled",
+       :at [2.0 90.5],
+       :duration-s 1.5}
+      {:mode :subliminal, :content "Canary", :frames 2}]}}]
+  [{:op :unset, :id "output.metadata.copyright"}
+   {:ok
+    {:logo {:opacity 0.5, :anchor :top-left, :path "/logos/l.png"},
+     :output {:suffix "_mark"},
+     :texts
+     [{:mode :continuous, :content "(c) Studio", :size-ratio 0.04}
+      {:mode :scheduled,
+       :content "Scheduled",
+       :at [2.0 90.5],
+       :duration-s 1.5}
+      {:mode :subliminal, :content "Canary", :frames 2}]}}]
+  [{:op :add-layer, :mode "random"}
+   {:ok
+    {:logo {:opacity 0.5, :anchor :top-left, :path "/logos/l.png"},
+     :output {:suffix "_mark", :metadata {:copyright "(c) Studio"}},
+     :texts
+     [{:mode :continuous, :content "(c) Studio", :size-ratio 0.04}
+      {:mode :scheduled,
+       :content "Scheduled",
+       :at [2.0 90.5],
+       :duration-s 1.5}
+      {:mode :subliminal, :content "Canary", :frames 2}
+      {:content "© Your studio", :mode :random}]}}]
+  [{:op :remove-layer, :index 0}
+   {:ok
+    {:logo {:opacity 0.5, :anchor :top-left, :path "/logos/l.png"},
+     :output {:suffix "_mark", :metadata {:copyright "(c) Studio"}},
+     :texts
+     [{:mode :scheduled,
+       :content "Scheduled",
+       :at [2.0 90.5],
+       :duration-s 1.5}
+      {:mode :subliminal, :content "Canary", :frames 2}]}}]
+  [{:op :move-layer, :index 1, :delta -1}
+   {:ok
+    {:logo {:opacity 0.5, :anchor :top-left, :path "/logos/l.png"},
+     :output {:suffix "_mark", :metadata {:copyright "(c) Studio"}},
+     :texts
+     [{:mode :scheduled,
+       :content "Scheduled",
+       :at [2.0 90.5],
+       :duration-s 1.5}
+      {:mode :continuous, :content "(c) Studio", :size-ratio 0.04}
+      {:mode :subliminal, :content "Canary", :frames 2}]}}]
+  [{:op :set, :id "logo.opacity", :value "150"}
+   {:error "Opacity: at most 100 %"}]
+  [{:op :set, :id "logo.offset.x", :value "1.5"}
+   {:error "Horizontal margin: a whole number, please"}]
+  [{:op :set, :id "texts.0.color", :value "red;"}
+   {:error "Colour: a colour name or #RRGGBB"}]
+  [{:op :set, :id "logo.bogus", :value "1"}
+   {:error "No setting \"logo.bogus\"."}]
+  [{:op :unset, :id "texts.0.content"}
+   {:error "Text: a layer needs its text"}]
+  [{:op :set, :id "texts.5.content", :value "x"}
+   {:error "There is no text layer 6."}]]}

@@ -7,7 +7,7 @@
   here into pixels and frame indices, so engines never interpret user-facing
   settings (anchors, seconds, ratios) themselves -- two engines given the same
   spec have nothing left to disagree about except pixel rendering."
-  (:require [watermark.util.num :as num]))
+  (:require [watermark.util.num :as number]))
 
 #?(:clj (set! *warn-on-reflection* true))
 
@@ -32,8 +32,8 @@
 (defn box-origin
   "Top-left pixel of a w*h box placed by `placement` in a W*H canvas."
   [{:keys [fx fy px py]} W H w h]
-  [(+ (num/floor-int (* fx (- W w))) px)
-   (+ (num/floor-int (* fy (- H h))) py)])
+  [(+ (number/floor-int (* fx (- W w))) px)
+   (+ (number/floor-int (* fy (- H h))) py)])
 
 ;; ---------------------------------------------------------------------------
 ;; Time
@@ -46,7 +46,7 @@
 (defn frames-of
   "Whole frames in `seconds`, at least 1."
   [seconds fps]
-  (max 1 (num/round-half-up (* seconds fps))))
+  (max 1 (number/round-half-up (* seconds fps))))
 
 (defn seconds->window
   "Frame window covering [at, at + duration) seconds: every frame whose start
@@ -54,8 +54,8 @@
   epsilon absorbs floating error at exact boundaries (1.0 s at 30 fps must
   start at frame 30, not 31)."
   [fps at duration]
-  (let [start (num/ceil-int (- (* at fps) 1e-9))
-        end   (dec (num/ceil-int (- (* (+ at duration) fps) 1e-9)))]
+  (let [start (number/ceil-int (- (* at fps) 1e-9))
+        end   (dec (number/ceil-int (- (* (+ at duration) fps) 1e-9)))]
     (when (<= start end) {:start start :end end})))
 
 (defn normalize-windows
@@ -85,12 +85,12 @@
   "Frame-domain parameters of the periodic Y-axis flip. The first flip happens
   one period in (at t = every-s), unless phase-s says otherwise."
   [fps logo-width {:keys [every-s duration-s phase-s] :or {every-s 60.0 duration-s 1.0}}]
-  (let [period (max 2 (num/round-half-up (* every-s fps)))]
+  (let [period (max 2 (number/round-half-up (* every-s fps)))]
     {:type     :flip-y
      :easing   :cosine
-     :start    (num/round-half-up (* (or phase-s every-s) fps))
+     :start    (number/round-half-up (* (or phase-s every-s) fps))
      :period   period
-     :duration (min (dec period) (max 2 (num/round-half-up (* duration-s fps))))
+     :duration (min (dec period) (max 2 (number/round-half-up (* duration-s fps))))
      :distance (* flip-focal logo-width)
      :min-cos  0.02}))
 
@@ -101,8 +101,8 @@
                               :or {anchor :bottom-right width-ratio 0.12 opacity 1.0}}
    {img-w :width img-h :height}]
   (let [{W :width H :height} canvas
-        lw     (max 2 (num/even (* W width-ratio)))
-        lh     (max 2 (num/even (/ (* lw img-h) (* 1.0 img-w))))
+        lw     (max 2 (number/even (* W width-ratio)))
+        lh     (max 2 (number/even (/ (* lw img-h) (* 1.0 img-w))))
         [x y]  (box-origin (fixed-placement anchor offset) W H lw lh)]
     (cond-> {:id      "logo"
              :kind    :image
@@ -122,7 +122,7 @@
   [{:keys [canvas font]} {:keys [font-path size-ratio color opacity border]
                           :or {size-ratio 0.035 color "white" opacity 0.8 border 2}}]
   {:font           (or font-path font)
-   :size           (max 8 (num/round-half-up (* (:height canvas) size-ratio)))
+   :size           (max 8 (number/round-half-up (* (:height canvas) size-ratio)))
    :color          color
    :opacity        opacity
    :border         border

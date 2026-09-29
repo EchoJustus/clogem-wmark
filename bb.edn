@@ -19,6 +19,8 @@
               :task (apply shell "bb" "test/smoke/native.clj" *command-line-args*)}
   sdk        {:doc "Engine SDK archive for a tag, e.g. bb sdk :name abi-v2"
               :task (apply clojure "-T:build sdk" *command-line-args*)}
+  kernel-dart {:doc "The kernel on the Dart VM: ClojureDart compiles it, its golden vectors run there (Dart SDK on PATH)"
+               :task (apply shell {:dir "kernel/dart"} "clojure" "-M:cljd" "test" *command-line-args*)}
   e2e        {:doc "Browser smoke test of the built-in UI: needs ffmpeg and Python Playwright (test tooling only)"
               :requires ([babashka.fs :as fs])
               :task (shell "python3" "test/e2e/ui_smoke.py"

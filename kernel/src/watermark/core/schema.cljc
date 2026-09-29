@@ -15,14 +15,16 @@
   Aliases users type (`canary`) resolve before validation, through
   watermark.core.features/canonical-settings (docs/adr/0005).
 
-  Portability: this is the only kernel namespace that needs malli. Hosts
-  without malli (ClojureDart, Stage 3/4) apply `canonical-settings`, then
-  validate against the JSON Schema that `json-schema` emits at build time."
-  (:require [malli.core :as m]
-            [malli.error :as me]
-            [malli.json-schema :as mjs]
-            [malli.transform :as mt]
-            [watermark.core.features :as features]))
+  Portability: the schemas are malli's syntax, and watermark.util.schema
+  validates, explains and decodes them the same way on the JVM and the Dart
+  VM (docs/adr/0012). malli itself is needed only for `json-schema`, which
+  the JVM serves and exports (native/settings.schema.json); on the Dart VM
+  it is unavailable."
+  ;; malli on the JVM only; :cljd first, since ClojureDart's macro pass
+  ;; reads both branches' features
+  (:require #?@(:cljd [] :clj [[malli.json-schema :as mjs]])
+            [watermark.core.features :as features]
+            [watermark.util.schema :as s]))
 
 #?(:clj (set! *warn-on-reflection* true))
 
@@ -157,12 +159,10 @@
             :animation   {:type :flip-y :every-s 60.0 :duration-s 1.0}}
    :texts  []})
 
-;; Compiled once; malli validators/decoders are plain closures (no eval),
-;; so they are safe to build during native-image build-time initialisation.
-(def ^:private validator (m/validator Settings))
-(def ^:private explainer (m/explainer Settings))
-(def ^:private json-decoder
-  (m/decoder Settings (mt/transformer mt/json-transformer)))
+;; Read once: plain data and closures, safe to build during native-image
+;; build-time initialisation.
+(def ^:private settings (s/schema Settings))
+(def ^:private json-decoder (s/decoder settings))
 
 (defn decode-json
   "JSON-shaped settings (string enums, integral doubles) -> Clojure settings,
@@ -174,16 +174,16 @@
   "Settings with text modes resolved to wire ids, or an :invalid error with
   humanised messages per field. Callers keep the returned value: it is what
   profiles store and what plans seed from."
-  [settings]
-  (let [settings (features/canonical-settings settings)]
-    (if (validator settings)
-      settings
-      (throw (ex-info "Invalid settings."
-                      {:wmark/error :invalid
-                       :errors      (me/humanize (explainer settings))})))))
+  [x]
+  (let [x (features/canonical-settings x)]
+    (if-let [errors (s/errors settings x)]
+      (throw (ex-info "Invalid settings." {:wmark/error :invalid :errors errors}))
+      x)))
 
 (defn json-schema
   "JSON Schema of the settings, for UIs that render forms from it.
-  Pro-only text modes carry \"x-tier\": \"pro\"."
+  Pro-only text modes carry \"x-tier\": \"pro\". JVM only (malli)."
   []
-  (mjs/transform Settings))
+  #?(:clj  (mjs/transform Settings)
+     :cljd (throw (ex-info "The settings' JSON Schema comes from the JVM (native/settings.schema.json)."
+                           {:wmark/error :unavailable}))))
