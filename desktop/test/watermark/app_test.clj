@@ -110,3 +110,19 @@
   (let [home (str (Files/createTempDirectory "wmark-cli" (make-array FileAttribute 0)))]
     (is (str/includes? (:out (cli home "run" "--help")) "--progress MODE"))
     (is (str/includes? (:err (cli home "run" "--progress" "fancy" "x.mp4")) "must be auto, bar, lines or none"))))
+
+(deftest run-embeds-a-cover-when-asked
+  (let [home (str (Files/createTempDirectory "wmark-cli" (make-array FileAttribute 0)))]
+    (testing "offered by run, as a number of seconds"
+      (is (str/includes? (:out (cli home "run" "--help")) "--cover-at SEC"))
+      (is (str/includes? (:err (cli home "run" "--dry-run" "--cover-at" "soon" "x.mp4")) "must be a number")))
+    (if-not (try (zero? (.waitFor (start "ffmpeg" "-version"))) (catch java.io.IOException _ false))
+      (println "  (skipped: ffmpeg not installed)")
+      (let [clip (str home "/clip.mp4")]
+        (.waitFor (start "ffmpeg" "-nostdin" "-v" "error" "-f" "lavfi" "-i" "testsrc2=d=1:s=160x90:r=25"
+                         "-c:v" "mpeg4" clip))
+        (testing "a dry run shows the cover in the command: the frame's still, embedded as the attached picture"
+          (let [{:keys [out err]} (cli home "run" "--dry-run" "--clean" "--cover-at" "0.5" clip)]
+            (is (str/includes? out "clip_wm.part.mp4.cover.png") (str out err))
+            (is (str/includes? out "attached_pic") out)))))))
+

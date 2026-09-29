@@ -35,8 +35,19 @@ watermark.core.jobs ── plan-input ─► watermark.render/build ─► rende
  :media  <probe of :source>
  :output {:path "/abs/out.part.mp4" :container "mp4"}   ; the engine writes here; MediaIO publishes
  :encode {:codec :h264 :quality :high :audio :copy :ffmpeg {...}}
- :strip-metadata? true}
+ :strip-metadata? true
+ :metadata {:title "Reel" :author "Studio A" :copyright "© 2026 Studio A" :comment "..."}  ; optional
+ :cover    {:path "/abs/out.part.mp4.cover.png"}}                                          ; optional
 ```
+
+**Extras: tags and a cover picture.** `:metadata` is written into the copy's
+container as tags, even when the original's own metadata is removed.
+`:cover` is a still the host rendered first (a preview of this same render,
+at the time the person chose), which the engine embeds as the file's cover
+picture: the thumbnail Windows Explorer and macOS Finder show. Both are
+extras an engine declares (`:extras`, below); a request for one it lacks is
+`:unsupported`, never dropped. A cover is per run, never a setting: it
+belongs to the video, so profiles and `latest` never hold one.
 
 **Output names and publishing are not the engine's job.** The job pipeline asks
 `watermark.media` for a temporary path, and commits it after `:done` or
@@ -116,7 +127,8 @@ host draws the text, so every engine shows the same pixels.
  :timing #{:always :windows :periodic} :placement #{:fixed :burst-scatter :per-window}
  :codecs #{:h264 :hevc} :containers #{"mp4" "mov" "mkv"}
  :audio #{:copy :aac :none} :sources #{:file :url}
- :preview #{:frame :sample}}          ; optional: stills, and a sample clip
+ :preview #{:frame :sample}           ; optional: stills, and a sample clip
+ :extras #{:metadata :cover}}         ; optional: tags, and a cover picture
 ```
 
 The pipeline calls `engine/check!` before any work. A gap becomes an
@@ -125,6 +137,12 @@ engine can't render this: layers text." The FFmpeg engine derives its
 capabilities from the binary it found:
 - `drawtext` present → `:text`
 - encoders present → codec families
+- always → `:extras #{:metadata}`; with the `mjpeg` encoder → `:cover` too
+  (covers are MP4-only in FFmpeg: docs/FFMPEG_STRATEGY.md)
+
+A native library may declare `"extras"` in its info JSON as well; the C ABI's
+request JSON then carries `"metadata"` and `"cover"` for it. The C mock
+declares none, so a render asking for either is refused there.
 
 **Escape hatch for minimal engines.** An engine may omit `:text`; the host can
 then rasterize text layers to image layers before calling it. This is how a

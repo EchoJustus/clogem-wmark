@@ -97,13 +97,24 @@
                              [:min-gap-s      {:optional true} [:double {:min 0.5 :max 3600.0}]]
                              [:max-gap-s      {:optional true} [:double {:min 0.5 :max 3600.0}]]])]])
 
+(def Metadata
+  "Information written into each copy: who made it and who owns it. Written
+  even when the original's own metadata is removed; empty values are left
+  out."
+  [:map {:closed true}
+   [:title     {:optional true} [:string {:max 200}]]
+   [:author    {:optional true} [:string {:max 200}]]
+   [:copyright {:optional true} [:string {:max 200}]]
+   [:comment   {:optional true} [:string {:max 1000}]]])
+
 (def Output
   [:map {:closed true}
    [:dir            {:optional true} [:string {:min 1}]]
    [:suffix         {:optional true} [:string {:max 40}]]
    [:container      {:optional true} [:enum "mp4" "mov" "mkv"]]
    [:overwrite?     {:optional true} :boolean]
-   [:strip-metadata {:optional true} :boolean]])
+   [:strip-metadata {:optional true} :boolean]
+   [:metadata       {:optional true} Metadata]])
 
 (def FFmpegEncode
   "FFmpeg-only overrides. Engines other than FFmpeg ignore this block."

@@ -109,6 +109,9 @@
                           :containers #{"mp4" "mov" "mkv"}
                           :audio      #{:copy :aac :none}
                           :sources    #{:file :url}
+                          ;; written into the container: tags always; a cover
+                          ;; frame as an attached JPEG, where mjpeg is built in
+                          :extras     (cond-> #{:metadata} (contains? encoders "mjpeg") (conj :cover))
                           :preview    (if (every? filters process/preview-filters) #{:frame :sample} #{})}}))))
 
 (defrecord FFmpegRender [result cancelled ^clojure.lang.Atom process]
@@ -140,6 +143,12 @@
       (when-not (:available? info)
         (throw (ex-info (str/join " " (:problems info)) {:wmark/error :unavailable})))
       (engine/check! info request)
+      ;; FFmpeg's MOV muxer drops an attached picture, and its Matroska
+      ;; muxer turns one into a video track: only MP4 carries a real cover
+      (when (and (:cover request) (not (:frame (:output request)))
+                 (not= "mp4" (get-in request [:output :container] "mp4")))
+        (throw (ex-info "A cover picture needs an MP4 file: choose MP4 as the file format, or leave the cover out."
+                        {:wmark/error :unsupported :missing [[:extras :cover]]})))
       (when-let [forced (get-in request [:encode :ffmpeg :video-codec])]
         (when-not (contains? (:encoders info) forced)
           (throw (ex-info (str "This FFmpeg build has no " forced " encoder.")

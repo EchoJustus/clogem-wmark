@@ -105,20 +105,33 @@
       (release! env {:spec spec})
       (throw t))))
 
+(defn metadata-of
+  "The tags to write: the settings' output metadata, blank values left out."
+  [settings]
+  (not-empty (into {} (keep (fn [[k v]] (when (and (string? v) (re-find #"\S" v)) [k v])))
+                   (get-in settings [:output :metadata]))))
+
 (defn plan-input
   "Everything up to (not including) rendering, for one input: probe, render
   spec, output location, engine plan. Also what dry runs show. A v2 plan
-  holds bitmaps on disk until `release!`."
-  [{:keys [media] :as env} ctx settings input]
-  (let [[src info] (open-video env ctx input)
-        spec       (spec-of env ctx settings src info)
-        out        (media/open-output media ctx input settings)
-        plan       (prepare! env spec {:source          (:location src)
-                                       :media           info
-                                       :output          {:path (:temp out) :container (:container out)}
-                                       :encode          (:encode settings)
-                                       :strip-metadata? (get-in settings [:output :strip-metadata] true)})]
-    {:input (str input) :media info :spec spec :output out :plan plan}))
+  holds bitmaps on disk until `release!`. `cover` ({:t seconds}) asks for a
+  cover picture: the render's frame at t, which `render-input!` draws to
+  the plan's :cover path before rendering."
+  ([env ctx settings input] (plan-input env ctx settings input nil))
+  ([{:keys [media] :as env} ctx settings input {:keys [cover]}]
+   (let [[src info] (open-video env ctx input)
+         spec       (spec-of env ctx settings src info)
+         out        (media/open-output media ctx input settings)
+         cover      (when cover {:t (:t cover) :path (str (:temp out) ".cover.png")})
+         plan       (prepare! env spec (cond-> {:source          (:location src)
+                                                :media           info
+                                                :output          {:path (:temp out) :container (:container out)}
+                                                :encode          (:encode settings)
+                                                :strip-metadata? (get-in settings [:output :strip-metadata] true)}
+                                         (metadata-of settings) (assoc :metadata (metadata-of settings))
+                                         cover                  (assoc :cover {:path (:path cover)})))]
+     (cond-> {:input (str input) :media info :spec spec :output out :plan plan}
+       cover (assoc :cover cover)))))
 
 (defn frame-at
   "The frame showing at `t` seconds (the one whose start is at or before t),
@@ -143,17 +156,32 @@
                                        :strip-metadata? true})]
     {:input (str input) :media info :spec spec :frame frame :plan plan}))
 
+(defn- draw-cover!
+  "Render the cover picture of `planned` (the render's frame at its time) to
+  its path, before the render that embeds it."
+  [{:keys [engine] :as env} ctx settings input {:keys [cover]}]
+  (let [framed (plan-frame env ctx settings input {:t (:t cover) :out (:path cover)})]
+    (try
+      (let [outcome (deref (engine/outcome (engine/execute! engine (:plan framed) nil)))]
+        (when-not (= :done (:status outcome))
+          (throw (ex-info (str "The cover picture failed. " (get-in outcome [:error :message]))
+                          {:wmark/error :failed}))))
+      (finally (release! env framed)))))
+
 (defn render-input!
   "Plan, render and publish one input. Never throws: returns a result map
-  {:state :done|:failed|:cancelled, :input, :output | :error}."
-  [env ctx settings input {:keys [on-event cancelled? on-handle]}]
+  {:state :done|:failed|:cancelled, :input, :output | :error}. `cover`
+  ({:t seconds}) embeds the render's frame at t as the file's cover."
+  [env ctx settings input {:keys [on-event cancelled? on-handle cover]}]
   (let [on-event   (or on-event (fn [_]))
         cancelled? (or cancelled? (constantly false))]
     (try
-      (let [{:keys [output plan] :as planned} (plan-input env ctx settings input)
+      (let [{:keys [output plan] :as planned} (plan-input env ctx settings input {:cover cover})
             {:keys [media engine]} env]
         (try
           (on-event {:type :started :input (str input) :output (:final output)})
+          (when (and (:cover planned) (not (cancelled?)))
+            (draw-cover! env ctx settings input planned))
           (if (cancelled?)
             {:state :cancelled :input (str input)}
             (let [handle  (engine/execute! engine plan
@@ -166,7 +194,9 @@
                                {:state :cancelled :input (str input)})
                 (do (media/discard! media ctx output)
                     {:state :failed :input (str input) :error (get-in outcome [:error :message])}))))
-          (finally (release! env planned))))
+          (finally
+            (release! env planned)
+            (when-let [c (:cover planned)] (media/discard! media ctx {:temp (:path c)})))))
       (catch ExceptionInfo e
         {:state :failed :input (str input) :error (ex-message e) :kind (:wmark/error (ex-data e))})
       (catch Exception e                  ; I/O while publishing, say: still this input's failure
@@ -175,7 +205,7 @@
 (defn run-job!
   "Render every input of a job in order. One failure doesn't stop the batch;
   cancellation does. Returns one result per input attempted."
-  [env {:keys [ctx settings inputs]} {:keys [on-event cancelled?] :as opts}]
+  [env {:keys [ctx settings inputs cover]} {:keys [on-event cancelled?] :as opts}]
   (let [on-event   (or on-event (fn [_]))
         cancelled? (or cancelled? (constantly false))]
     (loop [[input & more] inputs, i 0, results []]
@@ -183,6 +213,7 @@
         results
         (let [result (assoc (render-input! env ctx settings input
                                            (assoc opts
+                                                  :cover cover
                                                   :cancelled? cancelled?
                                                   :on-event #(on-event (assoc % :index i))))
                             :index i)]

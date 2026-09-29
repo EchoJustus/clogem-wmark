@@ -291,3 +291,72 @@
                                     (if v2? process/required-filters-v2 process/required-filters)
                                     process/preview-filters #{"drawtext"}))
             "every filter a preview adds is one :preview checks for")))))
+
+;; ---------------------------------------------------------------------------
+;; Extras: tags and a cover picture (docs/FFMPEG_STRATEGY.md)
+
+(defn- extras-plan
+  "The v1 (or v2) plan of `settings` for a request with `extras` added."
+  [settings extras & {:keys [v2? output]}]
+  (let [spec (spec-for settings :media media)
+        env  {:ffmpeg "/opt/wmark/bin/ffmpeg" :version {:major 9} :encoders x264-build :workdir "/tmp/job"}
+        req  (merge {:source "/in/clip.mov" :media media
+                     :output (or output {:path "/out/clip_wm.part.mp4" :container "mp4"})
+                     :encode (:encode (resolve/deep-merge schema/defaults settings))
+                     :strip-metadata? true}
+                    extras)]
+    (if v2?
+      (compile/compile-request-v2
+       (assoc req :spec (v2/assemble spec (into {} (for [{:keys [key size kind]} (v2/raster-requests spec)
+                                                         :let [[w h] (if (= :text kind) [120 40] size)]]
+                                                     [key {:bitmap (str "b" (hash key)) :width w :height h
+                                                           :path (str "/scratch/b" (hash key) ".rgba")}]))))
+       env)
+      (compile/compile-request (assoc req :spec spec) env))))
+
+(defn- inputs-of [argv] (->> argv (partition 2 1) (keep (fn [[a b]] (when (= "-i" a) b))) vec))
+
+(defn- after [argv flag] (vec (take 4 (drop-while #(not= flag %) argv))))
+
+(deftest tags-reach-ffmpeg-in-a-file-never-on-the-command-line
+  (let [md   {:comment "line one\nline two" :copyright "© 2026 Studio A=x;y" :author "工作室 A" :title "  "}
+        p    (extras-plan {} {:metadata md})
+        argv (:argv p)
+        [meta-file text] (some (fn [[f t]] (when (str/ends-with? f "metadata.txt") [f t])) (:files p))]
+    (is (= ";FFMETADATA1\nartist=工作室 A\ncopyright=© 2026 Studio A\\=x\\;y\ncomment=line one\\\nline two\n" text)
+        "a fixed order, author as artist, special characters escaped, blank values left out")
+    (is (= "/tmp/job/metadata.txt" meta-file))
+    (is (not-any? #(re-find #"Studio|工作室" %) argv) "no user text in argv (a non-UTF-8 locale would mangle it)")
+    (let [i (.indexOf ^java.util.List argv "ffmetadata")]
+      (is (= ["-f" "ffmetadata" "-i" meta-file] (subvec argv (dec i) (+ i 3))) "read as FFmpeg's ffmetadata format"))
+    (testing "the original's metadata removed: the tags file's alone"
+      (is (= ["-map_metadata" "1"] (take 2 (after argv "-map_metadata"))))
+      (is (not= "-map_metadata" (nth (after argv "-map_metadata") 2 nil))))
+    (testing "the original's kept: the tags file first, so the tags win a clash"
+      (is (= ["-map_metadata" "1" "-map_metadata" "0"]
+             (after (:argv (extras-plan {} {:metadata md :strip-metadata? false})) "-map_metadata"))))
+    (testing "no tags: no file, and the mapping is what it was"
+      (let [q (extras-plan {} {:metadata {:title " "}})]
+        (is (not-any? #(str/ends-with? (key %) "metadata.txt") (:files q)))
+        (is (= ["-map_metadata" "-1"] (take 2 (after (:argv q) "-map_metadata"))))))))
+
+(deftest a-cover-is-the-input-after-the-others-embedded-as-the-second-video-stream
+  (doseq [v2? [false true]
+          :let [settings {:logo {:path "/logo.png"}}
+                p        (extras-plan settings {:cover {:path "/out/clip_wm.part.mp4.cover.png"}} :v2? v2?)
+                argv     (:argv p)
+                ins      (inputs-of argv)]]
+    (testing (if v2? "v2" "v1")
+      (is (= "/out/clip_wm.part.mp4.cover.png" (peek ins)) "the last input")
+      (is (= (compile/cover-args (dec (count ins)))
+             (->> argv (drop-while #(not= (str (dec (count ins)) ":v") %)) (cons "-map")
+                  (take (count (compile/cover-args 0)))))
+          "mapped, as JPEG, marked attached_pic, overriding the video's own codec, pixel format and tag")
+      (is (< (.indexOf ^java.util.List argv "-c:v") (.indexOf ^java.util.List argv "-c:v:1"))
+          "the stream-specific options come after the general ones they override")
+      (is (= "/out/clip_wm.part.mp4" (last argv)))))
+  (testing "no cover asked: the argv doesn't change"
+    (is (= (:argv (plan {})) (:argv (extras-plan {} {})))))
+  (testing "a preview never embeds a cover"
+    (let [argv (:argv (extras-plan {} {:cover {:path "/c.png"}} :output {:path "/work/previews/p.png" :frame 3}))]
+      (is (not-any? #{"/c.png" "-disposition:v:1"} argv)))))

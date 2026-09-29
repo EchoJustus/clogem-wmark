@@ -117,10 +117,11 @@ requires made them fail, as intended.
 | `delete-profile!` | `DELETE /api/v1/profiles/:name` |
 | `settings-form` | `GET /api/v1/profiles/:name/form`: the settings form model, a row per setting with its value, where it came from, its control and its choices ([ADR 0011](adr/0011-web-ui-product-overhaul.md), section 3) |
 | `edit-profile!` | `POST /api/v1/profiles/:name/edit` `{op, id?, value?, mode?, index?, delta?, if-rev?}`: one form edit (set or reset a setting, add, remove or move a text layer), saved; answers with the profile and its new form |
+| `draft-form` | `POST /api/v1/profiles/:name/form` `{settings, edit?}`: the form of an unsaved draft, after one more edit when given; nothing is saved (Drafts, below) |
 | `preview-frame` / `preview-file` | `POST /api/v1/preview` `{profile?, settings?, source?, t?, aspect?}`, then `GET /api/v1/previews/:id` (`image/png`): one frame of the render, drawn by the engine (section 5 of the same ADR) |
 | `resolve-settings` | `POST /api/v1/resolve`: effective settings, provenance, locked features |
 | `plan-batch` | `POST /api/v1/plan`: dry run returning each render spec and engine plan |
-| `submit-job!` / `list-jobs` / `cancel-job!` | `POST`/`GET /api/v1/jobs`, `DELETE /api/v1/jobs/:id` |
+| `submit-job!` / `list-jobs` / `cancel-job!` | `POST`/`GET /api/v1/jobs` `{inputs, profile?, settings?, cover?}`, `DELETE /api/v1/jobs/:id`. `cover {t}` embeds each copy's frame at t seconds as its cover picture (MP4); per run, never saved |
 | `subscribe-jobs!` / `unsubscribe-jobs!` | `GET /api/v1/events`: server-sent JSON events (desktop transport) |
 
 Every function takes `(sys ctx ...)`. `ctx` is `{:tenant :user}`: locally
@@ -154,6 +155,24 @@ see and type `canary` ([ADR 0005](adr/0005-canary-display-name.md)):
   editor and the effective table) and error messages show the display name.
 - API clients learn it from `/api/v1/features` (`display-name` on
   `text.mode/subliminal`). The JSON Schema titles that branch `canary`.
+
+### Drafts
+
+A UI that saves only when asked (the GUI apps' "auto-save off") keeps the
+profile's own settings as a **draft** on its side and asks the engine for the
+draft's form: `POST /api/v1/profiles/:name/form` `{settings, edit?}`.
+- `settings` are the profile's own settings as edited so far. They replace
+  the saved ones; they are not overrides on top, so a reset in a draft goes
+  back to the built-in default, as it would once saved.
+- `edit` is one more form edit (the same operations as `/edit`) applied to
+  the draft first. The answer carries the new draft (`settings`, validated
+  and canonical) and `unsaved?`.
+- Rows whose value differs from the saved profile have the source
+  `unsaved` ("Not saved yet"). Nothing is written.
+- The draft is saved with `PUT /api/v1/profiles/:name` and the revision it
+  was read at (a stale write is a 409), or as a new profile with
+  `POST /api/v1/profiles`. Previews and jobs take it as `settings` with
+  `clean: true` (no profile under it).
 
 ## The built-in web UI (`web/`)
 

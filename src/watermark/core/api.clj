@@ -25,6 +25,7 @@
             [watermark.core.features :as features]
             [watermark.core.form :as form]
             [watermark.core.jobs :as jobs]
+            [watermark.core.resolve :as resolve]
             [watermark.core.schema :as schema]
             [watermark.engine :as engine])
   (:import (java.io File)
@@ -118,14 +119,61 @@
         settings  (form/edit (:settings doc) effective edit)]
     (save-profile! sys ctx (:profile/slug doc) settings {:if-rev (or if-rev (:profile/rev doc))})))
 
+(defn- changed-paths
+  "The setting paths where `a` and `b` differ: every leaf of either, a list
+  of text layers as one."
+  [a b]
+  (->> (keys (:provenance (resolve/layer [[:a a] [:b b]])))
+       (filter #(not= (get-in a %) (get-in b %)))))
+
+(defn draft-form
+  "The form of profile `name` as an unsaved draft, for a UI that saves only
+  when asked (docs/ARCHITECTURE.md, \"Drafts\"). `settings` are the profile's own
+  settings as edited so far (they replace the saved ones; they are not
+  overrides on top), and `edit`, when given, is one more form edit
+  (watermark.core.form/edit) applied to them first. Nothing is saved.
+  Rows whose value differs from the saved profile's say so (source
+  :unsaved). Returns what settings-form does, plus :settings (the draft
+  after the edit, validated) and :unsaved? (whether it differs from the
+  saved profile). A UI saves the draft with save-profile! and the revision
+  it read, or as a new profile with create-profile!."
+  [sys ctx name {:keys [settings edit]}]
+  (let [doc      (get-profile sys ctx name)
+        layered  (fn [draft] (resolve/layer [[:defaults schema/defaults] [:profile draft]]))
+        draft    (schema/validate! (or settings {}))
+        draft    (if edit
+                   (schema/validate! (form/edit draft (schema/validate! (:settings (layered draft))) edit))
+                   draft)
+        {:keys [settings provenance]} (layered draft)
+        effective (schema/validate! settings)
+        changed  (changed-paths (:settings doc) draft)
+        r        {:settings   effective
+                  :provenance (reduce #(assoc %1 %2 :overrides) provenance changed)
+                  :base       {:kind (if (:profile/auto? doc) :latest :named) :name (:profile/name doc)}}
+        locked   (->> (features/required-features effective)
+                      (remove #(features/entitled? (:entitlements sys) %))
+                      sort vec)]
+    {:profile  (select-keys doc [:profile/name :profile/slug :profile/rev :profile/auto?])
+     :form     (form/model r {:entitled? (entitled-fn sys)})
+     :locked   locked
+     :warnings []
+     :settings draft
+     :unsaved? (boolean (seq changed))}))
+
 ;; ---------------------------------------------------------------------------
 ;; Preview: one frame through the real pipeline (docs/adr/0011, section 5)
 
 (def sample-aspects
-  "Sample clips shown before a video is chosen, by aspect."
+  "Sample clips shown before a video is chosen, by aspect: the common
+  delivery shapes (landscape, vertical, square, 4:3 and its portrait,
+  portrait social 4:5, cinema 21:9). Even sizes, as yuv420p needs."
   {"16:9" {:width 1280 :height 720}
    "9:16" {:width 720 :height 1280}
-   "1:1"  {:width 1080 :height 1080}})
+   "1:1"  {:width 1080 :height 1080}
+   "4:3"  {:width 960 :height 720}
+   "3:4"  {:width 720 :height 960}
+   "4:5"  {:width 864 :height 1080}
+   "21:9" {:width 1680 :height 720}})
 
 (def ^:private sample-seconds 12)
 
@@ -163,7 +211,7 @@
 (defn preview-frame
   "One frame of what a run would produce: the settings of `profile` (plus
   unsaved `settings`) drawn on the frame at `t` seconds of `source`, a video
-  path, or of the sample clip for `aspect` (\"16:9\", \"9:16\", \"1:1\").
+  path, or of the sample clip for `aspect` (a key of sample-aspects).
   It is the render's own plan cut to one frame, so the preview is the output.
   Returns {:id :frame :t :width :height :duration-s :sample? :aspect :notes};
   the PNG is
@@ -226,6 +274,18 @@
     (features/check! (:entitlements sys) (:settings r))
     r))
 
+(defn- cover-of
+  "A request's cover ({:t seconds}): the render's frame at t becomes each
+  copy's cover picture (its thumbnail in file browsers). Per run, never
+  saved in a profile or in `latest`: it belongs to the video, not the
+  settings."
+  [{:keys [cover]}]
+  (when (some? cover)
+    (let [t (:t cover)]
+      (when-not (and (number? t) (<= 0.0 (double t) 86400.0))
+        (throw (ex-info "The cover's time must be a number of seconds from 0." {:wmark/error :invalid :field :cover})))
+      {:t (double t)})))
+
 (defn- derived-from [r]
   (when (= :named (get-in r [:base :kind])) (get-in r [:base :name])))
 
@@ -240,7 +300,8 @@
   [sys ctx req]
   (let [r (prepare! sys ctx req)]
     (assoc r :plans (mapv (fn [input]
-                            (let [p (jobs/plan-input sys (assoc ctx :dry-run? true) (:settings r) input)]
+                            (let [p (jobs/plan-input sys (assoc ctx :dry-run? true) (:settings r) input
+                                                     {:cover (cover-of req)})]
                               (jobs/release! sys p)          ; a dry run keeps no bitmaps
                               {:input  (:input p)
                                :output (get-in p [:output :final])
@@ -253,17 +314,22 @@
   before encoding -- \"every execution\" -- so a crashed batch can be re-run
   with identical parameters."
   [sys ctx req opts]
-  (let [r (prepare! sys ctx req)]
+  (let [r     (prepare! sys ctx req)
+        cover (cover-of req)]
     (config/record-latest! (store sys ctx) (:settings r) (derived-from r))
-    (assoc r :results (jobs/run-job! sys {:ctx ctx :settings (:settings r) :inputs (:inputs req)} opts))))
+    (assoc r :results (jobs/run-job! sys (cond-> {:ctx ctx :settings (:settings r) :inputs (:inputs req)}
+                                           cover (assoc :cover cover))
+                                     opts))))
 
 (defn submit-job!
   "Validate synchronously (so the client gets 4xx right away), record
   `latest`, then queue."
   [sys ctx req]
-  (let [r (prepare! sys ctx req)]
+  (let [r     (prepare! sys ctx req)
+        cover (cover-of req)]
     (config/record-latest! (store sys ctx) (:settings r) (derived-from r))
-    (jobs/submit! (:jobs sys) {:ctx ctx :inputs (mapv str (:inputs req)) :settings (:settings r)})))
+    (jobs/submit! (:jobs sys) (cond-> {:ctx ctx :inputs (mapv str (:inputs req)) :settings (:settings r)}
+                                cover (assoc :cover cover)))))
 
 (defn- own?
   "Jobs belong to the tenant that submitted them. A hosted queue is shared,

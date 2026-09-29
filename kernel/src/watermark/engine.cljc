@@ -39,7 +39,13 @@
      :media  <probe of :source>
      :output {:path \"/abs/out.part.mp4\" :container \"mp4\"}
      :encode {:codec :h264 :quality :high :audio :copy :ffmpeg {...}}
-     :strip-metadata? true}
+     :strip-metadata? true
+     :metadata {:title \"...\" :author :copyright :comment}   ; optional, written as tags
+     :cover    {:path \"/abs/cover.png\"}}                  ; optional, embedded as the file's thumbnail
+
+  :metadata and :cover are extras an engine declares (:extras #{:metadata
+  :cover}); the cover is a still the host rendered first (a preview of the
+  same render), which the engine embeds as the container's cover picture.
 
   A preview (docs/adr/0011, section 5) is the same request with
   :output {:path \"/abs/preview.png\" :frame 125}: frame 125 of that render,
@@ -54,7 +60,8 @@
      :placement #{:fixed :burst-scatter :per-window}
      :codecs #{:h264 :hevc}  :containers #{\"mp4\" \"mov\" \"mkv\"}
      :audio #{:copy :aac :none}  :sources #{:file :url}
-     :preview #{:frame :sample}}    ; optional: stills, and SampleSource
+     :preview #{:frame :sample}     ; optional: stills, and SampleSource
+     :extras #{:metadata :cover}}   ; optional: tags and a cover picture
 
   An engine that lacks :text can still serve specs whose text layers were
   lowered to image layers first (text rasterised by the host) -- the escape
@@ -90,7 +97,7 @@
 
 (defn requirements
   "What a render request needs from an engine, as [capability value] pairs."
-  [{:keys [spec encode output]}]
+  [{:keys [spec encode output metadata cover]}]
   (distinct
    (concat
     ;; v1 is the baseline every engine takes; newer versions are negotiated
@@ -101,9 +108,11 @@
     (for [l (:layers spec) :when (:placement l)] [:placement (get-in l [:placement :type])])
     (if (:frame output)
       [[:preview :frame]]
-      [[:codecs (:codec encode :h264)]
-       [:containers (:container output "mp4")]
-       [:audio (:audio encode :copy)]]))))
+      (cond-> [[:codecs (:codec encode :h264)]
+               [:containers (:container output "mp4")]
+               [:audio (:audio encode :copy)]]
+        (seq metadata) (conj [:extras :metadata])
+        cover          (conj [:extras :cover]))))))
 
 (defn missing
   "Requirements of `request` that `capabilities` doesn't cover."

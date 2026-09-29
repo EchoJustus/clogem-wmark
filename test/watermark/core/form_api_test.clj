@@ -64,6 +64,41 @@
         (is (= [{:title "Text layer 1" :subtitle "Canary" :tier "pro" :locked true}]
                (map #(select-keys % [:title :subtitle :tier :locked]) (get-in f [:form :texts :layers]))))))))
 
+(deftest a-draft-is-edited-without-saving
+  (let [s   (sys)
+        doc (api/create-profile! s ctx "Draft me" {:logo {:opacity 0.7}})
+        d0  (api/draft-form s ctx "draft-me" {:settings (:settings doc)})]
+    (is (false? (:unsaved? d0)) "a draft that matches the profile is not unsaved")
+    (is (= [:set-here "70%"] ((juxt :source :text) (row d0 "logo.opacity"))))
+    (let [d1 (api/draft-form s ctx "draft-me" {:settings (:settings d0)
+                                               :edit {:op :set :id "logo.opacity" :value "40"}})]
+      (testing "an edit changes the draft, not the profile"
+        (is (= {:logo {:opacity 0.4}} (:settings d1)))
+        (is (true? (:unsaved? d1)))
+        (is (= [:unsaved "40%"] ((juxt :source :text) (row d1 "logo.opacity"))))
+        (is (= [(:profile/rev doc) {:logo {:opacity 0.7}}]
+               ((juxt :profile/rev :settings) (api/get-profile s ctx "draft-me")))))
+      (testing "a reset goes to the built-in default, not to the saved value, and is unsaved"
+        (let [d2 (api/draft-form s ctx "draft-me" {:settings (:settings d1) :edit {:op :unset :id "logo.opacity"}})]
+          (is (= {} (:settings d2)))
+          (is (= :unsaved (:source (row d2 "logo.opacity"))))
+          (is (not= "70%" (:text (row d2 "logo.opacity"))))))
+      (testing "a text layer added to the draft; Pro kinds are locked on Community"
+        (let [d3 (api/draft-form s ctx "draft-me" {:settings (:settings d1) :edit {:op :add-layer :mode "subliminal"}})]
+          (is (= [:subliminal] (map :mode (:texts (:settings d3)))) "stored by wire id")
+          (is (= [:text.mode/subliminal] (:locked d3)))
+          (is (= :unsaved (get-in d3 [:form :texts :source])))))
+      (testing "a bad value is refused and names the field"
+        (let [e (try (api/draft-form s ctx "draft-me" {:settings (:settings d1)
+                                                       :edit {:op :set :id "logo.opacity" :value "150"}})
+                     nil (catch clojure.lang.ExceptionInfo e e))]
+          (is (= :invalid (:wmark/error (ex-data e))))))
+      (testing "saved with the revision read, the draft is no longer unsaved"
+        (api/save-profile! s ctx "draft-me" (:settings d1) {:if-rev (:profile/rev doc)})
+        (let [d (api/draft-form s ctx "draft-me" {:settings (:settings d1)})]
+          (is (false? (:unsaved? d)))
+          (is (= :set-here (:source (row d "logo.opacity")))))))))
+
 (deftest a-preview-before-any-video-is-chosen
   (if-not (c/ffmpeg-available?)
     (println "  (skipped: ffmpeg not installed)")
@@ -79,6 +114,9 @@
         (is (= [:image 720 1280] ((juxt :kind :width :height) (engine/probe (:engine s) (str f))))
             "a still of the sample clip's size")
         (is (some #(str/includes? % "Randomized text") (:notes p)) "Pro layers are named, not drawn"))
+      (testing "the other sample shapes"
+        (is (= [864 1080 "4:5"] ((juxt :width :height :aspect) (api/preview-frame s ctx {:profile "demo" :aspect "4:5"}))))
+        (is (= [1680 720 "21:9"] ((juxt :width :height :aspect) (api/preview-frame s ctx {:profile "demo" :aspect "21:9"})))))
       (testing "unknown or malformed ids are not files"
         (doseq [id ["nope" "../secret" (str (java.util.UUID/randomUUID))]]
           (is (= :not-found (try (api/preview-file s ctx id) nil
@@ -119,4 +157,17 @@
     (testing "a bad value is a 422 that names the field"
       (let [[st e] (rest! s :post "/api/v1/profiles/gui/edit" {:op "set" :id "logo.opacity" :value "150"})]
         (is (= 422 st))
-        (is (re-find #"Opacity: at most 100" (:message e)))))))
+        (is (re-find #"Opacity: at most 100" (:message e)))))
+    (testing "a draft's form, after one edit, saves nothing"
+      (let [[_ saved] (rest! s :get "/api/v1/profiles/gui" nil)
+            [st d]    (rest! s :post "/api/v1/profiles/gui/form"
+                             {:settings (:settings saved) :edit {:op "set" :id "logo.anchor" :value "top-left"}})]
+        (is (= 200 st))
+        (is (true? (:unsaved? d)))
+        (is (= {:logo {:opacity 0.7 :anchor "top-left"}} (:settings d)))
+        (is (= ["Top left" "unsaved"] ((juxt :text :source) (row d "logo.anchor"))))
+        (is (= (:profile/rev saved) (:profile/rev (second (rest! s :get "/api/v1/profiles/gui" nil)))))
+        (let [[st e] (rest! s :post "/api/v1/profiles/gui/form"
+                            {:settings (:settings d) :edit {:op "set" :id "logo.opacity" :value "150"}})]
+          (is (= 422 st))
+          (is (re-find #"Opacity: at most 100" (:message e))))))))

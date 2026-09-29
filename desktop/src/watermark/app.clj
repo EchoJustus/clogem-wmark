@@ -136,6 +136,7 @@
    ["-o" "--out DIR" "Output directory (default: next to each input)"]])
 
 (def run-options (conj settings-options
+                       (num-opt "--cover-at SEC" "Embed each copy's frame at SEC as its cover (its thumbnail in file browsers; MP4)" parse-double)
                        [nil "--dry-run" "Print the FFmpeg command and filtergraph only"]
                        [nil "--progress MODE" "auto (a bar on a terminal, else lines) | bar | lines | none"
                         :default :auto :parse-fn keyword
@@ -168,9 +169,10 @@
    :output {:dir (:out o)}})
 
 (defn- request [o inputs]
-  {:profile  (if (:clean o) :none (:profile o))
-   :settings (overrides o)
-   :inputs   (vec inputs)})
+  (cond-> {:profile  (if (:clean o) :none (:profile o))
+           :settings (overrides o)
+           :inputs   (vec inputs)}
+    (:cover-at o) (assoc :cover {:t (:cover-at o)})))
 
 ;; ---------------------------------------------------------------------------
 ;; Output helpers
