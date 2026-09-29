@@ -5,7 +5,8 @@
   cheap. Each rule protects a future stage:
 
     kernel is portable       -> the Flutter/ClojureDart GUIs (Stages 3-4)
-                                run the same planning code in-process
+                                run the same planning code in-process;
+                                kernel/dart runs it on the Dart VM
     jobs never see engines   -> AVFoundation/Media3/GPU engines (Stage 4+)
                                 plug in without touching orchestration
     host core has no desktop -> a hosted backend (Stage 5) reuses the core
@@ -39,13 +40,31 @@
 (deftest the-kernel-is-portable
   (testing "only .cljc files"
     (is (every? :cljc? kernel)))
-  (testing "requires nothing but the kernel, clojure.string and (in two places) malli"
+  (testing "requires nothing but the kernel, clojure.string and (in two places, on the JVM) malli"
     (let [kernel-nses (set (map :ns kernel))]
       (is (empty? (violations kernel #(not (or (kernel-nses %) (= 'clojure.string %)
                                                (str/starts-with? (str %) "malli."))))))))
-  (testing "malli only where schemas live -- hosts without malli can still plan renders"
+  (testing "malli only where schemas live, for JSON Schema; watermark.util.schema validates everywhere"
     (is (= #{'watermark.core.schema 'watermark.render.schema}
            (set (map first (violations kernel #(str/starts-with? (str %) "malli."))))))))
+
+(defn- aliases
+  "The :as aliases a source's ns form gives its requires."
+  [{:keys [file]}]
+  (->> (rest (arch/ns-form (io/file file)))
+       (filter #(and (seq? %) (= :require (first %))))
+       (mapcat rest)
+       (keep #(when (vector? %) (second (drop-while (complement #{:as}) %))))
+       set))
+
+(deftest the-kernel-runs-on-the-dart-vm
+  (testing "the Dart VM harness loads every kernel namespace (kernel/dart)"
+    (let [[harness] (sources "kernel/dart/test/watermark/dart/kernel_test.cljd")]
+      (is (= (set (map :ns kernel)) (disj (:requires harness) 'clojure.test)))))
+  (testing "no alias ClojureDart reads as a Dart type (num/x would call a static member of num)"
+    (is (empty? (for [src kernel, a (aliases src)
+                      :when ('#{num int double bool dynamic void} a)]
+                  [(:ns src) a])))))
 
 (deftest orchestration-never-sees-an-engine-implementation
   (let [jobs (filter #(str/starts-with? (str (:ns %)) "watermark.core.") host)]

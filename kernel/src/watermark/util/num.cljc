@@ -9,8 +9,8 @@
   in golden test vectors. Host `round` functions disagree on halves (Java
   rounds -2.5 to -2, Dart and Swift to -3), so rounding is defined here, once.
 
-  The :cljd branches follow ClojureDart's documented interop and are untested
-  until the Stage 3 spike -- see docs/ROADMAP.md."
+  The :cljd branches run on the Dart VM in CI (kernel/dart, the golden
+  vectors)."
   #?(:cljd (:require ["dart:math" :as math])))
 
 #?(:clj (set! *warn-on-reflection* true))
@@ -28,12 +28,12 @@
 (defn floor-int
   "Largest integer <= x."
   [x]
-  #?(:clj (long (Math/floor (double x))) :cljs (js/Math.floor x) :cljd (.floor (.toDouble x))))
+  #?(:clj (long (Math/floor (double x))) :cljs (js/Math.floor x) :cljd (.floor (.toDouble ^num x))))
 
 (defn ceil-int
   "Smallest integer >= x."
   [x]
-  #?(:clj (long (Math/ceil (double x))) :cljs (js/Math.ceil x) :cljd (.ceil (.toDouble x))))
+  #?(:clj (long (Math/ceil (double x))) :cljs (js/Math.ceil x) :cljd (.ceil (.toDouble ^num x))))
 
 (defn round-half-up
   "Nearest integer, halves toward +infinity -- identical on every host."
@@ -46,3 +46,22 @@
   (* 2 (round-half-up (/ x 2.0))))
 
 (defn clamp [lo hi x] (max lo (min hi x)))
+
+;; 64-bit two's-complement arithmetic that wraps on overflow, as Java's long
+;; and the Dart VM's int do (watermark.util.prng). Dart compiled to
+;; JavaScript has no 64-bit integers; the kernel doesn't run there.
+
+(defn add-wrap
+  "a + b, wrapping at 64 bits."
+  [a b]
+  #?(:clj (unchecked-add (long a) (long b)) :cljd (+ ^int a ^int b)))
+
+(defn sub-wrap
+  "a - b, wrapping at 64 bits."
+  [a b]
+  #?(:clj (unchecked-subtract (long a) (long b)) :cljd (- ^int a ^int b)))
+
+(defn mul-wrap
+  "a * b, wrapping at 64 bits."
+  [a b]
+  #?(:clj (unchecked-multiply (long a) (long b)) :cljd (* ^int a ^int b)))

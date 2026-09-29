@@ -3,6 +3,7 @@
 (ns watermark.util.prng-test
   (:require [clojure.test :refer [deftest is testing]]
             [watermark.golden :as golden]
+            [watermark.golden-inputs :as inputs]
             [watermark.util.prng :as prng])
   (:import (java.util SplittableRandom)))
 
@@ -19,10 +20,4 @@
         (is (= (.nextDouble ref) (prng/next-double! g)))))))
 
 (deftest golden-sequences
-  (golden/check "prng"
-                (into (sorted-map)
-                      (for [seed [0 1 -1 42 7046029254386353131]]
-                        (let [g (prng/generator seed)]
-                          [seed {:longs   (vec (repeatedly 4 #(prng/next-long! g)))
-                                 :below   (vec (for [b [7 16 997 1000003]] (prng/next-below! g b)))
-                                 :doubles (vec (repeatedly 2 #(prng/next-double! g)))}])))))
+  (golden/check "prng" (inputs/prng)))

@@ -3,7 +3,8 @@
 (ns watermark.core.seeds-test
   (:require [clojure.test :refer [deftest is]]
             [watermark.core.seeds :as seeds]
-            [watermark.golden :as golden]))
+            [watermark.golden :as golden]
+            [watermark.golden-inputs :as inputs]))
 
 (set! *warn-on-reflection* true)
 
@@ -18,11 +19,4 @@
     (is (not= (s k1 "fp-a" 0) (s k2 "fp-a" 0)) "unpredictable without the studio secret")))
 
 (deftest golden-seeds
-  (let [secret (byte-array (range 32))]
-    (golden/check "seeds"
-                  {:secret-bytes "00 01 02 ... 1f (32 bytes, 0..31)"
-                   :seeds (into (sorted-map)
-                                (for [ctx [(seeds/context "56f87b09" 0 layer)
-                                           (seeds/context "56f87b09" 1 {:mode :random :content "Ünïcödé ✓"})
-                                           (seeds/context "" 0 {:mode :continuous :content "x"})]]
-                                  [ctx (seeds/keyed-seed secret ctx)]))})))
+  (golden/check "seeds" (inputs/seeds)))

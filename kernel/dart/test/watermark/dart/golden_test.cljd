@@ -1,0 +1,43 @@
+;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
+;; SPDX-License-Identifier: EPL-2.0
+(ns watermark.dart.golden-test
+  "The kernel's golden vectors on the Dart VM (ADR 0008, M3a): the files the
+  JVM checks (kernel/test/golden), computed from the same inputs
+  (watermark.golden-inputs) by the kernel compiled with ClojureDart, and
+  compared strictly, so an integer never passes for a float.
+
+  Run from kernel/dart: clojure -M:cljd test"
+  (:require ["dart:io" :as io]
+            [cljd.edn :as edn]
+            [clojure.test :refer [deftest is]]
+            [watermark.golden-inputs :as inputs]
+            [watermark.raster.truetype :as tt]))
+
+(defn- golden [name]
+  (edn/read-string (.readAsStringSync (io/File (str "../test/golden/" name ".edn")))))
+
+(defn- check [name actual]
+  (let [m (inputs/mismatch (golden name) actual)]
+    (is (nil? m) (str "golden vector " name " differs at " (pr-str m)))))
+
+(deftest prng
+  (check "prng" (inputs/prng)))
+
+(deftest keyed-seeds
+  (check "seeds" (inputs/seeds)))
+
+(deftest render-basic
+  (check "render-basic" (inputs/render-basic)))
+
+(deftest render-v2
+  (let [font (tt/parse (.readAsBytesSync (io/File "../../resources/fonts/wmark.ttf")))
+        {::inputs/keys [draw-all] :as v} (inputs/render-v2 font)]
+    (is (= (:draw draw-all) (:draw-all draw-all))
+        "draw-all, which shares a flip's scaled card, draws exactly what draw does")
+    (check "render-v2" (dissoc v ::inputs/draw-all))))
+
+(deftest schema
+  (check "schema" (inputs/schema-vectors)))
+
+(deftest form
+  (check "form" (inputs/form-vectors)))

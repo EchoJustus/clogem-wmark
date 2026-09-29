@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 The clogem-wmark authors
+# SPDX-License-Identifier: EPL-2.0
+#
+# The kernel compiled for the Dart VM, as a test harness (deps.edn). Not
+# published: the Dart package of the core library comes with M3c.
+name: wmark_kernel
+description: "The wmark kernel on the Dart VM: golden vectors (M3a)."
+publish_to: none
+version: 0.0.0
+
+environment:
+  sdk: ^3.13.4
+
+dependencies:
+  # HMAC-SHA256 for keyed seeds and SHA-256 for bitmap ids (BSD-3-Clause,
+  # the Dart team); the only package the kernel uses on the Dart VM
+  crypto: 3.0.7
+
+dev_dependencies:
+  test: ^1.29.0

@@ -19,7 +19,7 @@
   profile and saves it with the revision the client read."
   (:require [clojure.string :as str]
             [watermark.core.features :as features]
-            [watermark.util.num :as num]))
+            [watermark.util.num :as number]))
 
 #?(:clj (set! *warn-on-reflection* true))
 
@@ -225,13 +225,13 @@
   "`x` rounded half up to `places` decimals."
   [x places]
   (let [f (reduce * 1 (repeat places 10))]
-    (/ (num/round-half-up (* x f)) (* 1.0 f))))
+    (/ (number/round-half-up (* x f)) (* 1.0 f))))
 
 (defn number-text
   "A number as people read it: no trailing .0, at most three decimals."
   [x]
   (let [r (round-to x 3)
-        i (num/floor-int r)]
+        i (number/floor-int r)]
     (if (== r i) (str i) (str r))))
 
 (defn- option-value-text [v] (if (keyword? v) (name v) (str v)))
@@ -299,7 +299,7 @@
                      :else (invalid field "on or off"))
       :integer (when-not blank?
                  (let [x (number-in field raw)
-                       i (num/floor-int x)]
+                       i (number/floor-int x)]
                    (when-not (== x i) (invalid field "a whole number, please"))
                    (in-bounds field i)))
       :number  (when-not blank?

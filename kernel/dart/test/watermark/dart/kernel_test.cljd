@@ -1,0 +1,45 @@
+;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
+;; SPDX-License-Identifier: EPL-2.0
+(ns watermark.dart.kernel-test
+  "Every kernel namespace, compiled for the Dart VM and loaded (the JVM's
+  architecture test keeps this list complete), and what differs by host."
+  (:require [clojure.test :refer [deftest is]]
+            [watermark.core.features]
+            [watermark.core.form]
+            [watermark.core.modes :as modes]
+            [watermark.core.resolve]
+            [watermark.core.schema :as schema]
+            [watermark.core.seeds]
+            [watermark.engine]
+            [watermark.raster]
+            [watermark.raster.color]
+            [watermark.raster.image :as image]
+            [watermark.raster.text]
+            [watermark.raster.truetype]
+            [watermark.render]
+            [watermark.render.layout]
+            [watermark.render.schema :as spec-schema]
+            [watermark.render.v2]
+            [watermark.util.num :as number]
+            [watermark.util.prng]
+            [watermark.util.schema]))
+
+(deftest the-open-core's-modes-are-built-in
+  ;; no top-level form runs when a Dart library loads
+  (is (= #{:continuous :scheduled} (modes/available))))
+
+(deftest numbers-wrap-at-64-bits
+  (is (= -9223372036854775808 (number/add-wrap 9223372036854775807 1)))
+  (is (= 9223372036854775807 (number/sub-wrap -9223372036854775808 1)))
+  (is (= -2 (number/mul-wrap 9223372036854775807 2)))
+  (is (= -3 (number/round-half-up -3.5)) "halves toward +infinity, like the JVM here"))
+
+(deftest bytes-are-unsigned
+  (let [a (image/u8-array 2)]
+    (image/u8! a 0 255)
+    (is (= 255 (image/u8 a 0)))
+    (is (= 0 (image/u8 a 1)))))
+
+(deftest json-schema-comes-from-the-jvm
+  (doseq [f [schema/json-schema spec-schema/json-schema]]
+    (is (= :unavailable (try (f) nil (catch cljd.core/ExceptionInfo e (:wmark/error (ex-data e))))))))

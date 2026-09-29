@@ -1,0 +1,6 @@
+# ClojureDart and Dart build state
+.cpcache/
+.clojuredart/
+.dart_tool/
+lib/cljd-out/
+test/cljd-out/

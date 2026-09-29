@@ -31,7 +31,7 @@
   bakes sub-pixel offsets into the bitmap. Timings and placements are v1's,
   so their reference semantics carry over unchanged."
   (:require [watermark.render :as render]
-            [watermark.util.num :as num]))
+            [watermark.util.num :as number]))
 
 #?(:clj (set! *warn-on-reflection* true))
 
@@ -45,8 +45,8 @@
   inclusive. Every corner lies inside [x, x + width) x [y, y + height)."
   [quad]
   (let [xs (map first quad) ys (map second quad)
-        x0 (num/floor-int (apply min xs)) y0 (num/floor-int (apply min ys))
-        x1 (num/ceil-int (apply max xs))  y1 (num/ceil-int (apply max ys))]
+        x0 (number/floor-int (apply min xs)) y0 (number/floor-int (apply min ys))
+        x1 (number/ceil-int (apply max xs))  y1 (number/ceil-int (apply max ys))]
     {:x x0 :y y0 :width (max 1 (- x1 x0)) :height (max 1 (- y1 y0))}))
 
 (defn- local-quad
@@ -140,7 +140,7 @@
   bitmap as the text box, floored to whole pixels."
   [layer [W H] [w h] n]
   (let [[x y] (render/text-origin layer n [W H] [w h])]
-    [(num/floor-int x) (num/floor-int y)]))
+    [(number/floor-int x) (number/floor-int y)]))
 
 (defn draw-at
   "What a v2 layer draws at global frame n: {:bitmap id :x :y}, or nil."

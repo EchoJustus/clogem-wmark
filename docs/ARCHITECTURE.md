@@ -17,7 +17,7 @@ names or requires them.
 
 | Directory | Contents | Runs on | May depend on |
 |---|---|---|---|
-| `kernel/` | Settings schema and resolution, the render spec (v1 and v2) and its reference semantics, the rasterizer that draws v2's bitmaps (TrueType, text, the warp), keyed seeds, the PRNG, the text-mode registry, the engine protocol, the feature catalog | Any Clojure host: GraalVM/JVM today, the Dart VM through ClojureDart next (ADR 0008) | malli (two namespaces), nothing else |
+| `kernel/` | Settings schema and resolution, the render spec (v1 and v2) and its reference semantics, the rasterizer that draws v2's bitmaps (TrueType, text, the warp), keyed seeds, the PRNG, the text-mode registry, the engine protocol, the feature catalog, the settings form | Any Clojure host: GraalVM/JVM, and the Dart VM through ClojureDart (`kernel/dart` runs its golden vectors there; ADRs 0008, 0012) | malli (two namespaces, JVM only, for JSON Schema); `package:crypto` on the Dart VM; nothing else |
 | `src/` | Profile rules (`config`), the store, media, queue and rasterizer ports' local adapters, the job pipeline, the Core API, the FFmpeg and native engines, JSON REST routes | JVM | kernel |
 | `web/` | The built-in web UI: server-rendered HTML and Datastar events over SSE; vendored `datastar.js`, no npm | JVM | the Core API (src) |
 | `desktop/` | CLI (with terminal progress), http-kit server, loopback security, sidecar mode, native-image metadata | JVM / native image | src, web |
@@ -85,7 +85,19 @@ names or requires them.
 | Text modes | `watermark.core.modes/register!` (a registry) | continuous, scheduled; Pro: canary (wire id `subliminal`), random | — |
 
 Text modes are a registry rather than a multimethod because ClojureDart has
-no multimethods.
+no multimethods. The open core's two modes are the registry's first entries,
+not `register!` calls, because the Dart VM runs no top-level forms when a
+library loads.
+
+**Validation.** The schemas are malli's vector syntax, but
+`watermark.util.schema` validates, explains and decodes them, on the JVM and
+the Dart VM alike, with malli's messages in malli's shape
+([ADR 0012](adr/0012-the-kernel-on-the-dart-vm.md)). malli still turns them
+into JSON Schema on the JVM (`/api/v1/schema/settings`, `native/*.schema.json`), and
+tests check that it agrees with the validator on a corpus
+(`kernel/test/golden/schema.edn`). The one deliberate difference: a pattern
+must match the whole string (Java's `$` also matches before a final line
+break).
 
 ## Dependency rules
 
@@ -95,7 +107,8 @@ requires made them fail, as intended.
 
 | Rule | Protects |
 |---|---|
-| The kernel is `.cljc` only and requires nothing outside itself except `clojure.string`, plus malli in the two schema namespaces | Stages 3–4: the GUI runs the kernel in-process |
+| The kernel is `.cljc` only and requires nothing outside itself except `clojure.string`, plus malli in the two schema namespaces (JVM only) | Stages 3–4: the GUI runs the kernel in-process |
+| The Dart VM harness loads every kernel namespace, and no kernel alias is spelt like a Dart type (`num`, `int`, …) | M3a: the whole kernel compiles for the Dart VM |
 | Pro schedules are portable too | Pro modes in the GUI apps |
 | `watermark.core.*` requires no engine, media or store implementation, no OS utilities, no server code | Stage 4+: new engines don't touch orchestration |
 | `src/` requires nothing from desktop, web, Pro, SaaS or http-kit | Stage 5: the backend reuses the host core as is |
@@ -431,7 +444,7 @@ web UI end to end, on the JVM and against the native binary, and
 
 | Area | What the tests cover |
 |---|---|
-| Kernel | SplitMix64 draw-for-draw against `java.util.SplittableRandom`; golden vectors for the PRNG, seeds, a full render spec, and render spec v2 down to every bitmap; settings layering and provenance; half-open scheduled windows; the flip projection; capability negotiation; the TrueType reader against fontTools; text coverage, borders and colours; the warp against its homography; both exported render spec schemas equal to the code |
+| Kernel | SplitMix64 draw-for-draw against `java.util.SplittableRandom`; golden vectors for the PRNG, seeds, a full render spec, render spec v2 down to every bitmap, the schema's verdicts and messages, and the settings form, on the JVM and on the Dart VM (`bb kernel-dart`); the validator against malli; settings layering and provenance; half-open scheduled windows; the flip projection; capability negotiation; the TrueType reader against fontTools; text coverage, borders and colours; the warp against its homography; both exported render spec schemas equal to the code |
 | Architecture | The dependency rules above |
 | Profiles | The store contract on files, memory and PostgreSQL: slugs, aliases, `latest`, fallback, revisions, 8 racing editors, 40 concurrent auto-saves, damaged files, pre-revision files |
 | Engine lookup | Search order (`./`, then `./bin/`, then the install folder), the hardened order, explicit files and folders, unusable files reported in the diagnostic trail, ffprobe taken from ffmpeg's folder (and a warning when it isn't) |
