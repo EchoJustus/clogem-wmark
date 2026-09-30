@@ -40,6 +40,11 @@ system. The first hit wins:
 | 5 | its `bin\` folder | `C:\Program Files\wmark\bin\ffmpeg.exe` |
 | 6 | the system `PATH` | |
 
+The order, the trail `doctor` prints and the working-folder warning are the
+core library's (`watermark.util.locate`), so `wmark` and `wmark-dart` (the
+CLI on the Dart VM, ADR 0014) search alike; each host only reports what is
+at a path.
+
 - **Why steps 4 and 5.** A double-click starts wmark in its own folder, so
   steps 2 and 3 find the bundle. A Start-menu shortcut, a Finder launch
   (working directory `/`) or a terminal opened elsewhere doesn't. Without
@@ -466,6 +471,7 @@ encoder (every default and LGPL build does).
 | The same build, pinned (`bb ffmpeg :variant :lgpl`), render spec v2 (2026-09-27) | Both conformance clips pass: logo width within 0.76 px, height within 1.11 px, axis within 0.45 px; text, drawn by the kernel's rasterizer, on exactly the scheduled frames ([ADR 0006](adr/0006-render-spec-v2-host-rendered-overlays.md)) |
 | `wmark run` with only the pinned LGPL build (2026-09-27) | v2 chosen automatically; 75 frames kept, non-ASCII paths, the scratch folder removed afterwards |
 | The pinned builds in a native bundle, hardened order, a clip in `vidéo 视频/` | Found in `bin/` (app-bin); the render keeps all 100 frames (`test/smoke/native.clj`) |
+| `wmark-dart` (the Dart host, ADR 0014) on the conformance clip, render spec 1 and 2 on FFmpeg 6.1.1, and 2 on the pinned LGPL build (2026-09-30) | Frames identical, pixel for pixel, to the JVM's `wmark` rendering the same profile with the same secret; logo and text within the harness's tolerances (`watermark.dart-cli-test`) |
 
 **From Phase 1, not re-run here:** 6.1 `-filter_complex_script` and 7.0
 `-/filter_complex` gave bit-identical output; a rotated (90°) phone clip was

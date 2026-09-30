@@ -391,6 +391,7 @@ bb lint          # build matrix and component deps.edn files vs repository
 bb e2e           # Chromium smoke test of the web UI (ffmpeg + Python Playwright)
 bb kernel-dart   # the kernel on the Dart VM: ClojureDart compiles it, golden vectors (Dart SDK 3.13.4)
 bb dart          # the Dart host's adapters on the Dart VM, renders with the ffmpeg on PATH
+bb dart-cli      # wmark-dart, the CLI on the Dart VM -> target/dart-cli/
 bb dev           # engine from source, opens the web UI     bb dev doctor | bb dev run ...
 bb native        # GraalVM binary for this OS (GRAALVM_HOME)
 bb ffmpeg        # the pinned FFmpeg for this OS -> target/ffmpeg/<platform> (SHA-256 verified)
@@ -497,7 +498,17 @@ first cut (ADR 0011, "Implementation"); what remains of them is listed there.
      ADR 0013, section 4, says why.
 4. **M3d · The Dart adapters and the Dart CLI** (`dart:io` files,
    `Process.start` for FFmpeg), with a conformance run on real frames. GUI
-   apps then embed the library in-process (Phase 2).
+   apps then embed the library in-process (Phase 2). ADR 0014.
+   - *done:* what the adapters share, into the library: the command line
+     (`watermark.cli`: the JVM's `wmark` runs it too), the media
+     fingerprint, output names, the executable search, realizing v2
+     (`cli.edn`, `adapters.edn`);
+   - *done:* the Dart host (`dart/`, `bb dart`): files, media, the profile
+     store (it passes the store contract), the rasterizer and the FFmpeg
+     engine over `dart:io`;
+   - *done:* `wmark-dart` (`bb dart-cli`), checked on real frames: pixel
+     for pixel the JVM's `wmark`, render spec 1 and 2, the LGPL build
+     included (`watermark.dart-cli-test`, CI's `dart` job).
 
 **Done before:**
 - **M1 · CI/CD** (PR #1). Its exit was met by `v0.1.0-rc.1` (2026-09-27): a

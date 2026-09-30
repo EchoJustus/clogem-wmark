@@ -77,11 +77,11 @@ names or requires them.
 
 | Port | Protocol | Adapters today | Planned adapters |
 |---|---|---|---|
-| Profile storage | `watermark.store/ProfileStore` (core library) | file (`store.file`, JVM), memory (`store.memory`, core library), a SQL store in hosted backends | app-sandbox store for the GUI, a Dart file store (M3d) |
-| Rendering | `watermark.engine/VideoEngine` + `RenderHandle`, and `StillDecoder` for engines that take render spec v2 | `FFmpegProcessor`, `NativeFFIProcessor` (C ABI) | AVFoundation, Media3, a Rust core: all behind the C ABI |
-| Host drawing (render spec v2) | `watermark.raster/Rasterizer` (`realize!`, `release!`) | local: bitmaps in a scratch folder per render (`raster.local`) | object storage next to hosted workers |
-| Media | `watermark.media/MediaIO` (core library) | local files (`media.local`) | object storage, `dart:io` (M3d) |
-| Files (the preview folder) | `watermark.files/Files` (core library) | local files (`files.local`) | `dart:io` (M3d) |
+| Profile storage | `watermark.store/ProfileStore` (core library) | file (`store.file`, JVM; `dartvm.store`, the Dart host), memory (`store.memory`, core library), a SQL store in hosted backends | app-sandbox store for the GUI |
+| Rendering | `watermark.engine/VideoEngine` + `RenderHandle`, and `StillDecoder` for engines that take render spec v2 | `FFmpegProcessor`, `NativeFFIProcessor` (C ABI), the Dart host's FFmpeg engine (`dartvm.ffmpeg`) | AVFoundation, Media3, a Rust core: all behind the C ABI |
+| Host drawing (render spec v2) | `watermark.raster/Rasterizer` (`realize!`, `release!`) | local: bitmaps in a scratch folder per render (`raster.local`; `dartvm.raster`), both around `raster/realize` | object storage next to hosted workers |
+| Media | `watermark.media/MediaIO` (core library) | local files (`media.local`; `dartvm.media` over `dart:io`) | object storage |
+| Files (the preview folder) | `watermark.files/Files` (core library) | local files (`files.local`; `dartvm.fs` over `dart:io`) | object storage |
 | Queue | `watermark.core.jobs/JobQueue` | in-process executor (`jobs.local`) | SQS / Cloud Tasks / a Postgres table |
 | Entitlements | `watermark.core.features/Entitlements` | community, offline license, hosted plan | StoreKit, Play Billing |
 | Text modes | `watermark.core.modes/register!` (a registry) | continuous, scheduled; Pro: canary (wire id `subliminal`), random | — |

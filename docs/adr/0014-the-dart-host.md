@@ -2,7 +2,7 @@
 <!-- SPDX-License-Identifier: EPL-2.0 -->
 # 0014. The Dart host: adapters over `dart:io`, a Dart CLI, and the logic they share (M3d)
 
-- **Status:** Accepted (2026-09-30), carried out in steps: sections 1 and 2
+- **Status:** Accepted (2026-09-30), carried out in steps, sections 1 to 4
   on 2026-09-30. It records how M3d of
   [ADR 0008](0008-desktop-architecture-and-binary-size.md) (section 1,
   "Each target ships with its basic adapters"; section 3, Phase 2) is done.
@@ -140,6 +140,63 @@ each host's adapter keeps only its I/O.
     sample clip, a batch through the Core API with render spec 1 and with
     2 (`latest` recorded, no scratch left), and a cancelled render.
 
+### 3. `wmark-dart`: the command line on the Dart VM
+
+- `watermark.dartvm.main` is the Dart host map for `watermark.cli`: its
+  system is the section 2 adapters (a task, since the engine is discovered
+  asynchronously), output goes to `stdout` and `stderr`, and `stdout`
+  says whether it is a terminal. The main flushes both streams, then exits
+  with the command's code.
+- It has `run` (progress, dry runs, covers), `profiles`, `doctor` and
+  `version`, the JVM's own messages, options and help. `ui`, `serve` and
+  `license` stay the JVM's. So does the native engine, which loads a
+  library through FFM: `--engine native` is refused with a message. The
+  shared option table still lists `--engine` and `--native-lib`.
+- **Build:** `bb dart-cli` compiles with ClojureDart, then `dart compile
+  exe` builds `target/dart-cli/wmark-dart`, with the bundled font and its
+  licence in `fonts/` next to it. The version the release workflow stamps
+  for the JVM (`desktop/resources/wmark/version.txt`) goes in as
+  `-DWMARK_VERSION`, so both CLIs built from one checkout report one
+  version.
+- **Bytes:** `wmark-dart` for linux-x64 is 10,506,720 bytes (Dart 3.13.4
+  AOT), against 64,227,592 for the JVM's `wmark` native image. `doctor`
+  runs in 0.34 s. It is not in any download yet. Shipping it would be a
+  decision of its own, with its notices: the Dart runtime and
+  `package:crypto` (BSD-3-Clause), and the font (OFL).
+- **Checked by hand** (linux-x64): `doctor`; a batch with a missing input
+  (exit 1, the other rendered) under render spec 1; render spec 2 into an
+  output folder with a cover (an attached picture); the secret created
+  owner-only; `latest` recorded. The JVM's `wmark` then read that home, and
+  profiles saved by either host listed together.
+
+### 4. Conformance on real frames through `wmark-dart`
+
+- `watermark.dart-cli-test` (desktop tests) writes one profile, with the
+  flip and a scheduled text, into two homes that share one studio secret.
+  `wmark-dart` renders the harness's clip from one, and the JVM's `wmark`
+  from the other, with the same FFmpeg. Then the harness
+  (`watermark.engine.conformance`) checks:
+  - the frames are the JVM's, pixel for pixel;
+  - the logo's width, height and axis are within the tolerances the JVM
+    engines pass, at every frame, against the reference semantics of the
+    spec the JVM plans;
+  - the text shows on exactly the reference frames;
+  - no scratch folder is left.
+- It runs for render spec 1 and 2 on the FFmpeg on PATH, and for render
+  spec 2 on the pinned LGPL build the downloads ship. It skips without
+  `wmark-dart` and FFmpeg, except in CI's `dart` job
+  (`WMARK_REQUIRE_DART_CLI=1`), which builds `wmark-dart` and the LGPL
+  FFmpeg first.
+- Result: all three pass, pixel-identical to the JVM. The Dart host's
+  rasterizer, media, store and engine are a drop-in for the JVM's on these
+  renders.
+
+- **Bytes, the JVM:** the `wmark` native image (linux-x64, GraalVM CE
+  25.0.2) grows from 64,227,592 to 64,817,416 bytes (+589,824, 0.9%): the
+  CLI and the shared adapter logic now in the library, net of `tools.cli`,
+  which is gone. The binary was smoke-tested: `doctor`, a batch with a
+  missing input and a cover, `profiles effective`.
+
 ## Consequences
 
 - The JVM's `wmark` runs the library's CLI; its tests (`app-test`, the
@@ -148,7 +205,13 @@ each host's adapter keeps only its I/O.
 - A Dart program gets the same command line by supplying a host map.
 - The core library now runs on the Dart VM on its own: plans, profiles,
   renders and previews, through adapters that pass the same contract and
-  golden vectors as the JVM's.
+  golden vectors as the JVM's, and render the same pixels.
+- ADR 0008's Phase 2 has its base: a GUI app can embed the library and
+  these adapters in-process, in a background isolate, with no GraalVM
+  engine. Where a platform can't start processes (iPadOS), an engine
+  behind the C ABI through `dart:ffi` takes FFmpeg's place (decision 3).
+- Unverified here: `wmark-dart` on Windows and macOS (CI builds it on
+  Linux only), and the rename's atomicity on Windows.
 
 ## Sources (checked 2026-09-30)
 

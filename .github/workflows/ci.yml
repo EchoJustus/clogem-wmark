@@ -5,7 +5,9 @@
 # kernel-dart: the kernel compiled by ClojureDart, its golden vectors on the
 #          Dart VM (ADR 0008, M3a).
 # dart:    the Dart host (ADR 0014, M3d): its adapters over dart:io, tested
-#          on the Dart VM with FFmpeg, renders included.
+#          on the Dart VM with FFmpeg, renders included; then wmark-dart, the
+#          CLI on the Dart VM, built and checked on real frames against the
+#          reference semantics and the JVM's wmark (also on the LGPL build).
 # e2e:     the browser smoke test of the web UI, on the JVM.
 # native:  native binaries on every OS, by hand (workflow_dispatch) or on a
 #          pull request labelled `native`; releases build them in release.yml.
@@ -88,6 +90,14 @@ jobs:
       - name: FFmpeg for the adapters' render tests
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: bb dart
+      - name: wmark-dart, the CLI on the Dart VM (prints its size)
+        run: bb dart-cli
+      - name: The pinned LGPL FFmpeg the bundles ship
+        run: bb ffmpeg
+      - name: wmark-dart on real frames, against the reference semantics and the JVM's wmark
+        env:
+          WMARK_REQUIRE_DART_CLI: "1"
+        run: clojure -M:dev:test -n watermark.dart-cli-test
 
   e2e:
     runs-on: ubuntu-24.04
