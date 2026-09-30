@@ -18,7 +18,7 @@ names or requires them.
 | Directory | Contents | Runs on | May depend on |
 |---|---|---|---|
 | `kernel/` | Settings schema and resolution, the render spec (v1 and v2) and its reference semantics, the rasterizer that draws v2's bitmaps (TrueType, text, the warp), keyed seeds, the PRNG, the text-mode registry, the engine protocol, the feature catalog, the settings form, the FFmpeg plan compiler and parsers, the profile rules and the store port, the job pipeline and the Core API, the media and files ports with the media fingerprint and output names, the command line (`watermark.cli`: options, commands, their output, the progress display), the executable search (`watermark.util.locate`), its own Unicode tables | Any Clojure host: GraalVM/JVM, and the Dart VM through ClojureDart (`kernel/dart` runs its golden vectors there; ADRs 0008, 0012) | malli (two namespaces, JVM only, for JSON Schema) and `clojure.edn` (one host primitive, JVM only); `package:crypto` on the Dart VM; nothing else |
-| `src/` | The home folder (`home`), the store, media, files, queue and rasterizer ports' local adapters, the FFmpeg and native engines, JSON REST routes | JVM | kernel |
+| `src/` | The home folder (`home`), the store, media, files, queue and rasterizer ports' local adapters, the FFmpeg and native engines, the REST contract's HTTP adapter | JVM | kernel |
 | `dart/` | The Dart host (ADR 0014): the core library's adapters over `dart:io` (files, media, profiles, the rasterizer's I/O, the FFmpeg engine) and `wmark-dart`, the command line on the Dart VM | the Dart VM (ClojureDart) | kernel |
 | `web/` | The built-in web UI: server-rendered HTML and Datastar events over SSE; vendored `datastar.js`, no npm | JVM | the Core API (kernel) |
 | `desktop/` | CLI (with terminal progress), http-kit server, loopback security, sidecar mode, native-image metadata | JVM / native image | src, web |
@@ -44,8 +44,9 @@ names or requires them.
  transports     desktop: http-kit, token, Host/Origin     desktop: watermark.app (CLI)
                 saas:    function adapter + wrap-identity (OIDC)
                     │
- contract       watermark.web.handler (/ and /ui/*) and watermark.server.routes (/api/v1)
-                    (Ring; no transport, no auth) ─► watermark.core.api
+ contract       watermark.web.handler (/ and /ui/*) and watermark.core.rest (/api/v1, the core
+                    library; served by watermark.server.routes over HTTP, or in-process by an app)
+                    (no transport, no auth) ─► watermark.core.api
                     │
  orchestration  watermark.config (profile rules)        watermark.core.jobs (pipeline)
                     │                                          │
@@ -118,6 +119,13 @@ requires made them fail, as intended.
 | The backend doesn't use the desktop server | Lean binaries and images |
 
 ## Core API ↔ REST
+
+The contract is `watermark.core.rest`, in the core library
+([ADR 0016](adr/0016-the-rest-contract-in-the-core-library.md)):
+`rest/respond` answers a request as data, and `kernel/test/golden/rest.edn`
+holds the JVM and the Dart VM to the same answers.
+`watermark.server.routes` serves it over HTTP; an app that embeds the core
+library calls `respond` in its own process.
 
 | Core API (`watermark.core.api`) | Route |
 |---|---|

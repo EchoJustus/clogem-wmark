@@ -16,6 +16,7 @@
             [watermark.core.api :as api]
             [watermark.core.features :as features]
             [watermark.core.queue :as queue]
+            [watermark.core.rest :as rest]
             [watermark.dartvm.ffmpeg :as ffmpeg]
             [watermark.dartvm.fs :as fs]
             [watermark.dartvm.home :as home]
@@ -279,3 +280,29 @@
                                        (is (= :cancelled (:state end)) (pr-str end))
                                        (is (not (fs/file? (fs/join dir "clip_wm.mp4"))) "nothing was published")
                                        (is (not (fs/file? (fs/join dir "clip_wm.part.mp4"))))))))))))))
+
+(deftest the-rest-contract-answers-in-process
+  ;; what an app embedding the library does instead of HTTP
+  (-> (main/system {:home (fs/temp-dir "wmark-home")})
+      (task/then
+       (fn [sys]
+         (let [ask (fn [method path body] (rest/respond sys ctx method path (constantly body)))]
+           (-> (ask :post "/api/v1/profiles" {:name "Wide 16:9" :settings {:logo {:anchor "top-left" :opacity 0.5}}})
+               (task/then (fn [created]
+                            (is (= 201 (:status created)) (pr-str created))
+                            (is (= "wide-16-9" (get-in created [:body "profile/slug"])))
+                            (ask :get "/api/v1/profiles/Wide%2016%3A9" nil)))
+               (task/then (fn [got]
+                            (is (= "top-left" (get-in got [:body "settings" "logo" "anchor"])) "found by its name")
+                            (is (= 0.5 (get-in got [:body "settings" "logo" "opacity"])))
+                            (ask :get "/api/v1/profiles/wide-16-9/form" nil)))
+               (task/then (fn [form]
+                            (is (= 200 (:status form)))
+                            (is (seq (get-in form [:body "form"])) "the settings form")
+                            (ask :get "/api/v1/jobs" nil)))
+               (task/then (fn [jobs]
+                            (is (= {:status 200 :body {"jobs" []}} jobs))
+                            (ask :get "/api/v1/profiles/nope" nil)))
+               (task/then (fn [missing]
+                            (is (= 404 (:status missing)))
+                            (is (= "not-found" (get-in missing [:body "error"])))))))))))

@@ -15,7 +15,9 @@
             [watermark.core.api :as api]
             [watermark.core.features :as features]
             [watermark.core.form :as form]
+            [watermark.core.queue :as queue]
             [watermark.core.resolve :as resolve]
+            [watermark.core.rest :as rest]
             [watermark.core.schema :as schema]
             [watermark.core.seeds :as seeds]
             [watermark.engine :as engine]
@@ -1066,3 +1068,134 @@
                             (fn [all-fail]
                               (assoc (adapter-vectors font-bytes)
                                      :trials {:libx264-fails some-fail :all-fail all-fail})))))))
+
+;; ---------------------------------------------------------------------------
+;; rest.edn: the REST contract (watermark.core.rest) on fake ports
+
+(defn- scrub-all
+  "`x` with random ids and saved times written as <id> and <time>."
+  [x]
+  (cond (string? x) (scrub-times (scrub-ids x))
+        (map? x)    (into {} (map (fn [[k v]] [(scrub-all k) (scrub-all v)])) x)
+        (vector? x) (mapv scrub-all x)
+        :else       x))
+
+(defn- recorded
+  "An answer as rest.edn holds it: the body itself, or for a long one its
+  keys and the SHA-256 of its JSON (watermark.util.json), so the file stays
+  readable and still pins every byte."
+  [{:keys [status body file content-type]}]
+  (if file
+    {:status status :file (scrub-all file) :content-type content-type}
+    (let [body (scrub-all body)
+          text (json/write body)]
+      (if (> (count text) 800)
+        {:status status :keys (vec (sort (keys body))) :sha256 (digest/sha256-hex [text])}
+        {:status status :body body}))))
+
+(def ^:private rest-steps
+  "[label (fn [answers] [method path body])]: a session in order; later
+  steps read ids and revisions from earlier answers. A body of :not-json
+  stands for a request whose body isn't JSON."
+  [[:health       (fn [_] [:get "/api/v1/health"])]
+   [:features     (fn [_] [:get "/api/v1/features"])]
+   [:doctor       (fn [_] [:get "/api/v1/doctor"])]
+   [:none-yet     (fn [_] [:get "/api/v1/profiles"])]
+   [:create       (fn [_] [:post "/api/v1/profiles" {:name     "Clip"
+                                                    :settings {:logo  {:path "/logos/l.png" :anchor "top-right"}
+                                                               :texts [{:mode "continuous" :content "(c) Studio"}]}}])]
+   [:taken        (fn [_] [:post "/api/v1/profiles" {:name "clip" :settings {}}])]
+   [:invalid      (fn [_] [:post "/api/v1/profiles" {:name "Bad" :settings {:logo {:opacity 3}}}])]
+   [:get          (fn [_] [:get "/api/v1/profiles/clip"])]
+   [:stale        (fn [_] [:put "/api/v1/profiles/clip" {:settings {:logo {:opacity 0.5}} :if-rev 99}])]
+   [:save         (fn [a] [:put "/api/v1/profiles/clip"
+                           {:settings {:logo {:path "/logos/l.png" :opacity 0.5}}
+                            :if-rev   (get-in a [:create :body "profile/rev"])}])]
+   [:rename       (fn [_] [:post "/api/v1/profiles/clip/rename" {:to "Wide 16:9"}])]
+   [:by-slug      (fn [_] [:get "/api/v1/profiles/wide-16-9"])]
+   [:by-name      (fn [_] [:get "/api/v1/profiles/Wide%2016%3A9"])]
+   [:copy         (fn [_] [:post "/api/v1/profiles/wide-16-9/copy" {:to "Copy"}])]
+   [:delete       (fn [_] [:delete "/api/v1/profiles/copy"])]
+   [:missing      (fn [_] [:get "/api/v1/profiles/nope"])]
+   [:listed       (fn [_] [:get "/api/v1/profiles"])]
+   [:form         (fn [_] [:get "/api/v1/profiles/wide-16-9/form"])]
+   [:draft        (fn [_] [:post "/api/v1/profiles/wide-16-9/form"
+                           {:settings {:logo {:path "/logos/l.png" :opacity 0.5}}
+                            :edit     {:op "set" :id "logo.opacity" :value "70"}}])]
+   [:edit         (fn [a] [:post "/api/v1/profiles/wide-16-9/edit"
+                           {:op "set" :id "logo.opacity" :value "70" :if-rev (get-in a [:by-slug :body "profile/rev"])}])]
+   [:edit-stale   (fn [_] [:post "/api/v1/profiles/wide-16-9/edit" {:op "unset" :id "logo.opacity" :if-rev 1}])]
+   [:preview      (fn [_] [:post "/api/v1/preview" {:profile "wide-16-9" :source "a.mp4" :t 2}])]
+   [:preview-file (fn [a] [:get (str "/api/v1/previews/" (get-in a [:preview :body "id"]))])]
+   [:sample       (fn [_] [:post "/api/v1/preview" {:clean true :settings {:texts [{:mode "continuous" :content "x"}]}
+                                                  :aspect "9:16"}])]
+   [:resolve      (fn [_] [:post "/api/v1/resolve" {:profile "wide-16-9"}])]
+   [:plan         (fn [_] [:post "/api/v1/plan" {:profile "wide-16-9" :inputs ["a.mp4"] :cover {:t 1}}])]
+   [:locked       (fn [_] [:post "/api/v1/plan" {:clean true :inputs ["a.mp4"]
+                                               :settings {:texts [{:mode "canary" :content "x"}]}}])]
+   [:submit       (fn [_] [:post "/api/v1/jobs" {:profile "wide-16-9" :inputs ["a.mp4" "b.mov"]}])]
+   [:no-inputs    (fn [_] [:post "/api/v1/jobs" {:profile "wide-16-9" :inputs []}])]
+   [:jobs         (fn [_] [:get "/api/v1/jobs"])]
+   [:cancel       (fn [a] [:delete (str "/api/v1/jobs/" (get-in a [:submit :body "id"]))])]
+   [:cancel-none  (fn [_] [:delete "/api/v1/jobs/nope"])]
+   [:after        (fn [_] [:get "/api/v1/jobs"])]
+   [:not-json     (fn [_] [:post "/api/v1/profiles" :not-json])]
+   [:no-route     (fn [_] [:get "/api/v1/nowhere"])]
+   [:wrong-method (fn [_] [:patch "/api/v1/profiles"])]
+   [:bad-escape   (fn [_] [:get "/api/v1/profiles/%ZZ"])]
+   [:not-utf8     (fn [_] [:get "/api/v1/profiles/%C3%28"])]])
+
+(defn rest-vectors
+  "rest.edn, as a task: a session of requests through
+  watermark.core.rest/respond on the pipeline's fake ports, with a job
+  queue that never starts a job, so every answer is the same on every run;
+  the events the jobs sent; then path segments and JSON-ready data. The
+  settings' JSON Schema isn't in it: it comes from the JVM only."
+  []
+  (let [log    (atom [])
+        fs     (atom {})
+        st     (memory/memory-store)
+        jobs   (queue/queue {:run (fn [_ _] (task/resolved [])) :spawn (fn [_] nil)})
+        sys    {:edition      :community
+                :version      "9.9.9"
+                :home         "/home/wmark"
+                :profiles-for (constantly st)
+                :entitlements (features/community)
+                :engine       (golden-engine log fs)
+                :media        (golden-media log)
+                :files        (golden-files fs)
+                :jobs         jobs
+                :secret-for   (constantly (secret))
+                :font         "/fonts/wmark.ttf"
+                :preview-dir  "/previews"}
+        ctx    {:tenant "t" :user "u"}
+        events (atom [])
+        _      (api/subscribe-jobs! sys ctx :golden (fn [e] (swap! events conj (rest/event-data e))))
+        bad    (fn [s] (try (rest/decode-segment s)
+                            (catch #?(:clj clojure.lang.ExceptionInfo :cljd cljd.core/ExceptionInfo) e
+                              [:error (:wmark/error (ex-data e))])))]
+    (task/then
+     (task/reduce (fn [[answers runs] [label f]]
+                    (let [[method path body] (f answers)]
+                      (task/then (rest/respond sys ctx method path
+                                               (fn [] (if (= :not-json body)
+                                                        (throw (ex-info "Request body is not valid JSON."
+                                                                        {:wmark/error :invalid}))
+                                                        body)))
+                                 (fn [answer]
+                                   [(assoc answers label answer)
+                                    (conj runs {:step    label
+                                                :request (scrub-all [method path (if (= :not-json body) "<not JSON>" body)])
+                                                :answer  (recorded answer)})]))))
+                  [{} []] rest-steps)
+     (fn [[_ runs]]
+       {:session  runs
+        :events   (scrub-all @events)
+        :segments (vec (for [s ["plain" "a%20b" "a+b" "%e4%B8%AD%E6%96%87" "%F0%9F%98%80" "100%25"
+                                "%ZZ" "%4" "%" "%C3%28" "%ED%A0%80" "%F4%90%80%80" "%C0%AF" "%E2%82"]]
+                         [s (bad s)]))
+        :jsonable (rest/jsonable {:set      #{3 1 2}
+                                  :names    #{"b" "a"}
+                                  :list     (list 1 :x)
+                                  :path     {[:logo :anchor] :text.mode/subliminal [:texts 0 :content] "user"}
+                                  :nested   {:e/f nil :g [true 1.5]}})}))))

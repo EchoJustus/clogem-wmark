@@ -60,6 +60,10 @@
   ;; the command line end to end on fake ports, on Futures
   (task/then (inputs/cli-vectors) #(check "cli" %)))
 
+(deftest rest-contract
+  ;; the REST contract answered in-process, as an app on the Dart VM does
+  (task/then (inputs/rest-vectors) #(check "rest" %)))
+
 (deftest adapters
   (task/then (inputs/adapter-vectors-task (.readAsBytesSync (io/File "../../resources/fonts/wmark.ttf")))
              #(check "adapters" %)))

@@ -41,7 +41,7 @@ shells (sidecar mode) and hosted APIs built on the same core.
 ```
  clients        web UI (Datastar) · CLI · GUI shells · hosted APIs
  transports     desktop: http-kit + token/Host/Origin guards   hosted: an identity middleware
- contract       watermark.server.routes (JSON REST /api/v1) + watermark.web.handler (/ and /ui/*)
+ contract       watermark.core.rest (JSON REST /api/v1; HTTP via watermark.server.routes) + watermark.web.handler (/ and /ui/*)
                     └─► watermark.core.api   (every fn takes (sys ctx ...))
  orchestration  watermark.config (profile rules)      watermark.core.jobs (pipeline)
  kernel         resolve · render/build → RENDER SPEC · seeds · modes registry · features · engine protocol
@@ -51,7 +51,7 @@ shells (sidecar mode) and hosted APIs built on the same core.
 
 | Directory | Role | Language / runs on |
 |---|---|---|
-| `kernel/` | The core library (decision 11): settings schema and resolution, render spec (v1, v2) and reference semantics, the v2 rasterizer (TrueType, text, warp), keyed seeds, SplitMix64 PRNG, text-mode registry, `VideoEngine` protocol, feature catalog, the settings form, the FFmpeg plan compiler and parsers, the profile rules and the store port, the job pipeline, the in-process job queue and the Core API (on tasks), the command line (`watermark.cli`), the media fingerprint and the executable search, its own Unicode tables | `.cljc` only: GraalVM/JVM, and the Dart VM through ClojureDart (`kernel/dart` runs its golden vectors there) |
+| `kernel/` | The core library (decision 11): settings schema and resolution, render spec (v1, v2) and reference semantics, the v2 rasterizer (TrueType, text, warp), keyed seeds, SplitMix64 PRNG, text-mode registry, `VideoEngine` protocol, feature catalog, the settings form, the FFmpeg plan compiler and parsers, the profile rules and the store port, the job pipeline, the in-process job queue, the Core API (on tasks) and the REST contract, the command line (`watermark.cli`), the media fingerprint and the executable search, its own Unicode tables | `.cljc` only: GraalVM/JVM, and the Dart VM through ClojureDart (`kernel/dart` runs its golden vectors there) |
 | `src/` | Host core: the home folder, local adapters (profile files, media, files, the queue's thread pool), FFmpeg and native engines, REST routes | JVM |
 | `dart/` | The Dart host (ADR 0014): adapters over `dart:io` (files, media, profiles, the rasterizer's I/O, FFmpeg through `Process`) and `wmark-dart`, the same CLI on the Dart VM | ClojureDart, the Dart VM |
 | `web/` | Built-in web UI: server-rendered HTML plus Datastar over SSE (vendored `datastar.js`, no npm) | JVM |
@@ -513,7 +513,11 @@ first cut (ADR 0011, "Implementation"); what remains of them is listed there.
      `watermark.core.queue` in the library, the JVM's `jobs.local` a thin
      wrapper with a thread pool, the Dart host's system `:jobs`; both pass
      `watermark.queue-contract` (testkit), and a job queued on the Dart VM
-     renders and cancels with real FFmpeg.
+     renders and cancels with real FFmpeg;
+   - *done:* the REST contract in the library (ADR 0016): `watermark.core.rest`
+     answers `/api/v1` requests as data, served over HTTP by the JVM
+     (`watermark.server.routes`) and callable in-process by an app, held to
+     `rest.edn` on both runtimes.
 
 **Done before:**
 - **M1 · CI/CD** (PR #1). Its exit was met by `v0.1.0-rc.1` (2026-09-27): a

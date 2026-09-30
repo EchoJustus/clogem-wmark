@@ -22,6 +22,7 @@ owner first (CLAUDE.md, "Decisions").
 | [0013](0013-host-logic-into-the-core-library.md) | The host's pure logic moves into the core library (M3c): FFmpeg plans and parsers first | Accepted (in steps) |
 | [0014](0014-the-dart-host.md) | The Dart host: adapters over `dart:io`, a Dart CLI, and the logic they share (M3d) | Accepted (in steps) |
 | [0015](0015-a-job-queue-on-every-host.md) | One in-process job queue in the core library, for every host, with a contract | Accepted |
+| [0016](0016-the-rest-contract-in-the-core-library.md) | The REST contract (`/api/v1`) in the core library, answered over HTTP by the JVM and in-process by an app, with golden vectors on both runtimes | Accepted |
 
 New records copy this shape: **Status**, **Context**, **Decision**,
 **Consequences**, **Alternatives**, **Sources** (with the date facts were
