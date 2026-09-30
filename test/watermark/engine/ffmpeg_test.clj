@@ -4,6 +4,7 @@
   (:require [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]
             [watermark.engine.ffmpeg :as ffmpeg]
+            [watermark.ffmpeg.engine :as fe]
             [watermark.util.os :as os])
   (:import (java.io File)
            (java.nio.file Files)
@@ -29,9 +30,9 @@
     (testing "the ffprobe next to the chosen ffmpeg wins over any other"
       (let [bins (find)]
         (is (= (.getAbsolutePath own) (get-in bins [:ffprobe :path])))
-        (is (nil? (ffmpeg/split-build-warning bins)))))
+        (is (nil? (fe/split-build-warning bins)))))
     (testing "without one, the normal search applies, and the split is flagged"
       (io/delete-file own)
       (let [bins (find)]
         (is (= (.getAbsolutePath other) (get-in bins [:ffprobe :path])))
-        (is (re-find #"Ship both together" (str (ffmpeg/split-build-warning bins))))))))
+        (is (re-find #"Ship both together" (str (fe/split-build-warning bins))))))))

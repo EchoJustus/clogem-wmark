@@ -365,6 +365,25 @@
       (fail! (str "SHA-256 mismatch for " url ": expected " sha ", got " actual) {:url url})))
   dest)
 
+(def ^:private ucd
+  "The Unicode Character Database files watermark.util.unicode-data is
+  generated from: Unicode 16.0, the version Java 25 implements."
+  {:version "16.0.0"
+   :files   {"UnicodeData.txt"               "ff58e5823bd095166564a006e47d111130813dcf8bf234ef79fa51a870edb48f"
+             "DerivedNormalizationProps.txt" "4d4c03892dea9146d674b686e495df2d55a28d071ac474041d73518f887abddc"}})
+
+(defn unicode
+  "Regenerate kernel/src/watermark/util/unicode_data.cljc from the pinned
+  Unicode Character Database files (downloaded to target/ucd, SHA-256
+  checked). Review the diff like code; the golden vectors must still pass."
+  [_]
+  (let [{:keys [version files]} ucd
+        dir (io/file "target" "ucd" version)]
+    (doseq [[f sha] files]
+      (download! (str "https://www.unicode.org/Public/" version "/ucd/" f) sha (io/file dir f)))
+    ((requiring-resolve 'wmark.unicode/generate!) version dir
+     (io/file "kernel/src/watermark/util/unicode_data.cljc"))))
+
 (defn- extract!
   "Copy the files of `archive` (.zip or .tar.xz) whose names are in `wanted`
   into `dir`, flattening their paths; returns the names found."
@@ -743,6 +762,10 @@
    ["kernel/test/golden/render-v2.edn" "golden/render-v2.edn"]
    ["kernel/test/golden/schema.edn"   "golden/schema.edn"]
    ["kernel/test/golden/form.edn"     "golden/form.edn"]
+   ["kernel/test/golden/ffmpeg.edn"   "golden/ffmpeg.edn"]
+   ["kernel/test/golden/text.edn"     "golden/text.edn"]
+   ["kernel/test/golden/profiles.edn" "golden/profiles.edn"]
+   ["kernel/test/golden/pipeline.edn" "golden/pipeline.edn"]
    ["resources/fonts/wmark.ttf"       "golden/fonts/wmark.ttf"]     ; render-v2's text
    ["licenses/FiraSans-OFL.txt"       "golden/fonts/OFL.txt"]
    ["native/README.md"                "README.md"]

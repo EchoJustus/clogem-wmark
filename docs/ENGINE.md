@@ -25,7 +25,7 @@ watermark.core.jobs ── plan-input ─► watermark.render/build ─► rende
 | `(sample-video e opts path)` | `path` | The optional `SampleSource` protocol: a neutral clip (`{:width :height :fps :seconds}`) that previews draw on before a video is chosen. Engines with it declare `:preview #{:sample}`. |
 | `(prepare e request)` | an engine plan: plain, serializable data | Capability check first (`engine/check!`), then compile. Nothing is written. Dry runs print it. |
 | `(execute! e plan listener)` | a `RenderHandle`, returned immediately | `listener` receives `{:event :progress :fraction :frame}` on any thread. |
-| `(cancel! handle)` / `(outcome handle)` | outcome deferred: `{:status :done/:failed/:cancelled :error}` | On the JVM, deref blocks until the render ends. |
+| `(cancel! handle)` / `(outcome handle)` | outcome as a task (`watermark.util.task`): `{:status :done/:failed/:cancelled :error}` | A `CompletableFuture` on the JVM (deref still blocks until the render ends; a promise is accepted too), a `Future` on the Dart VM. The pipeline chains it and never waits (ADR 0013, section 3). |
 
 ### The render request
 

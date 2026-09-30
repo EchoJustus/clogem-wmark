@@ -7,7 +7,8 @@
   The executor is created by `local-queue` at run time: a thread pool in a
   top-level def would be initialised during the native-image build."
   (:require [watermark.core.jobs :as jobs]
-            [watermark.engine :as engine])
+            [watermark.engine :as engine]
+            [watermark.util.task :as task])
   (:import (java.time Instant)
            (java.util UUID)
            (java.util.concurrent ExecutorService Executors ThreadFactory)))
@@ -40,12 +41,12 @@
                     (update! assoc :state :cancelled)
                     (try
                       (update! assoc :state :running)
-                      (let [results (jobs/run-job! env job
+                      (let [results (task/await (jobs/run-job! env job
                                                    {:cancelled? #(deref cancel?)
                                                     :on-handle  #(reset! handle %)
                                                     :on-event   (fn [e]
                                                                   (when (= :progress (:type e))
-                                                                    (update! assoc :progress e)))})]
+                                                                    (update! assoc :progress e)))}))]
                         (update! assoc
                                  :state (if @cancel? :cancelled :done)
                                  :result results))

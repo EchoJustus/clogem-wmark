@@ -1,9 +1,9 @@
 ;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
 ;; SPDX-License-Identifier: EPL-2.0
-(ns watermark.engine.ffmpeg.graph-test
+(ns watermark.ffmpeg.graph-test
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
-            [watermark.engine.ffmpeg.graph :as g])
+            [watermark.ffmpeg.graph :as g])
   (:import (java.util Locale)))
 
 (set! *warn-on-reflection* true)

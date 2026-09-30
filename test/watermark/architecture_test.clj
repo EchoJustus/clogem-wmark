@@ -40,13 +40,16 @@
 (deftest the-kernel-is-portable
   (testing "only .cljc files"
     (is (every? :cljc? kernel)))
-  (testing "requires nothing but the kernel, clojure.string and (in two places, on the JVM) malli"
+  (testing "requires nothing but the kernel, clojure.string and, on the JVM, malli and clojure.edn in one place each"
     (let [kernel-nses (set (map :ns kernel))]
-      (is (empty? (violations kernel #(not (or (kernel-nses %) (= 'clojure.string %)
+      (is (empty? (violations kernel #(not (or (kernel-nses %) ('#{clojure.string clojure.edn} %)
                                                (str/starts-with? (str %) "malli."))))))))
   (testing "malli only where schemas live, for JSON Schema; watermark.util.schema validates everywhere"
     (is (= #{'watermark.core.schema 'watermark.render.schema}
-           (set (map first (violations kernel #(str/starts-with? (str %) "malli."))))))))
+           (set (map first (violations kernel #(str/starts-with? (str %) "malli.")))))))
+  (testing "clojure.edn only in the host primitive that reads EDN; writing it is the library's own"
+    (is (= #{'watermark.util.host}
+           (set (map first (violations kernel #(= 'clojure.edn %))))))))
 
 (defn- aliases
   "The :as aliases a source's ns form gives its requires."
@@ -67,9 +70,10 @@
                   [(:ns src) a])))))
 
 (deftest orchestration-never-sees-an-engine-implementation
-  (let [jobs (filter #(str/starts-with? (str (:ns %)) "watermark.core.") host)]
+  (let [jobs (filter #(str/starts-with? (str (:ns %)) "watermark.core.") (concat kernel host))]
     (is (some #(= 'watermark.core.jobs (:ns %)) jobs))
-    (is (empty? (violations jobs #(under? ["watermark.engine." "watermark.media." "watermark.store."
+    (is (some #(= 'watermark.core.api (:ns %)) jobs))
+    (is (empty? (violations jobs #(under? ["watermark.engine." "watermark.ffmpeg." "watermark.media." "watermark.store."
                                            "watermark.raster.local"
                                            "watermark.util.os" "watermark.util.locate"
                                            "watermark.server" "org.httpkit"] %)))
@@ -85,7 +89,7 @@
   (let [web (sources "web/src")]
     (is (seq web))
     (is (empty? (violations web #(under? ["watermark.engine" "watermark.store" "watermark.media"
-                                          "watermark.config" "watermark.core.jobs"
+                                          "watermark.config" "watermark.core.jobs" "watermark.ffmpeg"
                                           "watermark.app" "watermark.main"
                                           "watermark.server.http" "watermark.server.security"
                                           "watermark.server.static" "watermark.pro" "watermark.saas"

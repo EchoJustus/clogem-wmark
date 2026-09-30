@@ -259,10 +259,10 @@
       (if (not= ticket @preview-ticket)
         (sse/response)
         (try
-          (let [p (api/preview-frame sys ctx {:profile slug
-                                              :t       (number "pt")
-                                              :aspect  (get fv/aspects (long (number "pa")) "16:9")
-                                              :source  (not-empty source)})]
+          (let [p (api/await (api/preview-frame sys ctx {:profile slug
+                                                         :t       (number "pt")
+                                                         :aspect  (get fv/aspects (long (number "pa")) "16:9")
+                                                         :source  (not-empty source)}))]
             (sse/response
              (sse/patch-signals {:pmax (max 1.0 (double (or (:duration-s p) 12.0)))})
              (sse/patch-elements (h/html (fv/preview-frame p nil)))))

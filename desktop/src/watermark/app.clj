@@ -22,11 +22,13 @@
             [clojure.tools.cli :as cli]
             [watermark.cli.progress :as progress]
             [watermark.config :as config]
+            [watermark.home :as home]
             [watermark.core.api :as api]
             [watermark.core.features :as features]
             [watermark.core.jobs.local :as local-jobs]
             [watermark.engine.ffmpeg :as ffmpeg]
             [watermark.engine.native :as native]
+            [watermark.files.local :as local-files]
             [watermark.media.local :as local-media]
             [watermark.raster.local :as raster-local]
             [watermark.server.http :as http]
@@ -64,8 +66,8 @@
 (defn system
   "Everything the Core API needs. Built at run time, never at build time."
   [edition opts]
-  (let [^Path home (config/resolve-home opts)
-        store      (config/file-store {:home (str home)})
+  (let [^Path home (home/resolve-home opts)
+        store      (home/file-store {:home (str home)})
         secret     (delay (fs/studio-secret! home))]
     {:edition      (:edition edition)
      :version      version
@@ -78,7 +80,8 @@
      :spec-version (:render-spec opts)             ; nil: v1 where the engine takes it
      :secret-for   (fn [_ctx] @secret)            ; SaaS: per-tenant secret
      :font         (delay (os/default-font (.resolve home "cache")))
-     :preview-dir  (str (.resolve home "work/previews"))}))  ; SaaS: object storage (M4)
+     :preview-dir  (str (.resolve home "work/previews"))  ; SaaS: object storage (M4)
+     :files        (local-files/local-files)}))
 
 (defn with-jobs [sys]
   (let [n (if (features/entitled? (:entitlements sys) :jobs/parallel)
@@ -314,8 +317,8 @@
             (println graph)))
         0)
       :else
-      (let [r (api/run-batch! sys {:tenant "local" :user "local"} (request options arguments)
-                              {:on-event (progress/printer (progress-mode (:progress options)) (count arguments))})]
+      (let [r (api/await (api/run-batch! sys {:tenant "local" :user "local"} (request options arguments)
+                                         {:on-event (progress/printer (progress-mode (:progress options)) (count arguments))}))]
         (if (every? #(= :done (:state %)) (:results r)) 0 1)))))
 
 (defn- cmd-doctor [sys]

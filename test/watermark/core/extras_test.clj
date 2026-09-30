@@ -10,11 +10,13 @@
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [watermark.config :as config]
+            [watermark.home :as home]
             [watermark.core.api :as api]
             [watermark.core.features :as features]
             [watermark.engine :as engine]
             [watermark.engine.conformance :as c]
             [watermark.engine.ffmpeg :as ffmpeg]
+            [watermark.files.local :as local-files]
             [watermark.media.local :as local-media]
             [watermark.raster.local :as raster-local])
   (:import (java.io File)))
@@ -26,14 +28,15 @@
 (defn- sys []
   (let [home (c/tmp-dir)]
     {:home         home
-     :profiles-for (constantly (config/file-store {:home home}))
+     :profiles-for (constantly (home/file-store {:home home}))
      :entitlements (features/community)
      :engine       (ffmpeg/ffmpeg-engine {:work-root (str home "/work")})
      :media        (local-media/local-media)
      :rasterizer   (raster-local/local-rasterizer {:work-root (str home "/work")})
      :secret-for   (constantly (byte-array 32))
      :font         (delay (c/font))
-     :preview-dir  (str home "/work/previews")}))
+     :preview-dir  (str home "/work/previews")
+     :files        (local-files/local-files)}))
 
 (defn- ffprobe-json
   "Streams (with dispositions) and container tags of `path`, from the
@@ -62,7 +65,7 @@
       (api/create-profile! s ctx "Tagged" {:logo {:enabled false}
                                            :output {:metadata {:title "Reel" :author "Studio A"
                                                                :copyright "© 2026 Studio A" :comment "  "}}})
-      (let [{[result] :results} (api/run-batch! s ctx {:profile "tagged" :inputs [clip] :cover {:t 1.0}} {})
+      (let [{[result] :results} (api/await (api/run-batch! s ctx {:profile "tagged" :inputs [clip] :cover {:t 1.0}} {}))
             out   (:output result)
             probe (ffprobe-json s out)]
         (is (= :done (:state result)) (pr-str result))

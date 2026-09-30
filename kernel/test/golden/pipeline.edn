@@ -1,0 +1,269 @@
+{:plan
+ {:base {:kind :named, :name "Clip"},
+  :locked [],
+  :plans
+  [{:input "a.mp4",
+    :output "/out/a.mp4",
+    :spec
+    {:spec/version 1,
+     :canvas {:width 1280, :height 720},
+     :timebase
+     {:fps-num 30000, :fps-den 1001, :frames 300, :first-frame 0},
+     :layers
+     [{:id "logo",
+       :kind :image,
+       :source {:path "/logos/l.png", :width 400, :height 160},
+       :box {:x 1102, :y 24, :width 154, :height 62},
+       :opacity 0.85,
+       :timing {:type :always},
+       :animation
+       {:type :flip-y,
+        :easing :cosine,
+        :start 150,
+        :period 150,
+        :duration 24,
+        :distance 385.0,
+        :min-cos 0.02}}
+      {:id "text-0",
+       :kind :text,
+       :mode :continuous,
+       :text "(c) Studio",
+       :style
+       {:font "/fonts/wmark.ttf",
+        :size 25,
+        :color "white",
+        :opacity 0.8,
+        :border 2,
+        :border-color "black",
+        :border-opacity 0.48},
+       :placement {:type :fixed, :fx 0.0, :fy 1.0, :px 24, :py -24},
+       :timing {:type :always}}
+      {:id "text-1",
+       :kind :text,
+       :mode :scheduled,
+       :text "Scheduled",
+       :style
+       {:font "/fonts/wmark.ttf",
+        :size 25,
+        :color "white",
+        :opacity 0.8,
+        :border 2,
+        :border-color "black",
+        :border-opacity 0.48},
+       :placement {:type :fixed, :fx 0.0, :fy 1.0, :px 24, :py -24},
+       :timing {:type :windows, :windows [{:start 60, :end 104}]}}]},
+    :engine {:engine :golden}}
+   {:input "b.mov",
+    :output "/out/b.mov",
+    :spec
+    {:spec/version 1,
+     :canvas {:width 1280, :height 720},
+     :timebase
+     {:fps-num 30000, :fps-den 1001, :frames 300, :first-frame 0},
+     :layers
+     [{:id "logo",
+       :kind :image,
+       :source {:path "/logos/l.png", :width 400, :height 160},
+       :box {:x 1102, :y 24, :width 154, :height 62},
+       :opacity 0.85,
+       :timing {:type :always},
+       :animation
+       {:type :flip-y,
+        :easing :cosine,
+        :start 150,
+        :period 150,
+        :duration 24,
+        :distance 385.0,
+        :min-cos 0.02}}
+      {:id "text-0",
+       :kind :text,
+       :mode :continuous,
+       :text "(c) Studio",
+       :style
+       {:font "/fonts/wmark.ttf",
+        :size 25,
+        :color "white",
+        :opacity 0.8,
+        :border 2,
+        :border-color "black",
+        :border-opacity 0.48},
+       :placement {:type :fixed, :fx 0.0, :fy 1.0, :px 24, :py -24},
+       :timing {:type :always}}
+      {:id "text-1",
+       :kind :text,
+       :mode :scheduled,
+       :text "Scheduled",
+       :style
+       {:font "/fonts/wmark.ttf",
+        :size 25,
+        :color "white",
+        :opacity 0.8,
+        :border 2,
+        :border-color "black",
+        :border-opacity 0.48},
+       :placement {:type :fixed, :fx 0.0, :fy 1.0, :px 24, :py -24},
+       :timing {:type :windows, :windows [{:start 60, :end 104}]}}]},
+    :engine {:engine :golden}}],
+  :warnings []},
+ :refused
+ [{:error :invalid, :message "No input files."}
+  {:error :invalid,
+   :message "The cover's time must be a number of seconds from 0."}
+  {:error :not-found, :message "No profile named \"nope\"."}
+  {:error :feature-locked,
+   :message "Not available on the community plan: Randomized text"}],
+ :ran
+ {:results
+  [{:state :done, :input "a.mp4", :output "/out/a.mp4", :index 0}
+   {:state :failed,
+    :input "fail.mp4",
+    :error
+    "The cover picture failed. The golden engine fails this input.",
+    :kind :failed,
+    :index 1}
+   {:state :failed,
+    :input "exists.mp4",
+    :error "The output for exists.mp4 already exists.",
+    :kind :conflict,
+    :index 2}
+   {:state :failed,
+    :input "missing.mp4",
+    :error "No such file: missing.mp4",
+    :kind :not-found,
+    :index 3}
+   {:state :done, :input "b.mov", :output "/out/b.mov", :index 4}],
+  :events
+  [{:type :started, :input "a.mp4", :output "/out/a.mp4", :index 0}
+   {:event :progress,
+    :fraction 0.5,
+    :frame 150,
+    :type :progress,
+    :input "a.mp4",
+    :index 0}
+   {:state :done,
+    :input "a.mp4",
+    :output "/out/a.mp4",
+    :index 0,
+    :type :finished}
+   {:type :started,
+    :input "fail.mp4",
+    :output "/out/fail.mp4",
+    :index 1}
+   {:state :failed,
+    :input "fail.mp4",
+    :error
+    "The cover picture failed. The golden engine fails this input.",
+    :kind :failed,
+    :index 1,
+    :type :finished}
+   {:state :failed,
+    :input "exists.mp4",
+    :error "The output for exists.mp4 already exists.",
+    :kind :conflict,
+    :index 2,
+    :type :finished}
+   {:state :failed,
+    :input "missing.mp4",
+    :error "No such file: missing.mp4",
+    :kind :not-found,
+    :index 3,
+    :type :finished}
+   {:type :started, :input "b.mov", :output "/out/b.mov", :index 4}
+   {:event :progress,
+    :fraction 0.5,
+    :frame 150,
+    :type :progress,
+    :input "b.mov",
+    :index 4}
+   {:state :done,
+    :input "b.mov",
+    :output "/out/b.mov",
+    :index 4,
+    :type :finished}],
+  :latest
+  {:output
+   {:suffix "_wm",
+    :container "mp4",
+    :overwrite? false,
+    :strip-metadata true,
+    :metadata {:title "A title", :comment "  "}},
+   :encode {:codec :h264, :quality :high, :audio :copy},
+   :logo
+   {:enabled true,
+    :anchor :top-right,
+    :offset {:x 24, :y 24},
+    :width-ratio 0.12,
+    :opacity 0.85,
+    :animation {:type :flip-y, :every-s 5.0, :duration-s 0.8},
+    :path "/logos/l.png"},
+   :texts
+   [{:mode :continuous, :content "(c) Studio"}
+    {:mode :scheduled,
+     :content "Scheduled",
+     :at [2.0],
+     :duration-s 1.5}]}},
+ :cancelled
+ {:results
+  [{:state :done, :input "c.mp4", :output "/out/c.mp4", :index 0}],
+  :events
+  [{:type :started, :input "c.mp4", :output "/out/c.mp4", :index 0}
+   {:event :progress,
+    :fraction 0.5,
+    :frame 150,
+    :type :progress,
+    :input "c.mp4",
+    :index 0}
+   {:state :done,
+    :input "c.mp4",
+    :output "/out/c.mp4",
+    :index 0,
+    :type :finished}]},
+ :previews
+ [{:aspect nil,
+   :frame 59,
+   :file "/previews/<id>.png",
+   :width 1280,
+   :notes [],
+   :duration-s 10.01,
+   :t 1.9686333333333332,
+   :sample? false,
+   :height 720}
+  {:aspect "9:16",
+   :frame 0,
+   :file "/previews/<id>.png",
+   :width 1280,
+   :notes [],
+   :duration-s 10.01,
+   :t 0.0,
+   :sample? true,
+   :height 720}],
+ :ports
+ {:log
+  [[:execute "/in/a.mp4" "/out/a.mp4.part.cover.png"]
+   [:execute "/in/a.mp4" "/out/a.mp4.part"]
+   [:commit "/out/a.mp4"]
+   [:discard "/out/a.mp4.part.cover.png"]
+   [:execute "/in/fail.mp4" "/out/fail.mp4.part.cover.png"]
+   [:discard "/out/fail.mp4.part.cover.png"]
+   [:execute "/in/b.mov" "/out/b.mov.part.cover.png"]
+   [:execute "/in/b.mov" "/out/b.mov.part"]
+   [:commit "/out/b.mov"]
+   [:discard "/out/b.mov.part.cover.png"]
+   [:execute "/in/c.mp4" "/out/c.mp4.part"]
+   [:commit "/out/c.mp4"]
+   [:execute "/in/a.mp4" "/previews/<id>.png"]
+   [:sample
+    {:width 720, :height 1280, :fps 25, :seconds 12}
+    "/previews/sample-720x1280.mp4"]
+   [:execute
+    "/in//previews/sample-720x1280.mp4"
+    "/previews/<id>.png"]],
+  :files
+  ["/out/a.mp4.part"
+   "/out/a.mp4.part.cover.png"
+   "/out/b.mov.part"
+   "/out/b.mov.part.cover.png"
+   "/out/c.mp4.part"
+   "/previews/<id>.png"
+   "/previews/<id>.png"
+   "/previews/sample-720x1280.mp4"]}}

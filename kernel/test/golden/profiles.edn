@@ -1,0 +1,198 @@
+{:slugs
+ [["16:9 Video Profile" "16-9-video-profile"]
+  ["  16-9   VIDEO profile " "16-9-video-profile"]
+  ["CON" "_con"]
+  ["com¹" "_com1"]
+  ["Lpt9" "_lpt9"]
+  ["横屏 16:9" "横屏-16-9"]
+  ["ＡＢＣ" "abc"]
+  ["::"
+   {:error :invalid,
+    :message "A profile name needs at least one letter or digit."}]
+  ["-a-" "a"]
+  ["ΟΔΟΣ ΤΕΣΤ" "οδος-τεστ"]
+  ["İstanbul" "i̇stanbul"]
+  ["Straße" "straße"]
+  ["ﬁle №5" "file-no5"]
+  ["Café" "café"]
+  ["Café" "café"]
+  ["e​x" "e-x"]
+  ["tab\tname" "tab-name"]
+  [" nbsp " "nbsp"]
+  ["ǅungla" "džungla"]
+  ["Ⅻ Chapter" "xii-chapter"]
+  ["٣ Arabic-Indic" "٣-arabic-indic"]
+  ["𝐁old 😀 emoji" "bold-emoji"]
+  ["a b" "a-b"]
+  ["abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab"
+   "abababababababababababababababababababababababababababababababab"]],
+ :names
+ [["16:9 Video Profile" "16:9 Video Profile"]
+  ["  16-9   VIDEO profile " "16-9 VIDEO profile"]
+  ["CON" "CON"]
+  ["com¹" "com¹"]
+  ["Lpt9" "Lpt9"]
+  ["横屏 16:9" "横屏 16:9"]
+  ["ＡＢＣ" "ＡＢＣ"]
+  ["::" "::"]
+  ["-a-" "-a-"]
+  ["ΟΔΟΣ ΤΕΣΤ" "ΟΔΟΣ ΤΕΣΤ"]
+  ["İstanbul" "İstanbul"]
+  ["Straße" "Straße"]
+  ["ﬁle №5" "ﬁle №5"]
+  ["Café" "Café"]
+  ["Café" "Café"]
+  ["e​x" "e​x"]
+  ["tab\tname" "tab name"]
+  [" nbsp " " nbsp "]
+  ["ǅungla" "ǅungla"]
+  ["Ⅻ Chapter" "Ⅻ Chapter"]
+  ["٣ Arabic-Indic" "٣ Arabic-Indic"]
+  ["𝐁old 😀 emoji" "𝐁old 😀 emoji"]
+  ["a b" "a b"]
+  ["abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab"
+   "abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab"]],
+ :steps
+ {:taken
+  {:error :conflict,
+   :message "A profile named \"16:9 Video Profile\" already exists."},
+  :deleted true,
+  :copied
+  {:wmark/format 1,
+   :profile/name "From last run",
+   :profile/rev 1,
+   :profile/created-at "2026-09-30T00:00:09Z",
+   :profile/updated-at "2026-09-30T00:00:09Z",
+   :settings {:logo {:opacity 0.5}},
+   :profile/slug "from-last-run"},
+  :created
+  {:wmark/format 1,
+   :profile/name "16:9 Video Profile",
+   :profile/rev 1,
+   :profile/created-at "2026-09-30T00:00:01.500Z",
+   :profile/updated-at "2026-09-30T00:00:01.500Z",
+   :settings {:logo {:anchor :top-left}},
+   :profile/slug "16-9-video-profile"},
+  :invalid
+  [{:error :invalid, :message "Profile name must not be blank."}
+   {:error :invalid, :message "Profile name must not be blank."}
+   {:error :invalid,
+    :message "Profile name contains control characters."}
+   {:error :invalid,
+    :message "Profile names are limited to 80 characters."}
+   {:error :invalid,
+    :message "A profile name needs at least one letter or digit."}],
+  :by-case
+  {:wmark/format 1,
+   :profile/name "16:9 VIDEO PROFILE",
+   :profile/rev 2,
+   :profile/created-at "2026-09-30T00:00:01.500Z",
+   :profile/updated-at "2026-09-30T00:00:03Z",
+   :settings {:logo {:anchor :center}},
+   :profile/slug "16-9-video-profile"},
+  :stale
+  {:error :conflict,
+   :message
+   "This profile changed since it was loaded. Reload it to see the latest version.",
+   :reason :stale},
+  :latest
+  {:profile/updated-at "2026-09-30T00:00:07.500Z",
+   :profile/rev 1,
+   :wmark/format 1,
+   :profile/name "latest",
+   :profile/derived-from "Wide",
+   :settings {:logo {:opacity 0.5}},
+   :profile/created-at "2026-09-30T00:00:07.500Z",
+   :profile/auto? true,
+   :profile/slug "latest"},
+  :alias
+  {:error :conflict,
+   :message
+   "\"16 9 video profile!\" and the existing profile \"16:9 VIDEO PROFILE\" share a file name. Pick another name or overwrite explicitly."},
+  :by-slug
+  {:wmark/format 1,
+   :profile/name "16:9 VIDEO PROFILE",
+   :profile/rev 3,
+   :profile/created-at "2026-09-30T00:00:01.500Z",
+   :profile/updated-at "2026-09-30T00:00:04.500Z",
+   :settings {:logo {:anchor :top-right}},
+   :profile/slug "16-9-video-profile"},
+  :reserved
+  {:error :invalid,
+   :message
+   "\"latest\" is reserved for the auto-saved profile. Save it under another name."},
+  :renamed
+  {:wmark/format 1,
+   :profile/name "Wide",
+   :profile/rev 4,
+   :profile/created-at "2026-09-30T00:00:01.500Z",
+   :profile/updated-at "2026-09-30T00:00:06Z",
+   :settings {:logo {:anchor :top-right}},
+   :profile/slug "wide"},
+  :missing
+  {:error :not-found, :message "No profile named \"missing\"."},
+  :deleted-again
+  {:error :not-found, :message "No profile named \"Wide\"."}},
+ :listed
+ [{:name "latest",
+   :slug "latest",
+   :rev 1,
+   :auto? true,
+   :updated-at "2026-09-30T00:00:07.500Z",
+   :derived-from "Wide"}
+  {:name "From last run",
+   :slug "from-last-run",
+   :rev 1,
+   :auto? false,
+   :updated-at "2026-09-30T00:00:09Z"}
+  {:name "Wide",
+   :slug "wide",
+   :rev 4,
+   :auto? false,
+   :updated-at "2026-09-30T00:00:06Z"}],
+ :resolved
+ [{:settings
+   {:logo {:anchor :bottom-right, :opacity 0.5, :width-ratio 0.2},
+    :text [{:mode :continuous, :content "(c) Studio"}]},
+   :base {:kind :latest, :name "latest"},
+   :provenance
+   {[:logo :anchor] :defaults,
+    [:logo :opacity] :profile,
+    [:logo :width-ratio] :overrides,
+    [:text] :defaults},
+   :warnings []}
+  {:settings
+   {:logo {:anchor :top-right, :opacity 0.85, :width-ratio 0.2},
+    :text [{:mode :continuous, :content "(c) Studio"}]},
+   :base {:kind :named, :name "Wide"},
+   :provenance
+   {[:logo :anchor] :profile,
+    [:logo :opacity] :defaults,
+    [:logo :width-ratio] :overrides,
+    [:text] :defaults},
+   :warnings []}
+  {:settings
+   {:logo {:anchor :bottom-right, :opacity 0.85, :width-ratio 0.2},
+    :text [{:mode :continuous, :content "(c) Studio"}]},
+   :base {:kind :none},
+   :provenance
+   {[:logo :anchor] :defaults,
+    [:logo :opacity] :defaults,
+    [:logo :width-ratio] :overrides,
+    [:text] :defaults},
+   :warnings []}
+  {:error :not-found, :message "No profile named \"nope\"."}],
+ :documents
+ {"from-last-run"
+  "{:profile/created-at \"2026-09-30T00:00:09Z\"\n :profile/name \"From last run\"\n :profile/rev 1\n :profile/updated-at \"2026-09-30T00:00:09Z\"\n :settings {:logo {:opacity 0.5}}\n :wmark/format 1}\n",
+  "latest"
+  "{:profile/auto? true\n :profile/created-at \"2026-09-30T00:00:07.500Z\"\n :profile/derived-from \"Wide\"\n :profile/name \"latest\"\n :profile/rev 1\n :profile/updated-at \"2026-09-30T00:00:07.500Z\"\n :settings {:logo {:opacity 0.5}}\n :wmark/format 1}\n",
+  "wide"
+  "{:profile/created-at \"2026-09-30T00:00:01.500Z\"\n :profile/name \"Wide\"\n :profile/rev 4\n :profile/updated-at \"2026-09-30T00:00:06Z\"\n :settings {:logo {:anchor :top-right}}\n :wmark/format 1}\n"},
+ :decoded [["from-last-run" true] ["latest" true] ["wide" true]],
+ :bad-documents
+ [{:error :invalid, :message "Not valid EDN: p.edn"}
+  {:error :invalid, :message "Not a wmark profile: p.edn"}
+  {:error :invalid,
+   :message "Profile was written by a newer wmark: p.edn"}
+  {:error :invalid, :message "Not a wmark profile: p.edn"}]}

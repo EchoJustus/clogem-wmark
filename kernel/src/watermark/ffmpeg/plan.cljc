@@ -1,9 +1,11 @@
 ;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
 ;; SPDX-License-Identifier: EPL-2.0
-(ns watermark.engine.ffmpeg.compile
+(ns watermark.ffmpeg.plan
   "Render spec -> one FFmpeg invocation (filtergraph + argv + scratch files).
 
-  Pure: the engine writes the files and runs the process. Every construct
+  Pure, and part of the core library: the JVM and the Dart VM compile the
+  same plan (kernel/test/golden/ffmpeg.edn). The host writes the files and
+  runs the process (watermark.engine.ffmpeg on the JVM). Every construct
   here implements a function of the kernel's reference semantics
   (watermark.render); the conformance test renders real frames and measures
   them against those functions.
@@ -15,11 +17,49 @@
   main frame as consumed before the blend; vf_overlay.c, 9.0.2), hence (n-1)
   there, while its `enable` timeline sees the 0-based `n`."
   (:require [clojure.string :as str]
-            [watermark.engine.ffmpeg.graph :as g]
-            [watermark.engine.ffmpeg.process :as process])
-  (:import (java.io File)))
+            [watermark.ffmpeg.graph :as g]
+            [watermark.files :as files]
+            [watermark.util.num :as number]))
 
-(set! *warn-on-reflection* true)
+#?(:clj (set! *warn-on-reflection* true))
+
+;; ---------------------------------------------------------------------------
+;; What FFmpeg must offer
+
+(def required-filters
+  "Filters any plan may use. Minimal FFmpeg builds often lack drawtext (it
+  needs libfreetype, and libharfbuzz since FFmpeg 7.0); without it the engine
+  still renders logo-only specs and reports :text as unsupported."
+  #{"perspective" "overlay" "colorchannelmixer" "scale" "format" "fps" "null" "setpts"
+    "split" "crop" "drawbox"})
+
+(def required-filters-v2
+  "Filters a render spec v2 plan may use: host-rendered bitmaps only need
+  compositing, which LGPL builds (no `perspective`) have."
+  #{"overlay" "fps" "null"})
+
+(def preview-filters
+  "Filters previews add (docs/adr/0011, section 5): `trim` picks one frame of
+  the graph; `color` and `drawgrid` draw the sample clip shown before any
+  video is chosen. All are LGPL. A build without them renders as usual and
+  reports no :preview capability."
+  #{"trim" "color" "drawgrid"})
+
+(defn script-args
+  "How to hand FFmpeg a filtergraph file. `-filter_complex_script` was
+  deprecated in FFmpeg 7.0 in favour of the generic file-option prefix
+  `-/filter_complex`; older releases only know the former."
+  [{:keys [major]} graph-file]
+  (if (or (nil? major) (>= major 7))
+    ["-/filter_complex" (str graph-file)]
+    ["-filter_complex_script" (str graph-file)]))
+
+;; ---------------------------------------------------------------------------
+;; Paths
+
+(def join-path
+  "`dir`/`file` with the separator `dir` already uses (watermark.files/join)."
+  files/join)
 
 (defn ffmpeg-path
   "Forward slashes: FFmpeg accepts them on Windows too, and they need no
@@ -43,18 +83,18 @@
     :windows  (if (empty? windows)
                 "0"
                 ;; flat sum, never nested if(): the parser caps nesting at 100
-                (str/join "+" (for [{:keys [start end]} windows] (g/fmt "between(%s,%d,%d)" n start end))))
-    :periodic (g/fmt "gte(%s,%d)*lt(mod(%s-%d,%d),%d)" n offset n offset period length)))
+                (str/join "+" (for [{:keys [start end]} windows] (str "between(" n "," start "," end ")"))))
+    :periodic (str "gte(" n "," offset ")*lt(mod(" n "-" offset "," period ")," length ")")))
 
 (defn- scatter-expr [{:keys [a b]} {:keys [margin modulus]} {:keys [offset period]} n]
-  (g/fmt "(%s+%s*mod(floor((%s-%d)/%d)*%d+%d,%d)/%d)"
-         (g/num-str margin) (g/num-str (- 1.0 (* 2.0 margin))) n offset period a b modulus modulus))
+  (str "(" (g/num-str margin) "+" (g/num-str (- 1.0 (* 2.0 margin)))
+       "*mod(floor((" n "-" offset ")/" period ")*" a "+" b "," modulus ")/" modulus ")"))
 
 (defn- per-window-expr [windows points axis n]
   (if (empty? windows)
     "0"
     (str "(" (str/join "+" (for [[{:keys [start end]} pt] (map vector windows points)]
-                             (g/fmt "between(%s,%d,%d)*%s" n start end (g/num-str (nth pt axis)))))
+                             (str "between(" n "," start "," end ")*" (g/num-str (nth pt axis)))))
          ")")))
 
 (defn placement-exprs
@@ -85,8 +125,8 @@
   the near edge grows by at most D/(D - w/2)."
   [{:keys [width height]} {:keys [distance]}]
   (let [grow (/ distance (- distance (/ width 2.0)))]
-    {:pad-x (+ 2 (long (Math/ceil (* width 0.03))))
-     :pad-y (+ 2 (long (Math/ceil (* (/ height 2.0) (- grow 1.0)))))}))
+    {:pad-x (+ 2 (number/ceil-int (* width 0.03)))
+     :pad-y (+ 2 (number/ceil-int (* (/ height 2.0) (- grow 1.0))))}))
 
 (defn flip-corners
   "The eight `perspective` corner expressions (sense=destination) mapping the
@@ -95,14 +135,14 @@
   canvas width; D the camera distance in pixels."
   [{:keys [start period duration distance min-cos]} first-frame]
   (let [n   (frame-var "(in-1)" first-frame)
-        p   (g/fmt "mod(%s-%d,%d)" n start period)
+        p   (str "mod(" n "-" start "," period ")")
         m   (g/num-str min-cos)
-        pre (g/fmt (str "st(0,if(gte(%s,%d)*lt(%s,%d),PI*(1-cos(PI*%s/%d)),0));st(1,cos(ld(0)));"
-                        "st(1,if(lt(abs(ld(1)),%s),if(gte(ld(1),0),%s,-%s),ld(1)));st(2,sin(ld(0)));")
-                   n start p duration p duration m m m)
+        pre (str "st(0,if(gte(" n "," start ")*lt(" p "," duration "),PI*(1-cos(PI*" p "/" duration ")),0));"
+                 "st(1,cos(ld(0)));"
+                 "st(1,if(lt(abs(ld(1))," m "),if(gte(ld(1),0)," m ",-" m "),ld(1)));st(2,sin(ld(0)));")
         d   (g/num-str distance)
-        right (g/fmt "%s/(%s-0.5*W*ld(2))" d d)
-        left  (g/fmt "%s/(%s+0.5*W*ld(2))" d d)
+        right (str d "/(" d "-0.5*W*ld(2))")
+        left  (str d "/(" d "+0.5*W*ld(2))")
         e     #(g/expr (str pre %))]
     [:x0 (e (str "W/2*(1-ld(1)*" left ")"))  :y0 (e (str "H/2*(1-" left ")"))
      :x1 (e (str "W/2*(1+ld(1)*" right ")")) :y1 (e (str "H/2*(1-" right ")"))
@@ -203,7 +243,7 @@
 
       :else
       (let [bps (* (bits-per-pixel quality 0.12) width height fps (if (= codec :hevc) 0.6 1.0))]
-        (cond-> ["-c:v" encoder "-b:v" (str (Math/round (double bps)))]
+        (cond-> ["-c:v" encoder "-b:v" (str (number/round-half-up bps))]
           ;; the hardware encoder when there is one, else Apple's software
           ;; encoder (FFmpeg otherwise demands hardware, which VMs lack)
           (str/ends-with? encoder "_videotoolbox") (into ["-allow_sw" "1"]))))))
@@ -315,7 +355,7 @@
   indexes, the argv that reads them, and the file to write."
   [request workdir n]
   (let [text      (when-not (get-in request [:output :frame]) (ffmetadata (:metadata request)))
-        meta-file (when text (str (File. (str workdir) "metadata.txt")))
+        meta-file (when text (join-path workdir "metadata.txt"))
         cover     (cover-path request)
         meta-in   (when meta-file (inc n))
         cover-in  (when cover (+ 1 n (if meta-file 1 0)))]
@@ -333,7 +373,7 @@
   (let [{:keys [canvas timebase layers]} spec
         first-frame (:first-frame timebase 0)
         fps-str     (str (:fps-num timebase) "/" (:fps-den timebase))
-        fps         (/ (double (:fps-num timebase)) (:fps-den timebase))
+        fps         (/ (* 1.0 (:fps-num timebase)) (:fps-den timebase))
         n           (frame-var "n" first-frame)
         images      (filter #(= :image (:kind %)) layers)
         texts       (filter #(= :text (:kind %)) layers)
@@ -345,7 +385,7 @@
                          (let [label (str "v" i)]
                            (recur more (inc i) label
                                   (into out (image-chains img i prev label first-frame))))))
-        textfiles   (vec (for [i (range (count texts))] (ffmpeg-path (File. (str workdir) (str "text-" i ".txt")))))
+        textfiles   (vec (for [i (range (count texts))] (ffmpeg-path (join-path workdir (str "text-" i ".txt")))))
         drawtexts   (vec (for [[i {:keys [style] :as layer}] (map-indexed vector texts)]
                            (let [[x y] (placement-exprs layer n)
                                  enable (timing-expr (:timing layer) n)]
@@ -366,7 +406,7 @@
                                                 (if (seq drawtexts) drawtexts [(g/f "null")])
                                                 ["vout"])]
                                       (still-chains output)))
-        graph-file  (str (File. (str workdir) "graph.txt"))
+        graph-file  (join-path workdir "graph.txt")
         encoder     (when-not (:frame output) (pick-encoder encode encoders))
         more        (extras request workdir (count images))]
     {:engine   :ffmpeg
@@ -374,13 +414,13 @@
      :output   (:path output)
      :graph    graph
      :files    (merge (into {graph-file graph} (map vector textfiles (map :text texts))) (:files more))
-     :total-us (some-> (:duration-s media) (* 1e6) long)
+     :total-us (some-> (:duration-s media) (* 1e6) number/floor-int)
      :argv     (vec (concat [ffmpeg "-hide_banner" "-nostdin" "-y" "-loglevel" "error"
                              "-progress" "pipe:1" "-nostats"
                              "-i" (str source)]
                             (mapcat (fn [img] ["-i" (get-in img [:source :path])]) images)
                             (:argv more)
-                            (process/script-args version graph-file)
+                            (script-args version graph-file)
                             (output-args request {:version version :encoder encoder :canvas canvas
                                                   :fps fps :strip-metadata? strip-metadata?
                                                   :meta-input (:meta-input more) :cover-input (:cover-input more)})))}))
@@ -400,12 +440,12 @@
   [{:keys [timing rest cycle]} n]
   (let [base (timing-expr timing n)
         {:keys [start period frames]} cycle
-        in-flip (when cycle (g/fmt "gte(%s,%d)*lt(mod(%s-%d,%d),%d)" n start n start period (count frames)))]
+        in-flip (when cycle (str "gte(" n "," start ")*lt(mod(" n "-" start "," period ")," (count frames) ")"))]
     (into [{:bitmap (:bitmap rest) :x (:x rest) :y (:y rest)
             :enable (all-of base (some->> in-flip (str "1-")))}]
           (map-indexed (fn [p {:keys [bitmap x y]}]
                          {:bitmap bitmap :x x :y y
-                          :enable (all-of base (g/fmt "gte(%s,%d)*eq(mod(%s-%d,%d),%d)" n start n start period p))})
+                          :enable (all-of base (str "gte(" n "," start ")*eq(mod(" n "-" start "," period ")," p ")"))})
                        frames))))
 
 (defn- bitmap-draw
@@ -427,7 +467,7 @@
   (let [{:keys [canvas timebase layers bitmaps]} spec
         first-frame (:first-frame timebase 0)
         fps-str     (str (:fps-num timebase) "/" (:fps-den timebase))
-        fps         (/ (double (:fps-num timebase)) (:fps-den timebase))
+        fps         (/ (* 1.0 (:fps-num timebase)) (:fps-den timebase))
         n           (frame-var "n" first-frame)
         n-xy        (frame-var "(n-1)" first-frame)
         draws       (vec (mapcat (fn [layer]
@@ -450,7 +490,7 @@
                                         overlays
                                         [(g/chain [base] [(g/f "null")] ["vout"])])
                                       (still-chains output)))
-        graph-file  (str (File. (str workdir) "graph.txt"))
+        graph-file  (join-path workdir "graph.txt")
         encoder     (when-not (:frame output) (pick-encoder encode encoders))
         more        (extras request workdir (count draws))]
     {:engine   :ffmpeg
@@ -458,7 +498,7 @@
      :output   (:path output)
      :graph    graph
      :files    (merge {graph-file graph} (:files more))
-     :total-us (some-> (:duration-s media) (* 1e6) long)
+     :total-us (some-> (:duration-s media) (* 1e6) number/floor-int)
      :argv     (vec (concat [ffmpeg "-hide_banner" "-nostdin" "-y" "-loglevel" "error"
                              "-progress" "pipe:1" "-nostats"
                              "-i" (str source)]
@@ -468,7 +508,7 @@
                                          "-framerate" "1" "-i" (str path)]))
                                     draws)
                             (:argv more)
-                            (process/script-args version graph-file)
+                            (script-args version graph-file)
                             (output-args request {:version version :encoder encoder :canvas canvas
                                                   :fps fps :strip-metadata? strip-metadata?
                                                   :meta-input (:meta-input more) :cover-input (:cover-input more)})))}))

@@ -99,7 +99,7 @@
                :entitlements (features/community) :secret-for (constantly (byte-array 32))
                :font (delay "/fonts/a.ttf")}]
       (spit in "stand-in input")
-      (let [[r] (jobs/run-job! env {:ctx {} :inputs [in]
+      (let [[r] @(jobs/run-job! env {:ctx {} :inputs [in]
                                     :settings (resolve/deep-merge schema/defaults
                                                                   {:logo {:path "/l.png"} :encode {:audio :none}})}
                                {})]

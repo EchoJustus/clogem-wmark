@@ -51,8 +51,8 @@ shells (sidecar mode) and hosted APIs built on the same core.
 
 | Directory | Role | Language / runs on |
 |---|---|---|
-| `kernel/` | The core library's start (decision 11): settings schema and resolution, render spec (v1, v2) and reference semantics, the v2 rasterizer (TrueType, text, warp), keyed seeds, SplitMix64 PRNG, text-mode registry, `VideoEngine` protocol, feature catalog, the settings form | `.cljc` only: GraalVM/JVM, and the Dart VM through ClojureDart (`kernel/dart` runs its golden vectors there) |
-| `src/` | Host core: profile rules, store/media/queue ports and local adapters, job pipeline, Core API, FFmpeg and native engines, REST routes | JVM |
+| `kernel/` | The core library (decision 11): settings schema and resolution, render spec (v1, v2) and reference semantics, the v2 rasterizer (TrueType, text, warp), keyed seeds, SplitMix64 PRNG, text-mode registry, `VideoEngine` protocol, feature catalog, the settings form, the FFmpeg plan compiler and parsers, the profile rules and the store port, the job pipeline and the Core API (on tasks), its own Unicode tables | `.cljc` only: GraalVM/JVM, and the Dart VM through ClojureDart (`kernel/dart` runs its golden vectors there) |
+| `src/` | Host core: the home folder, local adapters (profile files, media, files, the in-process queue), FFmpeg and native engines, REST routes | JVM |
 | `web/` | Built-in web UI: server-rendered HTML plus Datastar over SSE (vendored `datastar.js`, no npm) | JVM |
 | `desktop/` | CLI, http-kit server, loopback security, sidecar mode, native-image metadata | JVM / GraalVM |
 | `native/` | C ABI `wmark_engine.h`, mock engine, exported JSON Schemas | C |
@@ -198,7 +198,8 @@ its own matrix.
 **Kernel (tested by `architecture_test`)**
 - `.cljc` only. It requires nothing outside the kernel except
   `clojure.string`, plus malli in exactly `watermark.core.schema` and
-  `watermark.render.schema`, for JSON Schema on the JVM.
+  `watermark.render.schema`, for JSON Schema on the JVM, and `clojure.edn`
+  in exactly `watermark.util.host`, for reading EDN on the JVM.
   `watermark.util.schema` validates and decodes on every runtime, in malli's
   words (ADR 0012).
 - No multimethods: ClojureDart has none. Extension points are registries
@@ -216,9 +217,12 @@ its own matrix.
 `bb kernel-dart` and in CI, ADR 0012)
 - Runtime-specific behaviour lives in small host primitives with one
   `#?(:clj … :cljd …)` branch per runtime: `watermark.util.num` (numbers,
-  their formatting, 64-bit wrapping arithmetic), `watermark.core.seeds`
+  their text both ways, 64-bit wrapping arithmetic), `watermark.core.seeds`
   (HMAC), `watermark.raster` (SHA-256), `watermark.raster.image` (byte
-  arrays), `watermark.raster.text` (code points), and the schema
+  arrays), `watermark.util.chars` (code points), `watermark.util.host`
+  (catching ex-info errors, a lock, the clock, reading EDN),
+  `watermark.util.task` (eventual values: `CompletableFuture`, `Future`),
+  and the schema
   namespaces' `json-schema` (malli, JVM only). Elsewhere, reader
   conditionals carry only type hints and the reflection flag.
 - ClojureDart's rules (each found by a failing build, ADR 0012):
@@ -231,7 +235,14 @@ its own matrix.
   - side effects are sequenced with `let`, never by a map literal, whose
     values ClojureDart evaluates in another order;
   - `(= 1 1.0)` is true on the Dart VM; compare golden data with
-    `watermark.golden-inputs/strict=`.
+    `watermark.golden-inputs/strict=`;
+  - `clojure.string`'s `trim`, `blank?` and `lower-case` follow Dart there,
+    and Dart has no normalizer: portable text goes through
+    `watermark.util.text`, on the library's own Unicode tables (UCD 16.0.0,
+    ADR 0013);
+  - nothing can wait for a `Future`: a render's outcome is a task, library
+    code chains it with `watermark.util.task`, and only JVM hosts wait
+    (`task/await`, `api/await`).
 - No `format`, `java.*` or ratios outside those primitives, and only regular
   expressions both runtimes read the same way.
 - Logic moving into the library brings golden vectors with it (FFmpeg argv
@@ -258,13 +269,13 @@ its own matrix.
   Any rendering change needs the conformance harness
   (`testkit/src/watermark/engine/conformance.clj`).
 - FFmpeg:
-  - graphs are built from data (`engine/ffmpeg/graph.clj`), never by string
-    splicing;
+  - graphs are built from data (`watermark.ffmpeg.graph`, in the core
+    library), never by string splicing;
   - text reaches FFmpeg only through `textfile=` with `expansion=none`;
   - numbers are locale-independent;
   - executables are always invoked by absolute path;
-  - `process/required-filters` must cover every filter the compiler emits
-    (tested); a preview adds only `process/preview-filters`, which gate the
+  - `plan/required-filters` must cover every filter the compiler emits
+    (tested); a preview adds only `plan/preview-filters`, which gate the
     `:preview` capability (tested).
 
 **Orchestration and ports (tested)**
@@ -273,7 +284,8 @@ its own matrix.
 - `src/` requires nothing from desktop or web.
 - `web/` talks to `watermark.core.api` only.
 - Every Core API function takes `(sys ctx ...)`, and `ctx` carries the tenant
-  and user. Jobs are tenant-scoped (list, cancel and subscribe filter on
+  and user. The ones that render (`preview-frame`, `run-batch!`) return
+  tasks. Jobs are tenant-scoped (list, cancel and subscribe filter on
   `(:tenant ctx)`). Profiles come from `((:profiles-for sys) ctx)`.
 
 **Configuration: fallback and provenance** (`watermark.config`; the store contract in `testkit/`)
@@ -470,7 +482,17 @@ first cut (ADR 0011, "Implementation"); what remains of them is listed there.
 3. **M3c · Pure host logic into the library,** behind new ports (process
    runner, files, clock, HMAC): the profile rules, planning, the FFmpeg plan
    compiler and parsers, the use cases. Golden vectors grow to cover argv,
-   filtergraphs and the form model, on both runtimes.
+   filtergraphs and the form model, on both runtimes (ADR 0013).
+   - *done:* the FFmpeg plan compiler and parsers (`watermark.ffmpeg.*`,
+     `ffmpeg.edn`); the text rules on the library's own Unicode tables,
+     the store port and the profile rules (`watermark.config`, `text.edn`,
+     `profiles.edn`);
+   - *done:* planning, the job pipeline and the Core API, on one async
+     core (`watermark.util.task`) and a files port (`pipeline.edn`);
+   - *done:* the FFmpeg engine's decisions (`watermark.ffmpeg.engine`:
+     capabilities, checks, command lines, progress, outcomes), so each
+     host's engine adapter only runs processes. No process-runner port:
+     ADR 0013, section 4, says why.
 4. **M3d · The Dart adapters and the Dart CLI** (`dart:io` files,
    `Process.start` for FFmpeg), with a conformance run on real frames. GUI
    apps then embed the library in-process (Phase 2).

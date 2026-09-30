@@ -19,6 +19,7 @@ owner first (CLAUDE.md, "Decisions").
 | [0010](0010-remove-wmark-tui.md) | Remove `wmark-tui`; the CLI takes over its useful parts and gains a progress bar | Accepted |
 | [0011](0011-web-ui-product-overhaul.md) | The web UI as a product: design system with light and dark themes, a schema-generated settings form, live preview | Accepted (first cut built) |
 | [0012](0012-the-kernel-on-the-dart-vm.md) | The kernel on the Dart VM: a ClojureDart harness, host primitives, one validator for both runtimes | Accepted |
+| [0013](0013-host-logic-into-the-core-library.md) | The host's pure logic moves into the core library (M3c): FFmpeg plans and parsers first | Accepted (in steps) |
 
 New records copy this shape: **Status**, **Context**, **Decision**,
 **Consequences**, **Alternatives**, **Sources** (with the date facts were

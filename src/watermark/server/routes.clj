@@ -107,15 +107,15 @@
     (assoc (api/settings-form sys ctx (:profile/slug doc)) :saved doc)))
 
 (defn- h-preview [sys ctx _ _ {:keys [profile clean settings source t aspect]}]
-  (let [p (api/preview-frame sys ctx {:profile  (if clean :none profile)
-                                      :settings (settings-in settings)
-                                      :source   source
-                                      :t        (when (number? t) (double t))
-                                      :aspect   aspect})]
+  (let [p (api/await (api/preview-frame sys ctx {:profile  (if clean :none profile)
+                                                 :settings (settings-in settings)
+                                                 :source   source
+                                                 :t        (when (number? t) (double t))
+                                                 :aspect   aspect}))]
     (assoc p :url (str "/api/v1/previews/" (:id p)))))
 
 (defn- h-preview-file [sys ctx _ {:keys [id]} _]
-  (let [f (api/preview-file sys ctx id)]
+  (let [f (java.io.File. ^String (api/preview-file sys ctx id))]
     {::raw {:status  200
             :headers {"Content-Type" "image/png" "Cache-Control" "private, max-age=3600"
                       "X-Content-Type-Options" "nosniff"}

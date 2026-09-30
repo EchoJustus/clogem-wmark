@@ -1,7 +1,9 @@
 ;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
 ;; SPDX-License-Identifier: EPL-2.0
-(ns watermark.engine.ffmpeg.graph
+(ns watermark.ffmpeg.graph
   "Pure filtergraph construction: data in, FFmpeg filtergraph text out.
+  Part of the core library: the same graph on the JVM and the Dart VM
+  (kernel/test/golden/ffmpeg.edn).
 
   Filters are data -- {:filter \"drawtext\" :args [[:x <expr>] ...]} -- so
   plans can be logged, diffed and unit-tested without running FFmpeg.
@@ -15,33 +17,26 @@
   * User text never enters the graph. drawtext reads it from a UTF-8
     `textfile` with `expansion=none`: no escaping bugs, no filter injection
     (which matters once this runs as a SaaS backend).
-  * Numbers are rendered locale-independently. `format` with the default
-    locale writes 0,85 on a German Windows -- and a comma is a filter separator."
-  (:require [clojure.string :as str])
-  (:import (java.math BigDecimal)
-           (java.util Locale)))
+  * Numbers are rendered locale-independently (watermark.util.num/decimal-str).
+    A locale-aware format writes 0,85 on a German Windows -- and a comma is
+    a filter separator."
+  (:require [clojure.string :as str]
+            [watermark.util.num :as number]))
 
-(set! *warn-on-reflection* true)
+#?(:clj (set! *warn-on-reflection* true))
 
 ;; ---------------------------------------------------------------------------
 ;; Rendering primitives
 
-(defn fmt
-  "Locale-independent `format`."
-  ^String [^String pattern & args]
-  (String/format Locale/ROOT pattern (to-array args)))
-
 (defn num-str
   "Shortest plain decimal: 24 -> \"24\", 0.85 -> \"0.85\", 1e-4 -> \"0.0001\"."
-  ^String [x]
-  (if (integer? x)
-    (str x)
-    (.toPlainString (.stripTrailingZeros (BigDecimal/valueOf (double x))))))
+  [x]
+  (number/decimal-str x))
 
 (defn escape-value
   "Escape a literal for a filter option value: option level (\\ ' :) first,
   then graph level (\\ ' [ ] , ;)."
-  ^String [s]
+  [s]
   (-> (str s)
       (str/replace #"[\\':]" #(str "\\" %))
       (str/replace #"[\\'\[\],;]" #(str "\\" %))))
@@ -63,7 +58,7 @@
     (number? v)                         (num-str v)
     :else                               (escape-value v)))
 
-(defn render-filter ^String [{:keys [filter args]}]
+(defn render-filter [{:keys [filter args]}]
   (let [kvs (for [[k v] args :when (some? v)]
               (str (name k) "=" (render-value v)))]
     (if (seq kvs) (str filter "=" (str/join ":" kvs)) filter)))
@@ -73,7 +68,7 @@
   [ins filters outs]
   {:in ins :filters filters :out outs})
 
-(defn render ^String [chains]
+(defn render [chains]
   (str/join ";\n"
             (for [{:keys [in filters out]} chains]
               (str (apply str (map #(str "[" % "]") in))
