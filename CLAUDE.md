@@ -376,12 +376,13 @@ its own matrix.
   them in the doc you touch.
 - **Commits:** imperative subject; the body says why. Branch for anything
   non-trivial. Don't force-push shared branches.
-- **Commit identity** (owner, 2026-09-30): author and committer
-  `EchoJustus <68955865+EchoJustus@users.noreply.github.com>` (set
-  `user.name` and `user.email`), web-based commits included; the DCO
-  sign-off is written into the message as
+- **Commit identity** (owner, 2026-09-30, revised the same day): a
+  session's commits are authored and committed by
+  `Claude <noreply@anthropic.com>` (set `user.name` and `user.email`),
+  which the sessions' commit check expects; the DCO sign-off is written
+  into the message as
   `Signed-off-by: EchoJustus <echojustus.oss@outlook.com>`, not by
-  `git commit -s`, which would sign with the noreply address.
+  `git commit -s`, which would sign with the author's address.
 - **Decisions:** record each non-trivial one as a short ADR in
   `docs/adr/NNNN-title.md`. Escalate to the owner instead of deciding alone:
   purchases and credentials, anything that changes what is public or how it
