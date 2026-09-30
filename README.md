@@ -99,7 +99,7 @@ web/        built-in UI: escaping hiccup, Datastar SSE events, views, handler;
             vendored datastar.js (MIT) and app.css
 desktop/    CLI, http-kit server, loopback security, sidecar mode, native-image metadata
 native/     wmark_engine.h (C ABI), a mock engine, exported JSON Schemas
-testkit/    conformance harness, store contract, golden vectors, architecture checks
+testkit/    conformance harness, store and queue contracts, golden vectors, architecture checks
 build/      wmark.build: interprets the build matrix in deps.edn
 test/       tests, including test/e2e (browser smoke test)
 spikes/     experiments kept as evidence (not built)

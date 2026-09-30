@@ -12,7 +12,7 @@
   (:refer-clojure :exclude [reduce await])
   #?(:cljd (:require ["dart:async" :as async])
      :clj  (:import (java.util.concurrent CompletableFuture CompletionException ExecutionException)
-                    (java.util.function BiConsumer BiFunction Function))))
+                    (java.util.function BiConsumer BiFunction Function Supplier))))
 
 #?(:clj (set! *warn-on-reflection* true))
 
@@ -54,6 +54,15 @@
   [f]
   (try (of (f))
        (catch #?(:clj Throwable :cljd Object) e (failed e))))
+
+(defn later
+  "A task for (f), run soon but not on the caller's stack: on the JVM's
+  common pool, from the Dart VM's event loop. A task f returns is waited
+  for; an error it throws fails the task."
+  [f]
+  #?(:clj  (.thenCompose (CompletableFuture/supplyAsync (reify Supplier (get [_] (attempt f))))
+                         (reify Function (apply [_ t] t)))
+     :cljd (Future (fn [] (attempt f)))))
 
 (defn then
   "A task for (f v) once `t` resolves to v; a task f returns is waited for.

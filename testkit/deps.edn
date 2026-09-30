@@ -5,6 +5,7 @@
 ;;   watermark.engine.conformance  render with any VideoEngine, measure real frames
 ;;                                 against the reference semantics
 ;;   watermark.store-contract      the behaviour every ProfileStore must show
+;;   watermark.queue-contract      the behaviour every in-process JobQueue must show
 ;;   watermark.golden              golden-vector files (cross-platform contract)
 ;;   watermark.architecture        ns-form and license-header checks for fitness tests
 ;; Consumers add it to their test alias:

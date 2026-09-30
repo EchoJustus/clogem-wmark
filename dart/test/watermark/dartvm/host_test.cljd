@@ -15,6 +15,7 @@
             [watermark.config :as config]
             [watermark.core.api :as api]
             [watermark.core.features :as features]
+            [watermark.core.queue :as queue]
             [watermark.dartvm.ffmpeg :as ffmpeg]
             [watermark.dartvm.fs :as fs]
             [watermark.dartvm.home :as home]
@@ -24,6 +25,7 @@
             [watermark.dartvm.store :as store]
             [watermark.engine :as engine]
             [watermark.media :as pmedia]
+            [watermark.queue-contract :as queue-contract]
             [watermark.raster.image :as image]
             [watermark.store-contract :as contract]
             [watermark.util.task :as task]))
@@ -40,6 +42,9 @@
 
 (deftest the-file-store-passes-the-store-contract
   (contract/run-all (store/file-store (fs/join (fs/temp-dir "wmark-store") "profiles"))))
+
+(deftest the-job-queue-passes-the-queue-contract
+  (task/then (queue-contract/run-all queue/queue) queue-contract/assert-all))
 
 (deftest profiles-are-files-the-jvm-reads
   (let [dir (fs/join (fs/temp-dir "wmark-store") "profiles")
@@ -212,3 +217,65 @@
                    (task/then (task/then (Future/delayed (Duration .milliseconds 500)) (fn [_] (engine/cancel! h)))
                               (fn [_] (task/then (engine/outcome h)
                                                  (fn [o] (is (= :cancelled (:status o)) (pr-str o)))))))))))
+
+;; ---------------------------------------------------------------------------
+;; Jobs through the queue, as an app submits them
+
+(def ^:private ctx {:tenant "local" :user "local"})
+
+(defn- follow-job
+  "Submit a job for `clip` on `sys`, calling (on-event event job) for each of
+  its events; a task of [job-as-submitted job-at-its-end events]."
+  [sys clip logo on-event]
+  (let [ended  (task/deferred)
+        events (atom [])
+        k      (str "follow-" (random-uuid))]
+    (api/subscribe-jobs! sys ctx k
+                         (fn [e]
+                           (swap! events conj e)
+                           (on-event e)
+                           (when (#{:done :failed :cancelled} (:state (:job e)))
+                             (api/unsubscribe-jobs! sys ctx k)
+                             (task/complete! ended (:job e)))))
+    (let [job (api/submit-job! sys ctx {:profile  :none
+                                        :settings {:logo  {:path logo :anchor :top-left}
+                                                   :texts [{:mode :continuous :content "(c) Dart"}]}
+                                        :inputs   [clip]})]
+      (task/then (task/task-of ended) (fn [end] [job end @events])))))
+
+(deftest a-queued-job-renders
+  (when-ffmpeg
+   (fn []
+     (let [dir (fs/temp-dir "wmark-media")
+           {:keys [clip logo]} (make-media! dir)]
+       (-> (main/system {:home (fs/temp-dir "wmark-home") :render-spec 2})
+           (task/then (fn [sys]
+                        (task/then (follow-job sys clip logo (fn [_]))
+                                   (fn [[job end events]]
+                                     (is (= :queued (:state job)))
+                                     (is (= (:id job) (:id end)))
+                                     (is (= :done (:state end)) (pr-str end))
+                                     (is (= [:done] (mapv :state (:result end))))
+                                     (is (= [:queued :running] (take 2 (distinct (map (comp :state :job) events))))
+                                         "queued, then running")
+                                     (is (some (comp :progress :job) events) "progress reached the job")
+                                     (is (fs/file? (fs/join dir "clip_wm.mp4")))
+                                     (is (= [(:id job)] (mapv :id (api/list-jobs sys ctx)))))))))))))
+
+(deftest a-queued-job-cancels
+  (when-ffmpeg
+   (fn []
+     (let [dir (fs/temp-dir "wmark-media")
+           {:keys [clip logo]} (make-media! dir)]
+       (-> (main/system {:home (fs/temp-dir "wmark-home") :render-spec 2})
+           (task/then (fn [sys]
+                        (let [asked (atom false)]
+                          (task/then (follow-job sys clip logo
+                                                 (fn [e]
+                                                   (when (and (= :running (:state (:job e)))
+                                                              (compare-and-set! asked false true))
+                                                     (api/cancel-job! sys ctx (:id (:job e))))))
+                                     (fn [[_ end _]]
+                                       (is (= :cancelled (:state end)) (pr-str end))
+                                       (is (not (fs/file? (fs/join dir "clip_wm.mp4"))) "nothing was published")
+                                       (is (not (fs/file? (fs/join dir "clip_wm.part.mp4"))))))))))))))

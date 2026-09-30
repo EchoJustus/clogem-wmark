@@ -20,10 +20,10 @@
                    can render the spec that way, else v2 (host-drawn
                    bitmaps, docs/adr/0006)
 
-  JobQueue is the port for queueing: watermark.core.jobs.local runs jobs on
-  an in-process executor; a serverless deployment implements the same
-  protocol over a durable queue (SQS, Cloud Tasks, a Postgres table) and runs
-  `run-job!` in its workers.
+  JobQueue is the port for queueing: watermark.core.queue is the in-process
+  one on every host (docs/adr/0015); a serverless deployment implements the
+  same protocol over a durable queue (SQS, Cloud Tasks, a Postgres table)
+  and runs `run-job!` in its workers.
 
   Part of the core library (docs/adr/0013, section 3). Planning is
   synchronous; rendering finishes later, so `render-input!` and `run-job!`
