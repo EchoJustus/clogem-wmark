@@ -45,6 +45,14 @@
       (deliver p 1)
       (is (= 2 (task/await t))))))
 
+(deftest running-later
+  (let [caller (Thread/currentThread)]
+    (is (not (identical? caller (task/await (task/later #(Thread/currentThread)))))
+        "off the caller's thread"))
+  (is (= 2 (task/await (task/later #(task/resolved 2)))) "a task it returns is waited for")
+  (is (= "late" (ex-message (error-of (task/later #(throw (ex-info "late" {}))))))
+      "what it throws fails the task"))
+
 (deftest reducing
   (testing "steps run in order, each waiting for the last"
     (let [order (atom [])]

@@ -51,13 +51,13 @@ shells (sidecar mode) and hosted APIs built on the same core.
 
 | Directory | Role | Language / runs on |
 |---|---|---|
-| `kernel/` | The core library (decision 11): settings schema and resolution, render spec (v1, v2) and reference semantics, the v2 rasterizer (TrueType, text, warp), keyed seeds, SplitMix64 PRNG, text-mode registry, `VideoEngine` protocol, feature catalog, the settings form, the FFmpeg plan compiler and parsers, the profile rules and the store port, the job pipeline and the Core API (on tasks), the command line (`watermark.cli`), the media fingerprint and the executable search, its own Unicode tables | `.cljc` only: GraalVM/JVM, and the Dart VM through ClojureDart (`kernel/dart` runs its golden vectors there) |
-| `src/` | Host core: the home folder, local adapters (profile files, media, files, the in-process queue), FFmpeg and native engines, REST routes | JVM |
+| `kernel/` | The core library (decision 11): settings schema and resolution, render spec (v1, v2) and reference semantics, the v2 rasterizer (TrueType, text, warp), keyed seeds, SplitMix64 PRNG, text-mode registry, `VideoEngine` protocol, feature catalog, the settings form, the FFmpeg plan compiler and parsers, the profile rules and the store port, the job pipeline, the in-process job queue and the Core API (on tasks), the command line (`watermark.cli`), the media fingerprint and the executable search, its own Unicode tables | `.cljc` only: GraalVM/JVM, and the Dart VM through ClojureDart (`kernel/dart` runs its golden vectors there) |
+| `src/` | Host core: the home folder, local adapters (profile files, media, files, the queue's thread pool), FFmpeg and native engines, REST routes | JVM |
 | `dart/` | The Dart host (ADR 0014): adapters over `dart:io` (files, media, profiles, the rasterizer's I/O, FFmpeg through `Process`) and `wmark-dart`, the same CLI on the Dart VM | ClojureDart, the Dart VM |
 | `web/` | Built-in web UI: server-rendered HTML plus Datastar over SSE (vendored `datastar.js`, no npm) | JVM |
 | `desktop/` | CLI, http-kit server, loopback security, sidecar mode, native-image metadata | JVM / GraalVM |
 | `native/` | C ABI `wmark_engine.h`, mock engine, exported JSON Schemas | C |
-| `testkit/` | Harnesses for code that plugs in from elsewhere: conformance, store contract, golden vectors, architecture checks | JVM (tests) |
+| `testkit/` | Harnesses for code that plugs in from elsewhere: conformance, store and queue contracts, golden vectors, architecture checks | JVM (tests) |
 | `build/` | `wmark.build`, the interpreter of the build matrix | JVM (tool) |
 
 `kernel/`, `web/`, `desktop/`, `testkit/` and `build/` each have a
@@ -508,7 +508,12 @@ first cut (ADR 0011, "Implementation"); what remains of them is listed there.
      engine over `dart:io`;
    - *done:* `wmark-dart` (`bb dart-cli`), checked on real frames: pixel
      for pixel the JVM's `wmark`, render spec 1 and 2, the LGPL build
-     included (`watermark.dart-cli-test`, CI's `dart` job).
+     included (`watermark.dart-cli-test`, CI's `dart` job);
+   - *done:* one in-process job queue for both hosts (ADR 0015):
+     `watermark.core.queue` in the library, the JVM's `jobs.local` a thin
+     wrapper with a thread pool, the Dart host's system `:jobs`; both pass
+     `watermark.queue-contract` (testkit), and a job queued on the Dart VM
+     renders and cancels with real FFmpeg.
 
 **Done before:**
 - **M1 · CI/CD** (PR #1). Its exit was met by `v0.1.0-rc.1` (2026-09-27): a

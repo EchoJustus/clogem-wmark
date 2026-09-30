@@ -13,6 +13,7 @@
             [watermark.core.form]
             [watermark.core.jobs]
             [watermark.core.modes :as modes]
+            [watermark.core.queue]
             [watermark.core.resolve]
             [watermark.core.schema :as schema]
             [watermark.core.seeds]
@@ -92,3 +93,16 @@
                      (is (= [{:v 41} :always] @seen))
                      (task/reduce (fn [acc x] (if (= x 3) (reduced acc) (task/resolved (+ acc x)))) 0 (range 10))))
         (task/then (fn [total] (is (= 3 total)))))))
+
+(deftest later-is-after-the-caller
+  ;; from the event loop: the caller's code runs to its end first
+  (let [order (atom [])
+        t     (task/later (fn [] (swap! order conj :later) (task/resolved 2)))]
+    (swap! order conj :caller)
+    (-> t
+        (task/then (fn [v]
+                     (is (= 2 v))
+                     (is (= [:caller :later] @order))
+                     (task/later (fn [] (throw (ex-info "late" {}))))))
+        (task/recover (fn [e] (ex-message e)))
+        (task/then (fn [v] (is (= "late" v) "what it throws fails the task"))))))

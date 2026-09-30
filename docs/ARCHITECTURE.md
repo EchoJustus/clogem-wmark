@@ -22,7 +22,7 @@ names or requires them.
 | `dart/` | The Dart host (ADR 0014): the core library's adapters over `dart:io` (files, media, profiles, the rasterizer's I/O, the FFmpeg engine) and `wmark-dart`, the command line on the Dart VM | the Dart VM (ClojureDart) | kernel |
 | `web/` | The built-in web UI: server-rendered HTML and Datastar events over SSE; vendored `datastar.js`, no npm | JVM | the Core API (kernel) |
 | `desktop/` | CLI (with terminal progress), http-kit server, loopback security, sidecar mode, native-image metadata | JVM / native image | src, web |
-| `testkit/` | Harnesses for code that plugs in from elsewhere: engine conformance, the store contract, golden vectors, architecture checks | JVM (tests) | src, kernel |
+| `testkit/` | Harnesses for code that plugs in from elsewhere: engine conformance, the store and queue contracts, golden vectors, architecture checks | JVM (tests) | src, kernel |
 | `build/` | `wmark.build`, the interpreter of the build matrix | JVM (tool) | tools.build |
 | `native/` | C ABI for native engines, a mock engine (the test double), exported JSON Schemas | C header and mock; platform engines in their OS's language behind it (decision 3) | nothing |
 
@@ -82,7 +82,7 @@ names or requires them.
 | Host drawing (render spec v2) | `watermark.raster/Rasterizer` (`realize!`, `release!`) | local: bitmaps in a scratch folder per render (`raster.local`; `dartvm.raster`), both around `raster/realize` | object storage next to hosted workers |
 | Media | `watermark.media/MediaIO` (core library) | local files (`media.local`; `dartvm.media` over `dart:io`) | object storage |
 | Files (the preview folder) | `watermark.files/Files` (core library) | local files (`files.local`; `dartvm.fs` over `dart:io`) | object storage |
-| Queue | `watermark.core.jobs/JobQueue` | in-process executor (`jobs.local`) | SQS / Cloud Tasks / a Postgres table |
+| Queue | `watermark.core.jobs/JobQueue` | in-process: the core library's (`core.queue`), with jobs started on a thread pool (`jobs.local`, JVM) or from the event loop (the Dart host); all pass `queue-contract` ([ADR 0015](adr/0015-a-job-queue-on-every-host.md)) | SQS / Cloud Tasks / a Postgres table |
 | Entitlements | `watermark.core.features/Entitlements` | community, offline license, hosted plan | StoreKit, Play Billing |
 | Text modes | `watermark.core.modes/register!` (a registry) | continuous, scheduled; Pro: canary (wire id `subliminal`), random | — |
 
@@ -262,8 +262,9 @@ Planning is synchronous; a render finishes later, so its outcome is a task
 (`watermark.util.task`: a `CompletableFuture` on the JVM, a `Future` on the
 Dart VM, which can't wait for one). `render-input!` and `run-job!` return
 tasks, and so do `api/run-batch!` and `api/preview-frame`. JVM hosts that
-block (the CLI, the routes, the web UI, the in-process queue) wait for them
-with `api/await`. For each input:
+block (the CLI, the routes, the web UI) wait for them with `api/await`. The
+in-process queue (`watermark.core.queue`) waits for none: it counts the jobs
+running and starts the next when one's task settles. For each input:
 
 1. `media/open-input` checks the file and fingerprints it (for keyed seeds).
 2. `engine/probe` returns media facts. The input must be a video.
@@ -479,6 +480,7 @@ web UI end to end, on the JVM and against the native binary, and
 | Jobs | A fake engine behind the protocol: publish on success, per-input failures, an engine that reports success but writes nothing, existing outputs never overwritten, capability gaps reported before rendering, cancel mid-render; the spec version choice; a v2-only engine given host-drawn bitmaps that exist while it renders and are gone afterwards |
 | HTTP | A live server: 401, 421, cookie bootstrap, 403 for a foreign Origin, CRUD, stale `if-rev`, the doctor route, the built-in UI's protection, an external UI with SPA fallback, traversal |
 | Web UI | The official Datastar SDK wire-format cases; escaping of hostile names and texts; only numbers in `data-signals`; the page's CSP nonce; token and `Datastar-Request` checks; editing with revisions, live preview and validation messages; a render followed over the queue stream to "done" and the activity log |
+| Queue | The queue contract (`testkit/`, 30 checks) on the library's queue and the JVM's, and on the Dart VM: oldest first, one or n at a time, events in order, cancelling a job waiting, running or before its render, failures, subscriptions, shutdown; on the Dart VM, jobs through `api/submit-job!` that render and cancel with real FFmpeg |
 | Core API | Jobs are tenant-scoped: list, cancel and subscribe |
 | Sidecar | A server started with `--parent-pid` exits when its parent ends, including a parent that was gone before the watch began; an exiting server ends everything under it, a process that ignores SIGTERM included |
 | CLI | `run --help` and `--progress`; the progress display's bar, lines and quiet modes against a fake clock; `profiles show` and `profiles effective` (values, where each came from, locked features, canary by name); canary refused on the community plan |

@@ -13,6 +13,7 @@
             [clojure.string :as str]
             [watermark.cli :as cli]
             [watermark.core.features :as features]
+            [watermark.core.queue :as queue]
             [watermark.dartvm.ffmpeg :as ffmpeg]
             [watermark.dartvm.fs :as fs]
             [watermark.dartvm.home :as home]
@@ -33,8 +34,11 @@
 
 (defn system
   "Everything the Core API needs, as a task: the FFmpeg engine is found and
-  its encoders tried first."
-  [{:keys [engine ffmpeg ffmpeg-search render-spec] :as opts}]
+  its encoders tried first. `:jobs` is the core library's in-process queue
+  (watermark.core.queue, docs/adr/0015), running `:concurrency` jobs at
+  once (default 1), for an app that submits jobs rather than running a
+  batch."
+  [{:keys [engine ffmpeg ffmpeg-search render-spec concurrency] :as opts}]
   (when (and engine (not= engine "ffmpeg"))
     (throw (ex-info (str "Unknown engine: " engine " (wmark-dart renders with ffmpeg)") {:wmark/error :invalid})))
   (let [h      (home/resolve-home opts)
@@ -45,19 +49,20 @@
                                       :search    (cli/search-order (or ffmpeg-search (env "WMARK_FFMPEG_SEARCH")))
                                       :work-root work})
                (fn [eng]
-                 {:edition      :community
-                  :version      version
-                  :home         h
-                  :profiles-for (constantly store)
-                  :entitlements (features/community)
-                  :engine       eng
-                  :media        (media/local-media)
-                  :rasterizer   (raster/local-rasterizer {:work-root work})
-                  :spec-version render-spec
-                  :secret-for   (fn [_ctx] @secret)
-                  :font         (delay (home/default-font (ffmpeg/app-dir) [(fs/join (fs/cwd) "resources")]))
-                  :preview-dir  (fs/join work "previews")
-                  :files        (fs/local-files)}))))
+                 (let [sys {:edition      :community
+                            :version      version
+                            :home         h
+                            :profiles-for (constantly store)
+                            :entitlements (features/community)
+                            :engine       eng
+                            :media        (media/local-media)
+                            :rasterizer   (raster/local-rasterizer {:work-root work})
+                            :spec-version render-spec
+                            :secret-for   (fn [_ctx] @secret)
+                            :font         (delay (home/default-font (ffmpeg/app-dir) [(fs/join (fs/cwd) "resources")]))
+                            :preview-dir  (fs/join work "previews")
+                            :files        (fs/local-files)}]
+                   (assoc sys :jobs (queue/local-queue sys {:concurrency (or concurrency 1)})))))))
 
 (defn host
   "The Dart VM's host map for watermark.cli."
