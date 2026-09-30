@@ -14,6 +14,7 @@
             [watermark.engine :as engine]
             [watermark.engine.conformance :as c]
             [watermark.engine.ffmpeg :as ffmpeg]
+            [watermark.files.local :as local-files]
             [watermark.media.local :as local-media]
             [watermark.raster.local :as raster-local]
             [watermark.server.routes :as routes]))
@@ -33,7 +34,8 @@
      :rasterizer   (raster-local/local-rasterizer {:work-root (str home "/work")})
      :secret-for   (constantly (byte-array 32))
      :font         (delay (c/font))
-     :preview-dir  (str home "/work/previews")}))
+     :preview-dir  (str home "/work/previews")
+     :files        (local-files/local-files)}))
 
 (defn- row [f id] (some #(when (= id (:id %)) %) (mapcat :rows (get-in f [:form :categories]))))
 
@@ -106,17 +108,17 @@
       (api/create-profile! s ctx "Demo" {:logo {:enabled false}
                                          :texts [{:mode :continuous :content "© Studio" :opacity 1.0}
                                                  {:mode :random :content "Pro only"}]})
-      (let [p (api/preview-frame s ctx {:profile "demo" :t 2.0 :aspect "9:16"})
+      (let [p (api/await (api/preview-frame s ctx {:profile "demo" :t 2.0 :aspect "9:16"}))
             f (api/preview-file s ctx (:id p))]
         (is (= {:frame 50 :t 2.0 :width 720 :height 1280 :sample? true :aspect "9:16"}
                (select-keys p [:frame :t :width :height :sample? :aspect])))
-        (is (.isFile ^java.io.File f))
+        (is (.isFile (java.io.File. ^String f)) "preview-file is the PNG's path")
         (is (= [:image 720 1280] ((juxt :kind :width :height) (engine/probe (:engine s) (str f))))
             "a still of the sample clip's size")
         (is (some #(str/includes? % "Randomized text") (:notes p)) "Pro layers are named, not drawn"))
       (testing "the other sample shapes"
-        (is (= [864 1080 "4:5"] ((juxt :width :height :aspect) (api/preview-frame s ctx {:profile "demo" :aspect "4:5"}))))
-        (is (= [1680 720 "21:9"] ((juxt :width :height :aspect) (api/preview-frame s ctx {:profile "demo" :aspect "21:9"})))))
+        (is (= [864 1080 "4:5"] ((juxt :width :height :aspect) (api/await (api/preview-frame s ctx {:profile "demo" :aspect "4:5"})))))
+        (is (= [1680 720 "21:9"] ((juxt :width :height :aspect) (api/await (api/preview-frame s ctx {:profile "demo" :aspect "21:9"}))))))
       (testing "unknown or malformed ids are not files"
         (doseq [id ["nope" "../secret" (str (java.util.UUID/randomUUID))]]
           (is (= :not-found (try (api/preview-file s ctx id) nil

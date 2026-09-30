@@ -28,8 +28,10 @@
 
   RenderHandle
   (cancel! h)       ask the engine to stop; idempotent.
-  (outcome h)       deferred final outcome -- derefable on the JVM (deref
-                    blocks), a Future on Dart -- resolving to
+  (outcome h)       the final outcome as a task (watermark.util.task: a
+                    CompletableFuture on the JVM, which deref also reads; a
+                    Future on Dart; on the JVM a promise is accepted too),
+                    resolving to
                     {:status :done|:failed|:cancelled, :error {...}, :stats {...}}
 
   Render request (input of `prepare`)

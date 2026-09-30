@@ -28,7 +28,8 @@
             [clojure.string :as str]
             [clojure.walk :as walk]
             [watermark.engine :as engine]
-            [watermark.util.locate :as locate])
+            [watermark.util.locate :as locate]
+            [watermark.util.task :as task])
   (:import (java.lang.foreign AddressLayout Arena FunctionDescriptor Linker Linker$Option
                               MemoryLayout MemorySegment SymbolLookup ValueLayout)
            (java.lang.invoke MethodHandle MethodHandles MethodType)
@@ -187,7 +188,7 @@
 
 (defrecord NativeRender [result fns ^MemorySegment render]
   engine/RenderHandle
-  (cancel! [_] (when-not (realized? result) (call fns "wmark_render_cancel" render)))
+  (cancel! [_] (when-not (future-done? result) (call fns "wmark_render_cancel" render)))
   (outcome [_] result))
 
 (defn- decode-with
@@ -250,7 +251,7 @@
 
   (execute! [_ plan listener]
     (let [{:keys [fns engine]} (force (:loaded state))
-          result (promise)
+          result (task/deferred)
           ;; Automatic, not shared: the render's argument and its upcall stub
           ;; stay valid while the release thread below holds the arena, and
           ;; the GC frees them once it is gone. Native Image 25 supports
@@ -260,7 +261,7 @@
                              (fn [_user ^MemorySegment json-seg]
                                (let [e (<-json (.getString (.reinterpret json-seg Long/MAX_VALUE) 0))]
                                  (if (= "finished" (:event e))
-                                   (deliver result (cond-> {:status (keyword (:status e))}
+                                   (task/complete! result (cond-> {:status (keyword (:status e))}
                                                      (:error e) (assoc :error (:error e))))
                                    (when listener (listener (update e :event keyword)))))
                                nil))

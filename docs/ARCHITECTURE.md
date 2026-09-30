@@ -17,9 +17,9 @@ names or requires them.
 
 | Directory | Contents | Runs on | May depend on |
 |---|---|---|---|
-| `kernel/` | Settings schema and resolution, the render spec (v1 and v2) and its reference semantics, the rasterizer that draws v2's bitmaps (TrueType, text, the warp), keyed seeds, the PRNG, the text-mode registry, the engine protocol, the feature catalog, the settings form | Any Clojure host: GraalVM/JVM, and the Dart VM through ClojureDart (`kernel/dart` runs its golden vectors there; ADRs 0008, 0012) | malli (two namespaces, JVM only, for JSON Schema); `package:crypto` on the Dart VM; nothing else |
-| `src/` | Profile rules (`config`), the store, media, queue and rasterizer ports' local adapters, the job pipeline, the Core API, the FFmpeg and native engines, JSON REST routes | JVM | kernel |
-| `web/` | The built-in web UI: server-rendered HTML and Datastar events over SSE; vendored `datastar.js`, no npm | JVM | the Core API (src) |
+| `kernel/` | Settings schema and resolution, the render spec (v1 and v2) and its reference semantics, the rasterizer that draws v2's bitmaps (TrueType, text, the warp), keyed seeds, the PRNG, the text-mode registry, the engine protocol, the feature catalog, the settings form, the FFmpeg plan compiler and parsers, the profile rules and the store port, the job pipeline and the Core API, the media and files ports, its own Unicode tables | Any Clojure host: GraalVM/JVM, and the Dart VM through ClojureDart (`kernel/dart` runs its golden vectors there; ADRs 0008, 0012) | malli (two namespaces, JVM only, for JSON Schema) and `clojure.edn` (one host primitive, JVM only); `package:crypto` on the Dart VM; nothing else |
+| `src/` | The home folder (`home`), the store, media, files, queue and rasterizer ports' local adapters, the FFmpeg and native engines, JSON REST routes | JVM | kernel |
+| `web/` | The built-in web UI: server-rendered HTML and Datastar events over SSE; vendored `datastar.js`, no npm | JVM | the Core API (kernel) |
 | `desktop/` | CLI (with terminal progress), http-kit server, loopback security, sidecar mode, native-image metadata | JVM / native image | src, web |
 | `testkit/` | Harnesses for code that plugs in from elsewhere: engine conformance, the store contract, golden vectors, architecture checks | JVM (tests) | src, kernel |
 | `build/` | `wmark.build`, the interpreter of the build matrix | JVM (tool) | tools.build |
@@ -79,7 +79,8 @@ names or requires them.
 | Profile storage | `watermark.store/ProfileStore` (core library) | file (`store.file`, JVM), memory (`store.memory`, core library), a SQL store in hosted backends | app-sandbox store for the GUI, a Dart file store (M3d) |
 | Rendering | `watermark.engine/VideoEngine` + `RenderHandle`, and `StillDecoder` for engines that take render spec v2 | `FFmpegProcessor`, `NativeFFIProcessor` (C ABI) | AVFoundation, Media3, a Rust core: all behind the C ABI |
 | Host drawing (render spec v2) | `watermark.raster/Rasterizer` (`realize!`, `release!`) | local: bitmaps in a scratch folder per render (`raster.local`) | object storage next to hosted workers |
-| Media | `watermark.media/MediaIO` | local files (`media.local`) | object storage |
+| Media | `watermark.media/MediaIO` (core library) | local files (`media.local`) | object storage, `dart:io` (M3d) |
+| Files (the preview folder) | `watermark.files/Files` (core library) | local files (`files.local`) | `dart:io` (M3d) |
 | Queue | `watermark.core.jobs/JobQueue` | in-process executor (`jobs.local`) | SQS / Cloud Tasks / a Postgres table |
 | Entitlements | `watermark.core.features/Entitlements` | community, offline license, hosted plan | StoreKit, Play Billing |
 | Text modes | `watermark.core.modes/register!` (a registry) | continuous, scheduled; Pro: canary (wire id `subliminal`), random | — |
@@ -254,7 +255,14 @@ because every open tab holds a stream. See [ROADMAP.md](ROADMAP.md).
 
 ## The job pipeline
 
-`watermark.core.jobs` talks only to ports. For each input:
+`watermark.core.jobs` talks only to ports, and is part of the core library
+([ADR 0013](adr/0013-host-logic-into-the-core-library.md), section 3).
+Planning is synchronous; a render finishes later, so its outcome is a task
+(`watermark.util.task`: a `CompletableFuture` on the JVM, a `Future` on the
+Dart VM, which can't wait for one). `render-input!` and `run-job!` return
+tasks, and so do `api/run-batch!` and `api/preview-frame`. JVM hosts that
+block (the CLI, the routes, the web UI, the in-process queue) wait for them
+with `api/await`. For each input:
 
 1. `media/open-input` checks the file and fingerprints it (for keyed seeds).
 2. `engine/probe` returns media facts. The input must be a video.

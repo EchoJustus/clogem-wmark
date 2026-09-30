@@ -18,6 +18,7 @@
   there, while its `enable` timeline sees the 0-based `n`."
   (:require [clojure.string :as str]
             [watermark.ffmpeg.graph :as g]
+            [watermark.files :as files]
             [watermark.util.num :as number]))
 
 #?(:clj (set! *warn-on-reflection* true))
@@ -56,15 +57,9 @@
 ;; ---------------------------------------------------------------------------
 ;; Paths
 
-(defn join-path
-  "`dir`/`file`, with the separator `dir` already uses: a Windows scratch
-  folder (C:\\...\\) gets a backslash, like java.io.File would give it; any
-  other a slash."
-  [dir file]
-  (let [dir (str dir)]
-    (cond (or (str/ends-with? dir "/") (str/ends-with? dir "\\")) (str dir file)
-          (and (str/includes? dir "\\") (not (str/includes? dir "/"))) (str dir "\\" file)
-          :else (str dir "/" file))))
+(def join-path
+  "`dir`/`file` with the separator `dir` already uses (watermark.files/join)."
+  files/join)
 
 (defn ffmpeg-path
   "Forward slashes: FFmpeg accepts them on Windows too, and they need no

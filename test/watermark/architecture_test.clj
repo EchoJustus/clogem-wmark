@@ -70,8 +70,9 @@
                   [(:ns src) a])))))
 
 (deftest orchestration-never-sees-an-engine-implementation
-  (let [jobs (filter #(str/starts-with? (str (:ns %)) "watermark.core.") host)]
+  (let [jobs (filter #(str/starts-with? (str (:ns %)) "watermark.core.") (concat kernel host))]
     (is (some #(= 'watermark.core.jobs (:ns %)) jobs))
+    (is (some #(= 'watermark.core.api (:ns %)) jobs))
     (is (empty? (violations jobs #(under? ["watermark.engine." "watermark.ffmpeg." "watermark.media." "watermark.store."
                                            "watermark.raster.local"
                                            "watermark.util.os" "watermark.util.locate"

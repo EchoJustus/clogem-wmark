@@ -81,7 +81,7 @@
   (let [env    (fake-env)
         events (atom [])
         [a b]  [(input! "a.mov") (input! "b.mov")]
-        results (jobs/run-job! env {:ctx {} :settings (settings) :inputs [a b]}
+        results @(jobs/run-job! env {:ctx {} :settings (settings) :inputs [a b]}
                                {:on-event #(swap! events conj %)})]
     (is (= [:done :done] (map :state results)))
     (is (= (str (io/file *dir* "a_wm.mp4")) (:output (first results))))
@@ -96,7 +96,7 @@
 (deftest failures-stay-per-input
   (let [[a b c] [(input! "a.mov") (input! "b.mov") (str (io/file *dir* "missing.mov"))]
         env     (fake-env :behaviour {a :fail})
-        results (jobs/run-job! env {:ctx {} :settings (settings) :inputs [a b c]} {})]
+        results @(jobs/run-job! env {:ctx {} :settings (settings) :inputs [a b c]} {})]
     (is (= [:failed :done :failed] (map :state results)))
     (is (= "boom" (:error (first results))))
     (is (not (.exists (io/file *dir* "a_wm.part.mp4"))) "a failed render leaves no temp file")
@@ -105,7 +105,7 @@
 
 (deftest an-engine-that-writes-nothing-fails-the-input-not-the-batch
   (let [env     (fake-env :behaviour {(input! "a.mp4") :no-output})
-        results (jobs/run-job! env {:ctx {:tenant "t"} :settings (settings) :inputs [(input! "a.mp4") (input! "b.mp4")]} {})]
+        results @(jobs/run-job! env {:ctx {:tenant "t"} :settings (settings) :inputs [(input! "a.mp4") (input! "b.mp4")]} {})]
     (is (= [:failed :done] (map :state results)))
     (is (re-find #"wrote no output" (str (:error (first results)))) (str (first results)))
     (is (= :failed (:kind (first results))))))
@@ -113,13 +113,13 @@
 (deftest existing-outputs-are-not-overwritten
   (let [a (input! "a.mov")]
     (spit (io/file *dir* "a_wm.mp4") "earlier result")
-    (let [env (fake-env) [r] (jobs/run-job! env {:ctx {} :settings (settings) :inputs [a]} {})]
+    (let [env (fake-env) [r] @(jobs/run-job! env {:ctx {} :settings (settings) :inputs [a]} {})]
       (is (= [:failed :conflict] [(:state r) (:kind r)]))
       (is (not-any? #(= :execute (first %)) @(:calls env)) "refused before any rendering time is spent"))))
 
 (deftest capability-gaps-are-reported-not-rendered
   (let [a (input! "a.mov")
-        [r] (jobs/run-job! (fake-env) {:ctx {} :settings (settings {:encode {:codec :hevc}}) :inputs [a]} {})]
+        [r] @(jobs/run-job! (fake-env) {:ctx {} :settings (settings {:encode {:codec :hevc}}) :inputs [a]} {})]
     (is (= [:failed :unsupported] [(:state r) (:kind r)]))
     (is (= "The fake engine can't render this: codecs hevc." (:error r)))))
 
@@ -182,10 +182,10 @@
           "v1 where there's no v2 to fall back to, so the refusal names the gap")
       (is (= 1 (jobs/spec-version {:capabilities {}} spec nil)) "engines that don't say take v1")
       (is (= 2 (jobs/spec-version {:capabilities full} spec 2)) "unless the host insists"))
-    (let [[r] (jobs/run-job! env {:ctx {} :settings s :inputs [(input! "a.mp4")]} {})]
+    (let [[r] @(jobs/run-job! env {:ctx {} :settings s :inputs [(input! "a.mp4")]} {})]
       (is (= :done (:state r)) (pr-str r))
       (is (= [[:bitmaps-on-disk true]] @calls) "the bitmaps exist while the engine renders")
       (is (empty? (rest (file-seq (io/file *dir* "work")))) "and are deleted afterwards"))
     (testing "without a rasterizer, a v2-only engine is refused up front"
-      (let [[r] (jobs/run-job! (dissoc env :rasterizer) {:ctx {} :settings s :inputs [(input! "b.mp4")]} {})]
+      (let [[r] @(jobs/run-job! (dissoc env :rasterizer) {:ctx {} :settings s :inputs [(input! "b.mp4")]} {})]
         (is (= [:failed :unsupported] [(:state r) (:kind r)]))))))

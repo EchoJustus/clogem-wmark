@@ -5,8 +5,10 @@
   architecture test keeps this list complete), and what differs by host."
   (:require [clojure.test :refer [deftest is]]
             [watermark.config]
+            [watermark.core.api]
             [watermark.core.features]
             [watermark.core.form]
+            [watermark.core.jobs]
             [watermark.core.modes :as modes]
             [watermark.core.resolve]
             [watermark.core.schema :as schema]
@@ -15,6 +17,8 @@
             [watermark.ffmpeg.graph]
             [watermark.ffmpeg.parse]
             [watermark.ffmpeg.plan]
+            [watermark.files]
+            [watermark.media]
             [watermark.raster]
             [watermark.raster.color]
             [watermark.raster.image :as image]
@@ -32,6 +36,7 @@
             [watermark.util.num :as number]
             [watermark.util.prng]
             [watermark.util.schema]
+            [watermark.util.task :as task]
             [watermark.util.text :as text]
             [watermark.util.time]
             [watermark.util.unicode]
@@ -62,3 +67,21 @@
   (is (= "\u00A0a\u00A0" (text/trim " \u00A0a\u00A0\u3000")))
   (is (= "\uFEFFa" (text/trim "\uFEFFa")))
   (is (not (text/blank? "\u00A0"))))
+
+(deftest tasks-are-futures
+  ;; errors skip then, reach recover as thrown, and always runs either way;
+  ;; reduce waits for each step
+  (let [seen (atom [])
+        d    (task/deferred)]
+    (task/complete! d 40)
+    (-> (task/task-of d)
+        (task/then inc)
+        (task/then (fn [v] (throw (ex-info "boom" {:v v}))))
+        (task/then (fn [_] (swap! seen conj :skipped)))
+        (task/recover (fn [e] (swap! seen conj (ex-data e)) :recovered))
+        (task/always #(swap! seen conj :always))
+        (task/then (fn [v]
+                     (is (= :recovered v))
+                     (is (= [{:v 41} :always] @seen))
+                     (task/reduce (fn [acc x] (if (= x 3) (reduced acc) (task/resolved (+ acc x)))) 0 (range 10))))
+        (task/then (fn [total] (is (= 3 total)))))))

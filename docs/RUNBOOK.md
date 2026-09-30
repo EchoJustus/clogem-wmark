@@ -155,8 +155,9 @@ tools are missing:
 the PRNG, seeds, render specs, render spec v2 down to every bitmap's
 SHA-256, the settings schema's verdicts and messages (`schema.edn`), the
 settings form (`form.edn`), FFmpeg plans and parsers (`ffmpeg.edn`), the
-library's Unicode (`text.edn`) and the profile rules with the text of stored
-profiles (`profiles.edn`). Both runtimes compute them from the same inputs
+library's Unicode (`text.edn`), the profile rules with the text of stored
+profiles (`profiles.edn`) and the use cases on fake ports (`pipeline.edn`,
+which the Dart VM runs on Futures). Both runtimes compute them from the same inputs
 (`kernel/test/watermark/golden_inputs.cljc`): `bb test` on the JVM, and
 `bb kernel-dart` on the Dart VM, which compares strictly (24 is not 24.0).
 They are also what a Swift or Rust port must reproduce. After an
@@ -179,7 +180,7 @@ compiles the kernel and two test namespaces to Dart and runs them with
 `dart test`: every golden file, every kernel namespace loaded, and what
 differs by host. It fetches ClojureDart (a git dependency) and its pub
 packages (`crypto`, `test`) once, then compiles ClojureDart's core and the
-kernel on every run. **Verified** on 2026-09-30: 14 tests, no warnings, under a minute
+kernel on every run. **Verified** on 2026-09-30: 16 tests, no warnings, under a minute
 from a clean checkout with those caches warm. A compile error
 there usually breaks one of the rules in CLAUDE.md, "Core library
 portability".

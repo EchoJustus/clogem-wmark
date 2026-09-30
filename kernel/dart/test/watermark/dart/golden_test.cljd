@@ -11,7 +11,8 @@
             [cljd.edn :as edn]
             [clojure.test :refer [deftest is]]
             [watermark.golden-inputs :as inputs]
-            [watermark.raster.truetype :as tt]))
+            [watermark.raster.truetype :as tt]
+            [watermark.util.task :as task]))
 
 (defn- golden [name]
   (edn/read-string (.readAsStringSync (io/File (str "../test/golden/" name ".edn")))))
@@ -50,3 +51,7 @@
 
 (deftest profiles
   (check "profiles" (inputs/profile-vectors)))
+
+(deftest pipeline
+  ;; the use cases on Futures: the test ends when the task does
+  (task/then (inputs/pipeline-vectors) #(check "pipeline" %)))

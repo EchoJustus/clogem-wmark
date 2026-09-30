@@ -16,7 +16,8 @@
             [watermark.ffmpeg.plan :as plan]
             [watermark.engine.ffmpeg.probe :as probe]
             [watermark.engine.ffmpeg.process :as process]
-            [watermark.util.locate :as locate])
+            [watermark.util.locate :as locate]
+            [watermark.util.task :as task])
   (:import (java.lang Process)
            (java.util UUID)))
 
@@ -160,7 +161,7 @@
                 :workdir  (scratch-dir (:work-root opts))})))
 
   (execute! [_ plan listener]
-    (let [result    (promise)
+    (let [result    (task/deferred)
           cancelled (atom false)
           proc      (atom nil)
           handle    (->FFmpegRender result cancelled proc)
@@ -169,7 +170,7 @@
       (doto (Thread.
              ^Runnable
              (fn []
-               (deliver
+               (task/complete!
                 result
                 (try
                   (doseq [[path content] files]

@@ -7,15 +7,20 @@
 
   Each function takes what only the host can provide (the font's bytes) and
   returns the value its golden file holds."
-  (:require [watermark.config :as config]
+  (:require [clojure.string :as str]
+            [watermark.config :as config]
+            [watermark.core.api :as api]
             [watermark.core.features :as features]
             [watermark.core.form :as form]
             [watermark.core.resolve :as resolve]
             [watermark.core.schema :as schema]
             [watermark.core.seeds :as seeds]
+            [watermark.engine :as engine]
             [watermark.ffmpeg.graph :as graph]
             [watermark.ffmpeg.parse :as parse]
             [watermark.ffmpeg.plan :as plan]
+            [watermark.files :as files]
+            [watermark.media :as media]
             [watermark.raster :as raster]
             [watermark.raster.image :as image]
             [watermark.render :as render]
@@ -27,6 +32,7 @@
             [watermark.util.host :as host]
             [watermark.util.num :as number]
             [watermark.util.prng :as prng]
+            [watermark.util.task :as task]
             [watermark.util.text :as text]
             [watermark.util.unicode :as unicode]
             [watermark.util.unicode-data :as unicode-data]))
@@ -597,3 +603,159 @@
        :decoded     decoded
        :bad-documents (vec (for [text ["{:a" "[1 2]" "{:profile/name \"x\" :settings {} :wmark/format 9}" ""]]
                              (result #(store/decode-doc text "p.edn"))))})))
+
+;; ---------------------------------------------------------------------------
+;; pipeline.edn: the use cases (watermark.core.api) end to end on fake ports
+
+(def ^:private golden-video
+  {:kind :video :width 1280 :height 720 :fps-num 30000 :fps-den 1001 :frames 300
+   :duration-s 10.01 :start-s 0.0 :vfr? false :has-audio? true :rotation 0})
+
+(def ^:private golden-capabilities
+  {:spec-versions #{1} :layers #{:image :text} :animations #{:flip-y}
+   :timing #{:always :windows :periodic} :placement #{:fixed :burst-scatter :per-window}
+   :codecs #{:h264 :hevc} :containers #{"mp4" "mov" "mkv"} :audio #{:copy :aac :none}
+   :sources #{:file :url} :extras #{:metadata :cover} :preview #{:frame :sample}})
+
+(defn- golden-files
+  "The files port over an atom of path -> modification time."
+  [files]
+  (reify files/Files
+    (file? [_ p] (contains? @files p))
+    (make-dirs! [_ _] nil)
+    (list-files [_ dir]
+      (vec (for [[p t] (sort @files) :when (str/starts-with? p (str dir "/"))]
+             {:path p :name (subs p (inc (count dir))) :modified-ms t})))
+    (delete! [_ p] (let [there? (contains? @files p)] (swap! files dissoc p) there?))))
+
+(defn- golden-engine
+  "An engine that renders nothing: it checks capabilities, returns a plan
+  naming what the pipeline asked for, reports progress once, and fails any
+  source whose name says so. What it writes appears in `files`."
+  [log files]
+  (reify
+    engine/VideoEngine
+    (info [_] {:engine/id :golden :engine/version "1" :available? true :capabilities golden-capabilities})
+    (probe [_ source] (if (str/ends-with? (str source) ".png") {:kind :image :width 400 :height 160} golden-video))
+    (prepare [this request]
+      (engine/check! (engine/info this) request)
+      (cond-> {:engine   :golden
+               :source   (:source request)
+               :output   (:output request)
+               :encode   (:encode request)
+               :layers   (mapv (fn [l] [(:kind l) (get-in l [:timing :type])]) (get-in request [:spec :layers]))}
+        (:metadata request) (assoc :metadata (:metadata request))
+        (:cover request)    (assoc :cover (:cover request))))
+    (execute! [_ plan listener]
+      (let [failing? (str/includes? (:source plan) "fail")
+            out      (get-in plan [:output :path])]
+        (swap! log conj [:execute (:source plan) out])
+        (when listener (listener {:event :progress :fraction 0.5 :frame 150}))
+        (when-not failing? (swap! files assoc out (count @files)))
+        (reify engine/RenderHandle
+          (cancel! [_] nil)
+          (outcome [_] (task/resolved (if failing?
+                                        (engine/failed "The golden engine fails this input.")
+                                        {:status :done}))))))
+    engine/SampleSource
+    (sample-video [_ opts path]
+      (swap! log conj [:sample opts path])
+      (swap! files assoc path (count @files))
+      path)))
+
+(defn- golden-media
+  "Inputs under /in, outputs next to them under /out; `missing` inputs
+  aren't there, and an `exists` output is already taken."
+  [log]
+  (reify media/MediaIO
+    (open-input [_ _ input]
+      (when (str/includes? (str input) "missing")
+        (throw (ex-info (str "No such file: " input) {:wmark/error :not-found})))
+      {:id (str input) :location (str "/in/" input) :fingerprint (str "fp-" input)})
+    (open-output [_ _ input _]
+      (when (str/includes? (str input) "exists")
+        (throw (ex-info (str "The output for " input " already exists.") {:wmark/error :conflict})))
+      {:final (str "/out/" input) :temp (str "/out/" input ".part") :container "mp4"})
+    (commit! [_ _ output] (swap! log conj [:commit (:final output)]) (:final output))
+    (discard! [_ _ output] (swap! log conj [:discard (:temp output)]) nil)))
+
+(defn- scrub-ids
+  "`x` with every UUID in its strings written as <id>: previews are named
+  by random ids."
+  [x]
+  (cond (string? x) (str/replace x #"[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}" "<id>")
+        (map? x)    (into {} (map (fn [[k v]] [(scrub-ids k) (scrub-ids v)])) x)
+        (vector? x) (mapv scrub-ids x)
+        (set? x)    (set (map scrub-ids x))
+        (seq? x)    (map scrub-ids x)
+        :else       x))
+
+(defn- events-of
+  "An on-event function that records into atom `a`."
+  [a]
+  (fn [e] (swap! a conj e)))
+
+(defn pipeline-vectors
+  "pipeline.edn, as a task (a Future on the Dart VM): the Core API on fake
+  ports: planning, a batch with a failing, a taken and a missing input and a
+  cover, a cancelled batch, and previews on a video and on the sample clip.
+  Nothing in it depends on the clock or on random ids."
+  []
+  (let [log      (atom [])
+        fs       (atom {})
+        st       (memory/memory-store)
+        sys      {:profiles-for (constantly st)
+                  :entitlements (features/community)
+                  :engine       (golden-engine log fs)
+                  :media        (golden-media log)
+                  :files        (golden-files fs)
+                  :secret-for   (constantly (secret))
+                  :font         "/fonts/wmark.ttf"
+                  :preview-dir  "/previews"}
+        ctx      {:tenant "t" :user "u"}
+        ;; each step in turn: ClojureDart evaluates a map literal's values
+        ;; in another order than the JVM
+        _        (api/create-profile! sys ctx "Clip"
+                                      {:logo   {:path "/logos/l.png" :anchor :top-right
+                                                :animation {:type :flip-y :every-s 5.0 :duration-s 0.8}}
+                                       :texts  [{:mode :continuous :content "(c) Studio"}
+                                                {:mode :scheduled :content "Scheduled" :at [2.0] :duration-s 1.5}]
+                                       :output {:metadata {:title "A title" :comment "  "}}})
+        planned  (api/plan-batch sys ctx {:profile "clip" :inputs ["a.mp4" "b.mov"] :cover {:t 1.0}})
+        refused  (vec (for [req [{:profile "clip" :inputs []}
+                                 {:profile "clip" :inputs ["a.mp4"] :cover {:t -1}}
+                                 {:profile "nope" :inputs ["a.mp4"]}
+                                 {:profile "clip" :inputs ["a.mp4"] :settings {:texts [{:mode :random :content "x"}]}}]]
+                       (result #(api/plan-batch sys ctx req))))
+        run-log  (atom [])
+        cut-log  (atom [])
+        cut?     (atom false)]
+    (-> (api/run-batch! sys ctx {:profile "clip" :inputs ["a.mp4" "fail.mp4" "exists.mp4" "missing.mp4" "b.mov"]
+                                 :cover {:t 1.0}}
+                        {:on-event (events-of run-log)})
+        (task/then
+         (fn [ran]
+           (let [latest (:settings (config/get-profile st "latest"))]
+             (task/then (api/run-batch! sys ctx {:profile "clip" :inputs ["c.mp4" "d.mp4" "e.mp4"]}
+                                        {:on-event   (fn [e]
+                                                       (swap! cut-log conj e)
+                                                       (when (= :finished (:type e)) (reset! cut? true)))
+                                         :cancelled? #(deref cut?)})
+                        (fn [cut] [ran latest cut])))))
+        (task/then
+         (fn [[ran latest cut]]
+           (task/then (api/preview-frame sys ctx {:profile "clip" :source "a.mp4" :t 2.0})
+                      (fn [frame] [ran latest cut frame]))))
+        (task/then
+         (fn [[ran latest cut frame]]
+           (task/then (api/preview-frame sys ctx {:profile "clip" :aspect "9:16"})
+                      (fn [sample]
+                        (scrub-ids
+                        {:plan     (select-keys planned [:base :locked :plans :warnings])
+                         :refused  refused
+                         :ran      {:results (:results ran) :events @run-log :latest latest}
+                         :cancelled {:results (:results cut) :events @cut-log}
+                         :previews (vec (for [p [frame sample]]
+                                          (-> (dissoc p :id)
+                                              (assoc :file (api/preview-file sys ctx (:id p))))))
+                         :ports    {:log @log :files (vec (sort (map scrub-ids (keys @fs))))}}))))))))

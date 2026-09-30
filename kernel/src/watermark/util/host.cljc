@@ -5,6 +5,7 @@
   differently: a host primitive, one branch per runtime (docs/adr/0013).
 
   - attempt: catch the library's own errors (ex-info), whose class differs;
+  - describe-error: one line for an error that isn't the library's own;
   - serialized: one unit of work at a time on a lock (the Dart VM runs an
     isolate's code on one thread, so there is nothing to lock);
   - *clock*: milliseconds since the epoch, rebindable for tests and hosts;
@@ -19,6 +20,13 @@
   [f]
   (try [(f) nil]
        (catch #?(:clj clojure.lang.ExceptionInfo :cljd cljd.core/ExceptionInfo) e [nil e])))
+
+(defn describe-error
+  "One line for an error that isn't an ex-info: its class and message on the
+  JVM (\"NoSuchFileException: /in.mp4\"), its text on the Dart VM."
+  [e]
+  #?(:clj  (str (.getSimpleName (class e)) ": " (ex-message e))
+     :cljd (str e)))
 
 (defn lock
   "A new lock for `serialized`."

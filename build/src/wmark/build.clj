@@ -765,6 +765,7 @@
    ["kernel/test/golden/ffmpeg.edn"   "golden/ffmpeg.edn"]
    ["kernel/test/golden/text.edn"     "golden/text.edn"]
    ["kernel/test/golden/profiles.edn" "golden/profiles.edn"]
+   ["kernel/test/golden/pipeline.edn" "golden/pipeline.edn"]
    ["resources/fonts/wmark.ttf"       "golden/fonts/wmark.ttf"]     ; render-v2's text
    ["licenses/FiraSans-OFL.txt"       "golden/fonts/OFL.txt"]
    ["native/README.md"                "README.md"]

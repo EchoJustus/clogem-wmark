@@ -165,6 +165,58 @@ piece goes and what had to change to make it portable.
   62,523,656 to 63,965,448 (measured 2026-09-30, the same build before and
   after this step). The size diet (P6) measures it again with `-Os`.
 
+### 3. The pipeline and the use cases, on one async core
+
+- **Where:** `watermark.core.jobs` (planning, rendering each input,
+  running a job, the `JobQueue` port), `watermark.core.api` (every use case
+  the clients call), `watermark.media` (the media port) and a new
+  `watermark.files` port are in the library. The JVM keeps the adapters:
+  local media, local files, the in-process queue, the engines.
+- **The problem:** a render finishes later. The pipeline waited for it
+  (`deref` of the engine's outcome), and the Dart VM can't wait: a `Future`
+  has no blocking get, and `dart:cli`'s `waitFor` is gone (Dart 3.13.4,
+  checked).
+- **Decision (the owner, 2026-09-30): one asynchronous core,** not a
+  synchronous one with the pipeline written twice.
+  - `watermark.util.task`, a host primitive: a task is a
+    `CompletableFuture` on the JVM and a `Future` on the Dart VM, with
+    `then`, `recover`, `always`, `attempt`, `deferred` and a sequential
+    `reduce`. On the JVM, `reduce` runs steps that are already done in a
+    loop, so a batch of inputs that fail at once can't overflow the stack;
+    `await` (JVM only) waits.
+  - Only rendering is asynchronous. The engine's outcome is a task:
+    `FFmpegProcessor` and `NativeFFIProcessor` settle a `CompletableFuture`,
+    which `deref` still reads, and a promise from another engine is still
+    accepted. `render-input!`, `run-job!`, `api/run-batch!` and
+    `api/preview-frame` return tasks; everything else, planning included,
+    returns its value.
+  - The other ports stay synchronous (probing, media, files, stores). The
+    library runs off a UI's thread on every host: the JVM on the server's or
+    queue's threads, the apps in a background isolate (M3d). Dart's
+    `dart:io` has synchronous calls for files and for short processes.
+  - JVM hosts that block wait at their edge: the CLI, the local server's
+    routes, the web UI (through `api/await`, since the web UI talks to the
+    Core API only) and the in-process queue.
+- **The files port** covers what previews need beyond media: whether a
+  file is there, making a folder, listing one with modification times,
+  deleting. `preview-file` now returns the PNG's path; the route opens it.
+  Preview ids come from `random-uuid`, which both runtimes have.
+- **Golden vectors:** `kernel/test/golden/pipeline.edn` runs the use cases
+  on fake ports: an engine that checks capabilities and records what it's
+  asked, media with a missing input and a taken output, files in an atom.
+  It pins planning, the refusals (no inputs, a bad cover time, an unknown
+  profile, a locked feature), a batch with a failed cover, a conflict and a
+  missing input, `latest` after it, a cancelled batch, and previews on a
+  video and on the sample clip, down to every call the ports received. On
+  the Dart VM it runs on Futures, and the test ends when they do.
+- **Checked on the native image** (linux-x64, GraalVM CE 25.0.2): a batch
+  with a missing input, and a render with an embedded cover, through the
+  real FFmpeg. The image grows by 196,608 bytes, to 64,162,056.
+- **Dart tests and Futures:** a ClojureDart `deftest` whose body returns a
+  `Future` is awaited, and a failed check inside a callback is reported
+  (checked with a deliberately failing test). Such a failure also times out
+  after package:test's 30 seconds; a passing test ends at once.
+
 ## Consequences
 
 - A Dart program can now build the exact FFmpeg command line the JVM
@@ -178,8 +230,12 @@ piece goes and what had to change to make it portable.
 - Moving to a newer Unicode version is a deliberate step: pin the new UCD
   files, regenerate, run the tests on a JDK of that version, and review the
   golden diffs (slugs may move for newly assigned characters).
-- Planning (the pure part of `watermark.core.jobs`) moves with the use cases
-  in the next step, behind the process-runner and files ports.
+- The Core API is the same on both runtimes. Its callers on the JVM wait
+  for the two functions that render (`api/await`); the commercial
+  repository's hosted worker does the same with `run-job!` when it next
+  pins the core.
+- What a Dart program still lacks is adapters: an engine, media, files and
+  a store over `dart:io` (M3d).
 
 ## Sources (checked 2026-09-29 and 2026-09-30)
 

@@ -18,23 +18,39 @@
     :media          local files                     object storage
     :jobs           in-process queue                durable queue + workers
     :entitlements   offline license                 account plan
-    :secret-for     <home>/secret.key               per-tenant secret (KMS)"
-  (:require [clojure.java.io :as io]
-            [clojure.string :as str]
+    :secret-for     <home>/secret.key               per-tenant secret (KMS)
+    :files          the preview folder (local)      (M4)
+
+  Part of the core library (docs/adr/0013, section 3): the same use cases
+  on the JVM and the Dart VM. What renders returns a task
+  (watermark.util.task): `preview-frame` and `run-batch!`. Everything else
+  returns its value."
+  (:refer-clojure :exclude [await])
+  (:require [clojure.string :as str]
             [watermark.config :as config]
             [watermark.core.features :as features]
             [watermark.core.form :as form]
             [watermark.core.jobs :as jobs]
             [watermark.core.resolve :as resolve]
             [watermark.core.schema :as schema]
-            [watermark.engine :as engine])
-  (:import (java.io File)
-           (java.nio.charset StandardCharsets)
-           (java.util UUID)))
+            [watermark.engine :as engine]
+            [watermark.files :as files]
+            [watermark.raster.image :as image]
+            [watermark.util.chars :as chars]
+            [watermark.util.task :as task]
+            [watermark.util.text :as text]))
 
-(set! *warn-on-reflection* true)
+#?(:clj (set! *warn-on-reflection* true))
 
 (defn- store [sys ctx] ((:profiles-for sys) ctx))
+
+#?(:clj
+   (defn await
+     "The value of a task an API function returned, waiting for it: for JVM
+     hosts that block (the CLI, the local server, the web UI). A failed task
+     throws its original error. The Dart VM chains instead."
+     [t]
+     (task/await t)))
 
 ;; ---------------------------------------------------------------------------
 ;; System
@@ -177,48 +193,58 @@
 
 (def ^:private sample-seconds 12)
 
-(def ^:private ^bytes sample-secret
+(defn- sample-secret
   "The demonstration key for keyed layers on the sample clip. The sample isn't
   anyone's evidence, and the studio's own key stays out of it."
-  (.getBytes "wmark sample preview: not a studio key" StandardCharsets/UTF_8))
+  []
+  (let [cps (chars/code-points "wmark sample preview: not a studio key") ; ASCII: one byte each
+        a   (image/u8-array (count cps))]
+    (dotimes [i (count cps)] (image/u8! a i (cps i)))
+    a))
 
-(defn- preview-dir ^File [sys]
-  (or (some-> (:preview-dir sys) str io/file)
+(defn- preview-dir [sys]
+  (or (some-> (:preview-dir sys) str)
       (throw (ex-info "Previews aren't set up in this deployment." {:wmark/error :unsupported}))))
+
+(defn- files-of [sys]
+  (or (:files sys)
+      (throw (ex-info "Previews need a files port (:files) in this deployment." {:wmark/error :unsupported}))))
 
 (defn- sample-clip!
   "The sample clip for `aspect`, made once by the engine."
-  [sys ^File dir aspect]
+  [sys fs dir aspect]
   (let [{:keys [width height]} (or (sample-aspects aspect) (sample-aspects "16:9"))
-        f (io/file dir (str "sample-" width "x" height ".mp4"))]
-    (when-not (.isFile f)
+        f (files/join dir (str "sample-" width "x" height ".mp4"))]
+    (when-not (files/file? fs f)
       (when-not (satisfies? engine/SampleSource (:engine sys))
         (throw (ex-info "This engine can't make a sample clip; choose a video to preview on."
                         {:wmark/error :unsupported})))
-      (.mkdirs dir)
-      (engine/sample-video (:engine sys) {:width width :height height :fps 25 :seconds sample-seconds} (str f)))
-    (str f)))
+      (files/make-dirs! fs dir)
+      (engine/sample-video (:engine sys) {:width width :height height :fps 25 :seconds sample-seconds} f))
+    f))
 
 (def ^:private preview-id #"[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}")
 
 (defn- prune-previews!
   "Keep the newest `keep-n` previews."
-  [^File dir keep-n]
-  (let [pngs (->> (.listFiles dir) (filter #(re-matches #".*\.png" (.getName ^File %)))
-                  (sort-by #(.lastModified ^File %) >))]
-    (doseq [^File f (drop keep-n pngs)] (.delete f))))
+  [fs dir keep-n]
+  (let [pngs (->> (files/list-files fs dir)
+                  (filter #(str/ends-with? (:name %) ".png"))
+                  (sort-by :modified-ms >))]
+    (doseq [f (drop keep-n pngs)] (files/delete! fs (:path f)))))
 
 (defn preview-frame
   "One frame of what a run would produce: the settings of `profile` (plus
   unsaved `settings`) drawn on the frame at `t` seconds of `source`, a video
   path, or of the sample clip for `aspect` (a key of sample-aspects).
   It is the render's own plan cut to one frame, so the preview is the output.
-  Returns {:id :frame :t :width :height :duration-s :sample? :aspect :notes};
-  the PNG is
-  `preview-file`. Pro layers the plan doesn't cover are left out and named in
-  :notes; on the sample clip, keyed layers use a demonstration key."
+  Returns a task of {:id :frame :t :width :height :duration-s :sample?
+  :aspect :notes}; the PNG is `preview-file`. Pro layers the plan doesn't
+  cover are left out and named in :notes; on the sample clip, keyed layers
+  use a demonstration key."
   [sys ctx {:keys [profile settings source t aspect]}]
   (let [dir     (preview-dir sys)
+        fs      (files-of sys)
         caps    (get-in (engine/info (:engine sys)) [:capabilities :preview] #{})
         _       (when-not (contains? caps :frame)
                   (throw (ex-info "This engine can't draw previews." {:wmark/error :unsupported})))
@@ -226,42 +252,43 @@
         locked  (set (:locked r))
         shown?  #(not (locked (keyword "text.mode" (name (features/canonical-mode (:mode %))))))
         s       (update (:settings r) :texts #(vec (filter shown? %)))
-        sample? (str/blank? (str source))
+        sample? (text/blank? source)
         aspect  (if (sample-aspects aspect) aspect "16:9")
-        input   (if sample? (sample-clip! sys dir aspect) (str source))
-        env     (cond-> sys sample? (assoc :secret-for (constantly sample-secret)))
-        id      (str (UUID/randomUUID))
-        out     (io/file dir (str id ".png"))
-        _       (.mkdirs dir)
+        input   (if sample? (sample-clip! sys fs dir aspect) (str source))
+        env     (cond-> sys sample? (assoc :secret-for (constantly (sample-secret))))
+        id      (str (random-uuid))
+        out     (files/join dir (str id ".png"))
+        _       (files/make-dirs! fs dir)
         planned (jobs/plan-frame env ctx s input {:t (or t 0.0) :out out})]
-    (try
-      (let [outcome (deref (engine/outcome (engine/execute! (:engine sys) (:plan planned) nil)))]
-        (when-not (and (= :done (:status outcome)) (.isFile out))
-          (throw (ex-info (str "The preview failed. " (get-in outcome [:error :message]))
-                          {:wmark/error :unavailable})))
-        (prune-previews! dir 24)
-        (let [{:keys [fps-num fps-den width height]} (:media planned)
-              keyed? (some #(#{:subliminal :random} (features/canonical-mode (:mode %))) (:texts s))]
-          {:id      id
-           :frame   (:frame planned)
-           :t       (/ (* (double (:frame planned)) fps-den) fps-num)
-           :width   width
-           :height  height
-           :duration-s (:duration-s (:media planned))
-           :sample? sample?
-           :aspect  (when sample? aspect)
-           :notes   (cond-> []
-                      (seq locked) (conj (str "Not shown, because they need wmark Pro: "
-                                              (str/join ", " (map #(get-in features/catalog [% :title] (str %)) (sort locked)))
-                                              "."))
-                      (and sample? keyed?) (conj "Keyed layers use a sample key on the sample clip; each real video gets its own times."))}))
-      (finally (jobs/release! sys planned)))))
+    (-> (task/attempt #(engine/outcome (engine/execute! (:engine sys) (:plan planned) nil)))
+        (task/then
+         (fn [outcome]
+           (when-not (and (= :done (:status outcome)) (files/file? fs out))
+             (throw (ex-info (str "The preview failed. " (get-in outcome [:error :message]))
+                             {:wmark/error :unavailable})))
+           (prune-previews! fs dir 24)
+           (let [{:keys [fps-num fps-den width height]} (:media planned)
+                 keyed? (some #(#{:subliminal :random} (features/canonical-mode (:mode %))) (:texts s))]
+             {:id      id
+              :frame   (:frame planned)
+              :t       (/ (* (double (:frame planned)) fps-den) fps-num)
+              :width   width
+              :height  height
+              :duration-s (:duration-s (:media planned))
+              :sample? sample?
+              :aspect  (when sample? aspect)
+              :notes   (cond-> []
+                         (seq locked) (conj (str "Not shown, because they need wmark Pro: "
+                                                 (str/join ", " (map #(get-in features/catalog [% :title] (str %)) (sort locked)))
+                                                 "."))
+                         (and sample? keyed?) (conj "Keyed layers use a sample key on the sample clip; each real video gets its own times."))})))
+        (task/always #(jobs/release! sys planned)))))
 
 (defn preview-file
-  "The PNG of preview `id`, or :not-found."
-  ^File [sys _ctx id]
-  (let [f (when (re-matches preview-id (str id)) (io/file (preview-dir sys) (str id ".png")))]
-    (if (and f (.isFile ^File f))
+  "The path of preview `id`'s PNG, or :not-found."
+  [sys _ctx id]
+  (let [f (when (re-matches preview-id (str id)) (files/join (preview-dir sys) (str id ".png")))]
+    (if (and f (files/file? (files-of sys) f))
       f
       (throw (ex-info "No such preview." {:wmark/error :not-found})))))
 
@@ -310,16 +337,18 @@
                           (:inputs req)))))
 
 (defn run-batch!
-  "Synchronous batch (the CLI). Records the resolved settings as `latest`
-  before encoding -- \"every execution\" -- so a crashed batch can be re-run
-  with identical parameters."
+  "A batch run in the caller (the CLI), as a task of the resolution plus
+  :results. Validation errors throw at once. Records the resolved settings
+  as `latest` before encoding -- \"every execution\" -- so a crashed batch
+  can be re-run with identical parameters."
   [sys ctx req opts]
   (let [r     (prepare! sys ctx req)
         cover (cover-of req)]
     (config/record-latest! (store sys ctx) (:settings r) (derived-from r))
-    (assoc r :results (jobs/run-job! sys (cond-> {:ctx ctx :settings (:settings r) :inputs (:inputs req)}
-                                           cover (assoc :cover cover))
-                                     opts))))
+    (task/then (jobs/run-job! sys (cond-> {:ctx ctx :settings (:settings r) :inputs (:inputs req)}
+                                    cover (assoc :cover cover))
+                              opts)
+               #(assoc r :results %))))
 
 (defn submit-job!
   "Validate synchronously (so the client gets 4xx right away), record
