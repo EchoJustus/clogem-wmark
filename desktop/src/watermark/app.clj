@@ -22,6 +22,7 @@
             [clojure.tools.cli :as cli]
             [watermark.cli.progress :as progress]
             [watermark.config :as config]
+            [watermark.home :as home]
             [watermark.core.api :as api]
             [watermark.core.features :as features]
             [watermark.core.jobs.local :as local-jobs]
@@ -64,8 +65,8 @@
 (defn system
   "Everything the Core API needs. Built at run time, never at build time."
   [edition opts]
-  (let [^Path home (config/resolve-home opts)
-        store      (config/file-store {:home (str home)})
+  (let [^Path home (home/resolve-home opts)
+        store      (home/file-store {:home (str home)})
         secret     (delay (fs/studio-secret! home))]
     {:edition      (:edition edition)
      :version      version

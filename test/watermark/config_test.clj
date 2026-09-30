@@ -4,6 +4,7 @@
   (:require [clojure.edn :as edn]
             [clojure.test :refer [deftest is testing use-fixtures]]
             [watermark.config :as config]
+            [watermark.home :as home]
             [watermark.store-contract :as contract]
             [watermark.store.memory :as memory])
   (:import (java.nio.file Files LinkOption Path)
@@ -22,7 +23,7 @@
     (let [home (Files/createTempDirectory "wmark-test" (make-array FileAttribute 0))]
       (try
         (binding [*home* home
-                  *store* (config/file-store {:home (str home)})]
+                  *store* (home/file-store {:home (str home)})]
           (t))
         (finally (delete-tree! home))))))
 
@@ -71,3 +72,35 @@
 (deftest no-temp-files-left-behind
   (run! deref (doall (for [i (range 20)] (future (config/record-latest! *store* {:logo {:opacity (/ i 100.0)}})))))
   (is (= ["latest.edn"] (vec (.list (.toFile (.resolve *home* "profiles")))))))
+
+(defn- java-slug
+  "The slug as the JVM host made it with Java's text functions until the
+  rules moved into the core library (docs/adr/0013)."
+  [^String s]
+  (let [n    (-> (java.text.Normalizer/normalize s java.text.Normalizer$Form/NFC)
+                 clojure.string/trim
+                 (clojure.string/replace #"\s+" " "))
+        base (-> (java.text.Normalizer/normalize ^String n java.text.Normalizer$Form/NFKC)
+                 (.toLowerCase java.util.Locale/ROOT)
+                 (clojure.string/replace #"[^\p{L}\p{M}\p{N}]+" "-")
+                 (clojure.string/replace #"^-+|-+$" ""))
+        base (if (<= (.codePointCount ^String base 0 (count base)) 64)
+               base
+               (subs base 0 (.offsetByCodePoints ^String base 0 64)))]
+    (clojure.string/replace base #"-+$" "")))
+
+(deftest slugs-are-what-they-were
+  ;; profiles are found by the file name their slug gives, so the portable
+  ;; text functions must not move an existing profile's slug
+  (let [rnd      (java.util.Random. 5)
+        alphabet [0x20 0x09 0x0A 0xA0 0x2028 0x3000 0x3A 0x2D 0x5F 0x2E 0x27 0x41 0x61 0x49 0x130 0x131
+                  0x3A3 0x3C3 0x391 0x392 0x301 0x327 0xC5 0x212B 0xFB01 0xFF21 0xB9 0x2160 0x6A8 0x663
+                  0xAC00 0x1100 0x1161 0x11A8 0x5B57 0x3042 0x200B 0xAD 0x1D400 0x1F600 0xDF 0x1C5]
+        names    (repeatedly 20000 #(let [n (inc (.nextInt rnd 14))]
+                                      (String. (int-array (repeatedly n (fn [] (alphabet (.nextInt rnd (count alphabet))))))
+                                               0 n)))]
+    (is (= [] (->> names
+                   (remove #(clojure.string/blank? (java-slug %)))
+                   (remove #(= (java-slug %) (config/slug %)))
+                   (take 5)
+                   vec)))))

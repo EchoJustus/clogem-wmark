@@ -4,6 +4,7 @@
   "Every kernel namespace, compiled for the Dart VM and loaded (the JVM's
   architecture test keeps this list complete), and what differs by host."
   (:require [clojure.test :refer [deftest is]]
+            [watermark.config]
             [watermark.core.features]
             [watermark.core.form]
             [watermark.core.modes :as modes]
@@ -23,9 +24,18 @@
             [watermark.render.layout]
             [watermark.render.schema :as spec-schema]
             [watermark.render.v2]
+            [watermark.store]
+            [watermark.store.memory]
+            [watermark.util.chars]
+            [watermark.util.edn]
+            [watermark.util.host]
             [watermark.util.num :as number]
             [watermark.util.prng]
-            [watermark.util.schema]))
+            [watermark.util.schema]
+            [watermark.util.text :as text]
+            [watermark.util.time]
+            [watermark.util.unicode]
+            [watermark.util.unicode-data]))
 
 (deftest the-open-core's-modes-are-built-in
   ;; no top-level form runs when a Dart library loads
@@ -46,3 +56,9 @@
 (deftest json-schema-comes-from-the-jvm
   (doseq [f [schema/json-schema spec-schema/json-schema]]
     (is (= :unavailable (try (f) nil (catch cljd.core/ExceptionInfo e (:wmark/error (ex-data e))))))))
+
+(deftest trimming-is-javas-not-darts
+  ;; Dart's String.trim also removes no-break spaces and the byte order mark
+  (is (= "\u00A0a\u00A0" (text/trim " \u00A0a\u00A0\u3000")))
+  (is (= "\uFEFFa" (text/trim "\uFEFFa")))
+  (is (not (text/blank? "\u00A0"))))

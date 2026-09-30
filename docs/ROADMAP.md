@@ -198,7 +198,7 @@ short status report.
 |---|---|---|
 | M3a | ClojureDart and the Dart SDK pinned; today's kernel compiles for the Dart VM and passes the golden vectors there, in CI (the spike's criterion 1). **Done** (2026-09-29): every kernel namespace compiles without a warning, and the six golden files pass on the Dart VM (the PRNG, seeds, render spec v1, every v2 bitmap, the schema corpus, the settings form); one validator runs on both runtimes | ADR 0008, section 1; ADR 0012 |
 | M3b | The GUI apps' sidecar shell (Phase 1), built with the commercial editions. It drives `wmark serve --announce json --parent-pid` over REST and SSE, starting with the form model and live preview from P3–P4 (the spike's criterion 2) | ADR 0008, section 3 |
-| M3c | The pure host logic moves into the core library behind ports (process runner, files, clock, HMAC). The golden vectors grow to cover FFmpeg argv, filtergraphs and the form model, checked on both runtimes | ADR 0008, section 1 |
+| M3c | The pure host logic moves into the core library behind ports (process runner, files, clock, HMAC). The golden vectors grow to cover FFmpeg argv, filtergraphs and the form model, checked on both runtimes. **In progress:** the FFmpeg plan compiler and parsers (`watermark.ffmpeg.*`, `ffmpeg.edn`), then the text rules on the library's own Unicode tables, the store port and the profile rules (`watermark.config`, `text.edn`, `profiles.edn`), are in and pass on both runtimes; the use cases and planning follow | ADR 0008, section 1; ADR 0013 |
 | M3d | The Dart adapters and the Dart CLI, with a conformance run on real frames through them. The GUI apps then embed the library in-process (Phase 2) | ADR 0008, section 3 |
 
 M4 (port contracts for hosting) follows Track A.
@@ -299,7 +299,7 @@ generates them, and code signing lives there.
   plugin.** Settings resolution, render specs and keyed schedules run in Dart.
   Rendering goes through the C ABI (`dart:ffi`) or a platform channel.
   Profiles need a local store in the app sandbox. The store contract
-  (`test/watermark/store_contract.clj`) is the behavior to port.
+  (`testkit/src/watermark/store_contract.clj`) is the behavior to port.
 
 ### Spike exit criteria
 

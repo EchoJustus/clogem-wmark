@@ -7,7 +7,8 @@
 
   Each function takes what only the host can provide (the font's bytes) and
   returns the value its golden file holds."
-  (:require [watermark.core.features :as features]
+  (:require [watermark.config :as config]
+            [watermark.core.features :as features]
             [watermark.core.form :as form]
             [watermark.core.resolve :as resolve]
             [watermark.core.schema :as schema]
@@ -20,8 +21,15 @@
             [watermark.render :as render]
             [watermark.render.schema :as spec-schema]
             [watermark.render.v2 :as v2]
+            [watermark.store :as store]
+            [watermark.store.memory :as memory]
+            [watermark.util.chars :as chars]
+            [watermark.util.host :as host]
             [watermark.util.num :as number]
-            [watermark.util.prng :as prng]))
+            [watermark.util.prng :as prng]
+            [watermark.util.text :as text]
+            [watermark.util.unicode :as unicode]
+            [watermark.util.unicode-data :as unicode-data]))
 
 #?(:clj (set! *warn-on-reflection* true))
 
@@ -450,3 +458,142 @@
    :specs    (into (sorted-map)
                    (for [[k x] @spec-cases]
                      [k {:errors (errors-of spec-schema/validate! x)}]))})
+
+;; ---------------------------------------------------------------------------
+;; text.edn: the library's own Unicode (watermark.util.unicode, text)
+
+(def ^:private general-categories
+  [:Lu :Ll :Lt :Lm :Lo :Mn :Mc :Me :Nd :Nl :No :Pc :Pd :Ps :Pe :Pi :Pf :Po
+   :Sm :Sc :Sk :So :Zs :Zl :Zp :Cc :Cf :Cs :Co :Cn])
+
+(def ^:private text-alphabet
+  "Code points where normalization, casing and word rules meet: Greek with
+  capital, small and final sigma, Latin with dotted and dotless i,
+  ligatures, fullwidth and superscripts, combining marks of several
+  classes, Hangul jamo and syllables, digits and number punctuation, word
+  punctuation, spaces and separators, format characters, CJK and kana, and
+  code points outside the BMP (letters, a digit, an emoji, a mark, format
+  characters, an unassigned one after a CJK block)."
+  [0x3A3 0x3C3 0x3C2 0x391 0x392 0x39F 0x3B1 0x386 0x3AC 0x390 0x345 0x37A
+   0x41 0x61 0x5A 0x49 0x69 0x130 0x131 0xC5 0x212B 0x1E0A 0x1E0B 0xFB01 0xFF21 0xB9 0x2075
+   0x300 0x301 0x307 0x308 0x315 0x316 0x323 0x327 0x334 0x5B0 0x93C 0x1DCE 0x20DD
+   0x1100 0x1112 0x1161 0x1175 0x11A8 0x11C2 0xAC00 0xAC01 0xD7A3 0x3131
+   0x30 0x31 0x661 0xBD 0x2160 0x24B6 0x25 0x23 0x24 0xA2 0x66B 0x66A
+   0x2E 0x27 0x22 0x2C 0x3A 0x2D 0x5F 0xB7 0x2019 0x2027 0xFF0E 0x20 0x9 0xA 0xD 0xA0 0x3000
+   0x2028 0x200B 0x200D 0xAD 0x964 0x2060
+   0x4E00 0x3005 0x30A2 0x3042 0x3099 0x30FC 0xF900
+   0x10400 0x10428 0x1D400 0x1D7CE 0x1F600 0x1D167 0xE0041 0xE007F 0x13430 0x2A6E0])
+
+(defn- digest
+  "FNV-1a over integers (64 bits, wrapping): a fingerprint of a long
+  sequence that both runtimes compute alike."
+  [xs]
+  (reduce (fn [h x] (number/mul-wrap (bit-xor h x) 1099511628211)) -3750763034362895579 xs))
+
+(defn- text-digest
+  "The digest of `f` applied to each string: its code points, then -1."
+  [f strs]
+  (digest (mapcat #(conj (chars/code-points (f %)) -1) strs)))
+
+(defn- random-texts [seed n max-len]
+  (let [g (prng/generator seed)]
+    (vec (repeatedly n (fn []
+                         (let [len (inc (prng/next-below! g max-len))]
+                           (chars/from-code-points
+                            (vec (repeatedly len #(text-alphabet (prng/next-below! g (count text-alphabet))))))))))))
+
+(def ^:private text-ops
+  [[:lower unicode/lower] [:nfd unicode/nfd] [:nfkd unicode/nfkd] [:nfc unicode/nfc] [:nfkc unicode/nfkc]])
+
+(defn text-vectors
+  "text.edn."
+  []
+  (let [every-cp (vec (concat (range 0 0xD800) (range 0xE000 0x110000)))
+        one      (mapv #(chars/from-code-points [%]) every-cp)
+        index    (zipmap general-categories (range))
+        corpus   (random-texts 20260930 3000 12)
+        samples  (subvec corpus 0 24)]
+    {:version    unicode-data/version
+     :categories (digest (map #(index (unicode/category %)) (range 0x110000)))
+     :every-code-point (into (sorted-map) (for [[k f] text-ops] [k (text-digest f one)]))
+     :random     (into (sorted-map) (for [[k f] text-ops] [k (text-digest f corpus)]))
+     :word-boundaries (digest (mapcat #(conj (vec (sort (unicode/word-boundaries (chars/code-points %)))) -1) corpus))
+     :samples    (vec (for [s samples]
+                        (into {:text (chars/code-points s)
+                               :word-boundaries (vec (sort (unicode/word-boundaries (chars/code-points s))))}
+                              (for [[k f] text-ops] [k (chars/code-points (f s))]))))
+     :sigma      (vec (for [s ["ΑΣ" "Σ" "ΑΣ Β" "ΑΣ-Β" "ΑΣ.Β" "ΑΣ'Β" "ΑΣ:Β" "ΑΣ_Β" "ΑΣ1" "1Σ" "Α1Σ"
+                               "Α.Σ" "ΑΣ." "A Σ" "aΣ" "ΑΣ·Β" "ΑΣ,Β" "16:9 ΟΔΟΣ" "ΟΔΟΣ ΤΕΣΤ" "Α'Σ"
+                               "ΑΣ’Β" "ΑΣ．Β" "ΣΣ" "ΑΣΣ" "ⒶΣ" "ⅠΣ" "ΑΣ%" "$1Σ" "Α𐐨Σ" "𐐨Σ" "İSTANBUL"]]
+                       [s (text/lower s)]))
+     :whitespace (vec (filter text/whitespace? (range 0x110000)))
+     :trim       (vec (for [s [" a " "\u00A0a\u00A0" "\u3000a\u2028" "\uFEFFa" "\t\n" ""]]
+                        [s (text/trim s) (text/blank? s)]))
+     :collapse   (text/collapse-spaces "a \t\n\u000B\f\r b  c\u00A0d\u3000e")
+     :runs       (vec (for [s ["16:9 Video Profile" "横屏 16:9" "a--b__c" "  x  " "Ⅻ·ⅰ·①"]]
+                        [s (text/replace-runs s (complement unicode/letter-mark-number?) "-")]))}))
+
+;; ---------------------------------------------------------------------------
+;; profiles.edn: the profile rules on the memory store, with a fixed clock
+
+(defn- result
+  "What `f` returns, or the kind, message and reason of the error it throws."
+  [f]
+  (let [[v e] (host/attempt f)]
+    (if e
+      (cond-> {:error (:wmark/error (ex-data e)) :message (ex-message e)}
+        (:reason (ex-data e)) (assoc :reason (:reason (ex-data e))))
+      v)))
+
+(def ^:private profile-names
+  "Names as people type them: punctuation a file system refuses, case,
+  Windows device names, superscripts and fullwidth forms, other scripts,
+  final sigma, dotted capital I, combining marks, invisible and odd
+  whitespace, a name too long for a file."
+  ["16:9 Video Profile" "  16-9   VIDEO profile " "CON" "com¹" "Lpt9" "横屏 16:9" "ＡＢＣ" "::" "-a-"
+   "ΟΔΟΣ ΤΕΣΤ" "İstanbul" "Straße" "ﬁle №5" "Cafe\u0301" "Café" "e\u200Bx" "tab\tname"
+   "\u00A0nbsp\u00A0" "ǅungla" "Ⅻ Chapter" "٣ Arabic-Indic" "𝐁old 😀 emoji" "a\u2028b"
+   (apply str (repeat 70 "ab"))])
+
+(defn profile-vectors
+  "profiles.edn."
+  []
+  (binding [host/*clock* (let [t (atom 1790726400000)] (fn [] (swap! t + 1500)))]
+    (let [st        (memory/memory-store)
+          defaults  {:logo {:anchor :bottom-right :opacity 0.85 :width-ratio 0.12}
+                     :text [{:mode :continuous :content "(c) Studio"}]}
+          ;; each step in turn: ClojureDart evaluates a map literal's values
+          ;; in another order than the JVM
+          created   (result #(config/create-profile! st "16:9 Video Profile"
+                                                     {:logo {:anchor :top-left :opacity nil} :inputs ["a.mp4"]}))
+          taken     (result #(config/create-profile! st "16-9 video profile" {}))
+          by-case   (result #(config/save-profile! st "16:9 VIDEO PROFILE" {:logo {:anchor :center}}))
+          alias     (result #(config/save-profile! st "16 9 video profile!" {}))
+          by-slug   (result #(config/save-profile! st "16-9-video-profile" {:logo {:anchor :top-right}}))
+          stale     (result #(config/save-profile! st "16:9 Video Profile" {} {:if-rev 1}))
+          renamed   (result #(config/rename-profile! st "16:9 Video Profile" "Wide"))
+          missing   (result #(config/rename-profile! st "missing" "x"))
+          reserved  (result #(config/create-profile! st "latest" {}))
+          latest    (result #(config/record-latest! st {:logo {:opacity 0.5} :job {:id 1}} "Wide"))
+          copied    (result #(config/copy-profile! st "latest" "From last run"))
+          invalid   (vec (for [n ["" "   " "a\u0007b" (apply str (repeat 81 "x")) "::"]]
+                           (result #(config/create-profile! st n {}))))
+          listed    (config/list-profiles st)
+          resolved  (vec (for [p [nil "wide" :none "nope"]]
+                           (result #(config/resolve-settings st {:profile p :defaults defaults
+                                                                 :overrides {:logo {:opacity nil :width-ratio 0.2}}}))))
+          docs      (into (sorted-map) (for [[slug doc] (store/-read-all st)] [slug (store/encode-doc doc)]))
+          decoded   (vec (for [[slug text] docs] [slug (= (store/-read st slug) (store/decode-doc text slug))]))
+          deleted   (result #(config/delete-profile! st "Wide"))
+          again     (result #(config/delete-profile! st "Wide"))]
+      {:slugs       (vec (for [n profile-names] [n (result #(config/slug n))]))
+       :names       (vec (for [n profile-names] [n (config/normalize-name n)]))
+       :steps       {:created created :taken taken :by-case by-case :alias alias :by-slug by-slug
+                     :stale stale :renamed renamed :missing missing :reserved reserved :latest latest
+                     :copied copied :invalid invalid :deleted deleted :deleted-again again}
+       :listed      listed
+       :resolved    resolved
+       :documents   docs
+       :decoded     decoded
+       :bad-documents (vec (for [text ["{:a" "[1 2]" "{:profile/name \"x\" :settings {} :wmark/format 9}" ""]]
+                             (result #(store/decode-doc text "p.edn"))))})))

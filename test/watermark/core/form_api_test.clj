@@ -8,7 +8,7 @@
             [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
-            [watermark.config :as config]
+            [watermark.home :as home]
             [watermark.core.api :as api]
             [watermark.core.features :as features]
             [watermark.engine :as engine]
@@ -24,7 +24,7 @@
 
 (defn- sys []
   (let [home  (c/tmp-dir)
-        store (config/file-store {:home home})]
+        store (home/file-store {:home home})]
     {:home         home
      :profiles-for (constantly store)
      :entitlements (features/community)

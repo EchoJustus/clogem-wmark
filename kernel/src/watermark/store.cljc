@@ -1,15 +1,16 @@
 ;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
 ;; SPDX-License-Identifier: EPL-2.0
 (ns watermark.store
-  "The profile-storage port.
+  "The profile-storage port, in the core library (docs/adr/0013): the
+  protocol and the document codec are portable, so any host implements it.
 
   watermark.config implements every profile rule (names, `latest`, conflicts,
   fallback) on top of this protocol and nothing else, so the same rules run
   over any backend:
 
-    watermark.store.file     local files        desktop editions
+    watermark.store.file     local files        desktop editions (JVM)
     watermark.store.memory   an atom            tests, demos, ephemeral workers
-    watermark.saas.store     PostgreSQL rows    Stage 5 serverless backend
+    a SQL store              database rows      hosted backends
 
   Contract
   * Documents are maps carrying :profile/rev, a revision number that
@@ -29,10 +30,10 @@
     writes to fail safe (rename writes the new name before deleting the old:
     a crash leaves a copy, never a loss). Units must be short and do no I/O
     besides the store."
-  (:require [clojure.edn :as edn]
-            [clojure.pprint :as pprint]))
+  (:require [watermark.util.edn :as edn]
+            [watermark.util.host :as host]))
 
-(set! *warn-on-reflection* true)
+#?(:clj (set! *warn-on-reflection* true))
 
 (defprotocol ProfileStore
   (-read     [store slug]                   "Document for `slug`, or nil.")
@@ -70,25 +71,19 @@
 ;; Document codec: human-editable EDN, shared by file and SQL stores
 
 (defn encode-doc
-  "EDN text. Printing vars are pinned so a REPL binding such as *print-length*
-  can never truncate a stored profile."
-  ^String [doc]
-  (binding [*print-length*         nil
-            *print-level*          nil
-            *print-meta*           false
-            *print-namespace-maps* false
-            *print-dup*            false
-            *print-readably*       true]
-    (with-out-str (pprint/pprint doc))))
+  "EDN text, written the same way on every host (watermark.util.edn):
+  keys sorted, one entry per line where a map doesn't fit on one."
+  [doc]
+  (edn/write doc))
 
 (defn decode-doc
   "Document from EDN text, or an :invalid error naming `where`."
-  [^String text where]
-  (let [doc (try (edn/read-string {:eof nil} text)
-                 (catch Exception e
-                   (throw (ex-info (str "Not valid EDN: " where)
-                                   {:wmark/error :invalid :path (str where) :cause (ex-message e)}))))
-        fmt (get doc :wmark/format 1)]
+  [text where]
+  (let [[doc e] (host/attempt #(host/read-edn text))
+        _       (when e
+                  (throw (ex-info (str "Not valid EDN: " where)
+                                  {:wmark/error :invalid :path (str where) :cause (:cause (ex-data e))})))
+        fmt     (get doc :wmark/format 1)]
     (cond
       (not (and (map? doc) (map? (:settings doc)) (string? (:profile/name doc))))
       (throw (ex-info (str "Not a wmark profile: " where) {:wmark/error :invalid :path (str where)}))

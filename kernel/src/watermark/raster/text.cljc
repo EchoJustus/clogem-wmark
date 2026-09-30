@@ -22,6 +22,7 @@
             [watermark.raster.color :as color]
             [watermark.raster.image :as image]
             [watermark.raster.truetype :as tt]
+            [watermark.util.chars :as chars]
             [watermark.util.num :as number]))
 
 #?(:clj (set! *warn-on-reflection* true))
@@ -29,9 +30,7 @@
 (defn codepoints
   "The Unicode code points of a string."
   [s]
-  #?(:clj  (vec (.toArray (.codePoints ^String s)))
-     :cljs (mapv #(.codePointAt % 0) (js/Array.from s))
-     :cljd (vec (.-runes ^String s))))
+  (chars/code-points s))
 
 ;; ---------------------------------------------------------------------------
 ;; Outlines -> line segments in pixels

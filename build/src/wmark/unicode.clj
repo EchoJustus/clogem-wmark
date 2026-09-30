@@ -1,0 +1,125 @@
+;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
+;; SPDX-License-Identifier: EPL-2.0
+(ns wmark.unicode
+  "Generates watermark.util.unicode-data, the Unicode tables the core library
+  normalizes and lowercases with on hosts without those functions (the Dart
+  VM; docs/adr/0013). Input: three files of the Unicode Character Database,
+  pinned by version and SHA-256 in wmark.build/unicode. Output: compact
+  strings, sorted, so the file is reproducible and its diff reviewable.
+
+  Encodings (hexadecimal code points):
+    category   \"0-1f:Cc;20:Zs;...\"          general category, ranges; unassigned left out
+    ccc        \"300-314:230;315:232;...\"   canonical combining class, ranges
+    canonical  \"c0:41 300;...\"             one-level canonical decompositions
+    compat     \"a0:20;fb01:66 69;...\"       one-level compatibility decompositions
+    excluded   \"340-341;343-344;...\"       Full_Composition_Exclusion, ranges
+    lowercase  \"41:61;42:62;...\"            simple lowercase mappings"
+  (:require [clojure.java.io :as io]
+            [clojure.string :as str]))
+
+(set! *warn-on-reflection* true)
+
+(defn- hex ^long [s] (Long/parseLong (str/trim s) 16))
+(defn- h [n] (Long/toHexString n))
+
+(defn- unicode-data-rows
+  "UnicodeData.txt as [cp fields]. A <..., First>/<..., Last> pair stands for
+  every code point between; they share one category and carry no
+  decompositions, cases or combining classes, so only `categories` expands
+  them."
+  [text]
+  (for [line (str/split-lines text)
+        :when (seq line)
+        :let [f (str/split line #";" -1)]]
+    [(hex (f 0)) f]))
+
+(defn- categories
+  "[[cp category] ...] for every assigned code point, in order."
+  [rows]
+  (loop [rows rows out (transient [])]
+    (if-let [[cp f] (first rows)]
+      (if (str/ends-with? (f 1) ", First>")
+        (let [[last-cp _] (second rows)]
+          (recur (nnext rows) (reduce #(conj! %1 [%2 (f 2)]) out (range cp (inc last-cp)))))
+        (recur (next rows) (conj! out [cp (f 2)])))
+      (persistent! out))))
+
+(defn- ranges
+  "[[cp v] ...] sorted -> [[from to v] ...] with runs of consecutive code
+  points sharing v merged."
+  [pairs]
+  (reduce (fn [acc [cp v]]
+            (let [[from to v'] (peek acc)]
+              (if (and (= v v') (= cp (inc to)))
+                (conj (pop acc) [from cp v])
+                (conj acc [cp cp v]))))
+          [] pairs))
+
+(defn- range-str [from to] (if (= from to) (h from) (str (h from) "-" (h to))))
+
+(defn tables
+  "The tables from the files' text."
+  [{:keys [unicode-data derived-normalization-props]}]
+  (let [rows  (unicode-data-rows unicode-data)
+        ccc   (for [[cp f] rows :let [c (parse-long (f 3))] :when (pos? c)] [cp c])
+        decos (for [[cp f] rows :let [d (f 5)] :when (seq d)] [cp d])
+        canon (for [[cp d] decos :when (not (str/starts-with? d "<"))] [cp d])
+        compat (for [[cp d] decos :when (str/starts-with? d "<")]
+                 [cp (str/trim (subs d (inc (str/index-of d ">"))))])
+        lower (for [[cp f] rows :let [l (f 13)] :when (seq l)] [cp (hex l)])
+        excl  (sort (for [line (str/split-lines derived-normalization-props)
+                          :let [[_ r] (re-matches #"([0-9A-F.]+)\s*;\s*Full_Composition_Exclusion\b.*" line)]
+                          :when r
+                          :let [[a b] (str/split r #"\.\.")]
+                          cp (range (hex a) (inc (hex (or b a))))]
+                      cp))
+        deco-str (fn [pairs] (str/join ";" (for [[cp d] (sort-by first pairs)]
+                                            (str (h cp) ":" (str/join " " (map (comp h hex) (str/split d #" +")))))))]
+    {:category  (str/join ";" (for [[a b c] (ranges (categories rows))] (str (range-str a b) ":" c)))
+     :ccc       (str/join ";" (for [[a b c] (ranges (sort-by first ccc))] (str (range-str a b) ":" c)))
+     :canonical (deco-str canon)
+     :compat    (deco-str compat)
+     :excluded  (str/join ";" (for [[a b] (ranges (map #(vector % true) excl))] (range-str a b)))
+     :lowercase (str/join ";" (for [[cp l] (sort-by first lower)] (str (h cp) ":" (h l))))}))
+
+(defn- chunks
+  "A string in pieces a JVM class file can hold as constants (at most
+  65,535 bytes each), cut at entry separators."
+  [s]
+  (loop [s s out []]
+    (if (<= (count s) 40000)
+      (conj out s)
+      (let [cut (inc (str/last-index-of s ";" 40000))]
+        (recur (subs s cut) (conj out (subs s 0 (dec cut))))))))
+
+(defn source
+  "The watermark.util.unicode-data namespace for `tables` of UCD `version`."
+  [version tables]
+  (let [q  (fn [s] (str "\"" s "\""))
+        vs (fn [s] (str "[" (str/join "\n   " (map q (chunks s))) "]"))]
+    (str ";; SPDX-FileCopyrightText: 2026 The clogem-wmark authors\n"
+         ";; SPDX-License-Identifier: EPL-2.0 AND Unicode-3.0\n"
+         "(ns watermark.util.unicode-data\n"
+         "  \"Unicode Character Database " version " tables for watermark.util.unicode.\n"
+         "  Generated by `clojure -T:build unicode` (build/src/wmark/unicode.clj) from\n"
+         "  UnicodeData.txt and DerivedNormalizationProps.txt; do not edit. The data\n"
+         "  is Unicode's, under the Unicode License v3 (licenses/Unicode-3.0.txt).\")\n\n"
+         "#?(:clj (set! *warn-on-reflection* true))\n\n"
+         "(def version " (q version) ")\n\n"
+         ";; hexadecimal code points; see wmark.unicode for the encodings\n"
+         "(def category " (vs (:category tables)) ")\n\n"
+         "(def ccc " (vs (:ccc tables)) ")\n\n"
+         "(def canonical " (vs (:canonical tables)) ")\n\n"
+         "(def compat " (vs (:compat tables)) ")\n\n"
+         "(def excluded " (vs (:excluded tables)) ")\n\n"
+         "(def lowercase " (vs (:lowercase tables)) ")\n")))
+
+(defn generate!
+  "Write `out` from the UCD files in `dir`."
+  [version dir out]
+  (let [read #(slurp (io/file dir %) :encoding "UTF-8")
+        text (source version (tables {:unicode-data (read "UnicodeData.txt")
+                                      :derived-normalization-props (read "DerivedNormalizationProps.txt")}))]
+    (io/make-parents out)
+    (spit out text :encoding "UTF-8")
+    (println "Wrote" (str out) (count text) "characters")))

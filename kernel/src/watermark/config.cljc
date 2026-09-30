@@ -14,6 +14,10 @@
     * otherwise `latest`, when one exists (the auto-fallback),
     * otherwise nothing.
 
+  Part of the core library (docs/adr/0013): the same rules run on the JVM
+  and the Dart VM. Where configuration lives on disk is the host's
+  business (watermark.home on the JVM).
+
   Design notes
   * Every rule here runs on the watermark.store port, so the same code serves
     local files (desktop), memory (tests, workers) and PostgreSQL (the
@@ -23,24 +27,23 @@
     against the revision that was read, so concurrent editors (two tabs, two
     serverless instances) get a clean :conflict instead of a lost update.
     Callers may pass :if-rev to insist on the revision *they* loaded.
-  * GraalVM native-image initialises Clojure namespaces at *build* time, so
-    nothing environment-dependent (home dir, env vars, clock, RNG) may sit in
-    a top-level def -- it would be frozen into the binary from the build
-    machine. Everything environment-dependent here is a function."
+  * Text rules (normal forms, lowercase, whitespace, letters) come from the
+    library's own Unicode tables (watermark.util.text), so a profile's file
+    name is the same on every host. Times come from watermark.util.host's
+    clock."
   (:require [clojure.string :as str]
             [watermark.core.resolve :as resolve]
             [watermark.store :as store]
-            [watermark.store.file :as file-store])
-  (:import (clojure.lang ExceptionInfo)
-           (java.nio.file Files LinkOption Path Paths)
-           (java.text Normalizer Normalizer$Form)
-           (java.time Instant)
-           (java.util Locale)))
+            [watermark.util.chars :as chars]
+            [watermark.util.host :as host]
+            [watermark.util.text :as text]
+            [watermark.util.time :as time]
+            [watermark.util.unicode :as unicode]))
 
-(set! *warn-on-reflection* true)
+#?(:clj (set! *warn-on-reflection* true))
 
 ;; ---------------------------------------------------------------------------
-;; Constants (pure data -- safe to initialise at image build time)
+;; Constants
 
 (def format-version store/format-version)
 
@@ -55,9 +58,6 @@
 (def ^:private max-slug-length 64)
 (def ^:private max-name-length 80)
 
-(def ^:private ^"[Ljava.nio.file.LinkOption;" no-links
-  (make-array LinkOption 0))
-
 ;; ---------------------------------------------------------------------------
 ;; Small helpers
 
@@ -68,59 +68,15 @@
   (throw (ex-info msg (assoc data :wmark/error kind))))
 
 (defn- not-found! [name]
-  (error! :not-found (format "No profile named \"%s\"." name) {:name name}))
+  (error! :not-found (str "No profile named \"" name "\".") {:name name}))
 
 (defn- lower
-  "Locale-independent lower-casing (the default locale would turn \"I\" into a
-  dotless i on Turkish systems)."
-  ^String [^String s]
-  (.toLowerCase s Locale/ROOT))
+  "Locale-independent lowercasing (a Turkish locale would turn \"I\" into a
+  dotless i)."
+  [s]
+  (text/lower s))
 
-(defn- path ^Path [^String p & more]
-  (Paths/get p (into-array String more)))
-
-(defn- env ^String [^String k] (System/getenv k))
-
-(defn- now-str [] (str (Instant/now)))
-
-;; ---------------------------------------------------------------------------
-;; Where configuration lives (evaluated at run time, never at build time)
-
-(defn- os-family []
-  (let [os (lower (System/getProperty "os.name" ""))]
-    (cond (str/starts-with? os "windows") :windows
-          (str/starts-with? os "mac")     :macos
-          :else                           :unix)))
-
-(defn default-home
-  "Per-user config directory following each platform's convention. Only plain
-  environment and system-property reads -- no OS-specific APIs."
-  ^Path []
-  (let [home (System/getProperty "user.home")]
-    (case (os-family)
-      :windows (path (or (not-empty (env "APPDATA"))
-                         (str home "\\AppData\\Roaming"))
-                     "wmark")
-      :macos   (path home "Library" "Application Support" "wmark")
-      (path (or (not-empty (env "XDG_CONFIG_HOME")) (str home "/.config"))
-            "wmark"))))
-
-(defn resolve-home
-  "Config home, first match wins:
-     1. explicit `:home` (the --home CLI flag)
-     2. the WMARK_HOME environment variable
-     3. `./wmark-data` when that directory exists: portable mode, for
-        unzip-and-run installs. Explorer starts a double-clicked .exe with the
-        exe's folder as working directory, so this also works on Windows.
-     4. the OS default."
-  ^Path [{:keys [home]}]
-  (let [portable (path (System/getProperty "user.dir") "wmark-data")
-        ^Path chosen (cond
-                       home                                  (path (str home))
-                       (not-empty (env "WMARK_HOME"))        (path (env "WMARK_HOME"))
-                       (Files/isDirectory portable no-links) portable
-                       :else                                 (default-home))]
-    (.toAbsolutePath chosen)))
+(defn- now-str [] (time/now))
 
 ;; ---------------------------------------------------------------------------
 ;; Names and slugs
@@ -129,19 +85,12 @@
   (into #{"con" "prn" "aux" "nul"}
         (for [p ["com" "lpt"] i (range 1 10)] (str p i))))
 
-(defn- code-point-count ^long [^String s] (.codePointCount s 0 (.length s)))
-
-(defn- truncate-code-points ^String [^String s ^long n]
-  (if (<= (code-point-count s) n)
-    s
-    (subs s 0 (.offsetByCodePoints s 0 (int n)))))
-
 (defn normalize-name
   "Canonical display name: Unicode NFC, trimmed, inner whitespace collapsed."
-  ^String [s]
-  (-> (Normalizer/normalize (str s) Normalizer$Form/NFC)
-      str/trim
-      (str/replace #"\s+" " ")))
+  [s]
+  (-> (text/nfc (str s))
+      text/trim
+      text/collapse-spaces))
 
 (defn slug
   "Filesystem-safe, case-folded identity of a profile name.
@@ -155,16 +104,16 @@
     \"16:9 Video Profile\" -> \"16-9-video-profile\"
     \"CON\"                -> \"_con\"       (reserved device name on Windows)
     \"横屏 16:9\"           -> \"横屏-16-9\"   (letters of any script survive)"
-  ^String [s]
+  [s]
   (let [base (-> (normalize-name s)
-                 (Normalizer/normalize Normalizer$Form/NFKC) ; fullwidth, ¹ -> 1
+                 text/nfkc ; fullwidth, ¹ -> 1
                  lower
-                 (str/replace #"[^\p{L}\p{M}\p{N}]+" "-")
+                 (text/replace-runs (complement unicode/letter-mark-number?) "-")
                  (str/replace #"^-+|-+$" "")
-                 (truncate-code-points max-slug-length)
+                 (text/take-code-points max-slug-length)
                  (str/replace #"-+$" ""))]
     (cond
-      (str/blank? base)
+      (text/blank? base)
       (error! :invalid "A profile name needs at least one letter or digit."
               {:name s})
 
@@ -173,18 +122,17 @@
 
 (defn- check-name!
   "Validated, normalised display name."
-  ^String [s]
+  [s]
   (let [n (normalize-name s)]
     (cond
-      (str/blank? n)
+      (text/blank? n)
       (error! :invalid "Profile name must not be blank." {:name s})
 
-      (> (code-point-count n) max-name-length)
-      (error! :invalid (format "Profile names are limited to %d characters."
-                               max-name-length)
+      (> (text/code-point-count n) max-name-length)
+      (error! :invalid (str "Profile names are limited to " max-name-length " characters.")
               {:name s})
 
-      (re-find #"\p{Cc}" n)
+      (some unicode/control? (chars/code-points n))
       (error! :invalid "Profile name contains control characters." {:name s})
 
       :else n)))
@@ -199,12 +147,7 @@
   s)
 
 ;; ---------------------------------------------------------------------------
-;; Stores
-
-(defn file-store
-  "Local store under `<home>/profiles/`; see `resolve-home` for `opts`."
-  ([] (file-store {}))
-  ([opts] (file-store/file-store (.resolve (resolve-home opts) "profiles"))))
+;; Settings
 
 (defn- persistable [settings]
   (when-not (or (nil? settings) (map? settings))
@@ -266,14 +209,14 @@
              display  (if (and existing (= given s)) (:profile/name existing) given)]
          (when (and existing create?)
            (error! :conflict
-                   (format "A profile named \"%s\" already exists." (:profile/name existing))
+                   (str "A profile named \"" (:profile/name existing) "\" already exists.")
                    {:name display :existing (:profile/name existing) :slug s}))
          (when (and existing
                     (not overwrite?)
                     (not= (lower (:profile/name existing)) (lower display)))
            (error! :conflict
-                   (format "\"%s\" and the existing profile \"%s\" share a file name. Pick another name or overwrite explicitly."
-                           display (:profile/name existing))
+                   (str "\"" display "\" and the existing profile \"" (:profile/name existing)
+                        "\" share a file name. Pick another name or overwrite explicitly.")
                    {:name display :existing (:profile/name existing) :slug s}))
          (check-if-rev! s existing if-rev)
          (let [now (now-str)
@@ -318,7 +261,7 @@
          (when (not= src dst)
            (when-let [taken (store/-read tx dst)]
              (error! :conflict
-                     (format "A profile named \"%s\" already exists." (:profile/name taken))
+                     (str "A profile named \"" (:profile/name taken) "\" already exists.")
                      {:name display :existing (:profile/name taken)})))
          (let [renamed (assoc doc
                               :profile/name display
@@ -355,7 +298,7 @@
      (store/-transact
       store
       (fn [tx]
-        (let [existing (try (store/-read tx latest-slug) (catch ExceptionInfo _ nil))
+        (let [[existing] (host/attempt #(store/-read tx latest-slug))
               now      (now-str)
               doc      (cond-> {:wmark/format       format-version
                                 :profile/name       latest-slug
@@ -383,12 +326,10 @@
       [(if (= latest-slug (:profile/slug doc)) :latest :named) doc []])
 
     :else ; auto-fallback to latest -- tolerant: a damaged latest must not block a run
-    (try
-      (if-let [doc (store/-read store latest-slug)]
-        [:latest doc []]
-        [:none nil []])
-      (catch ExceptionInfo e
-        [:none nil [(str "Ignored an unreadable latest profile: " (ex-message e))]]))))
+    (let [[doc e] (host/attempt #(store/-read store latest-slug))]
+      (cond e   [:none nil [(str "Ignored an unreadable latest profile: " (ex-message e))]]
+            doc [:latest doc []]
+            :else [:none nil []]))))
 
 (defn resolve-settings
   "Effective settings for a run: `defaults` < base profile < `overrides`.

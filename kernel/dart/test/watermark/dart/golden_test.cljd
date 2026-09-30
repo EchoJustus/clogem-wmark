@@ -44,3 +44,9 @@
 
 (deftest ffmpeg
   (check "ffmpeg" (inputs/ffmpeg-vectors)))
+
+(deftest text
+  (check "text" (inputs/text-vectors)))
+
+(deftest profiles
+  (check "profiles" (inputs/profile-vectors)))

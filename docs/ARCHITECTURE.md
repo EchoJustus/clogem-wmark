@@ -76,7 +76,7 @@ names or requires them.
 
 | Port | Protocol | Adapters today | Planned adapters |
 |---|---|---|---|
-| Profile storage | `watermark.store/ProfileStore` | file (`store.file`), memory (`store.memory`), PostgreSQL (`saas.store`) | app-sandbox store for the GUI |
+| Profile storage | `watermark.store/ProfileStore` (core library) | file (`store.file`, JVM), memory (`store.memory`, core library), a SQL store in hosted backends | app-sandbox store for the GUI, a Dart file store (M3d) |
 | Rendering | `watermark.engine/VideoEngine` + `RenderHandle`, and `StillDecoder` for engines that take render spec v2 | `FFmpegProcessor`, `NativeFFIProcessor` (C ABI) | AVFoundation, Media3, a Rust core: all behind the C ABI |
 | Host drawing (render spec v2) | `watermark.raster/Rasterizer` (`realize!`, `release!`) | local: bitmaps in a scratch folder per render (`raster.local`) | object storage next to hosted workers |
 | Media | `watermark.media/MediaIO` | local files (`media.local`) | object storage |
@@ -278,6 +278,13 @@ as the plan is returned.
 
 ## Configuration (`watermark.config`)
 
+The profile rules are part of the core library
+(`kernel/src/watermark/config.cljc`, [ADR 0013](adr/0013-host-logic-into-the-core-library.md),
+section 2): the same code runs on the JVM and the Dart VM, and
+`kernel/test/golden/profiles.edn` pins slugs, conflicts, fallback, provenance
+and the text of stored documents on both. Where the home directory is, and
+the file store in it, are the JVM host's (`watermark.home`).
+
 **Home directory**, first match wins:
 1. `--home`
 2. `WMARK_HOME`
@@ -293,7 +300,16 @@ as the plan is returned.
   `_con`). Letters in any script survive.
 - Two different names that map to the same slug are a **conflict**, never a
   silent overwrite. Addressing a profile by its slug never renames it.
-- On disk, a profile is a human-editable EDN file, `<home>/profiles/<slug>.edn`.
+- On disk, a profile is a human-editable EDN file, `<home>/profiles/<slug>.edn`,
+  written by `watermark.util.edn`: keys sorted, one entry per line where a
+  map doesn't fit on one, byte for byte the same on every host.
+- **Text rules are the library's own.** Normal forms, lowercase, whitespace
+  and "letter, mark or number" come from its copy of the Unicode Character
+  Database (16.0.0, `watermark.util.unicode`), not from the runtime, so a
+  slug doesn't change between hosts or when a runtime moves to a newer
+  Unicode version. They give Java 25's results, so existing slugs stay put,
+  except in one corner: a capital sigma right after a character outside the
+  Basic Multilingual Plane, where Java's word iterator errs (ADR 0013).
 
 **`latest`** is reserved and auto-saved by every real run, before encoding
 starts, so a crashed batch can be re-run with identical settings. Dry runs
@@ -317,7 +333,7 @@ don't touch it. Inputs and seeds are never persisted into it.
 
 `watermark.config` implements all of the rules above on the `ProfileStore`
 protocol and nothing else. The same functions therefore run over files, an
-atom, or PostgreSQL rows. `test/watermark/store_contract.clj` is the executable
+atom, or database rows. `testkit/src/watermark/store_contract.clj` is the executable
 definition of the behaviour; every store must pass it.
 
 - **Revisions.** Every profile carries `:profile/rev`. Writes are
