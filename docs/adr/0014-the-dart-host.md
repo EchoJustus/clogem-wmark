@@ -2,8 +2,8 @@
 <!-- SPDX-License-Identifier: EPL-2.0 -->
 # 0014. The Dart host: adapters over `dart:io`, a Dart CLI, and the logic they share (M3d)
 
-- **Status:** Accepted (2026-09-30), carried out in steps: section 1 on
-  2026-09-30. It records how M3d of
+- **Status:** Accepted (2026-09-30), carried out in steps: sections 1 and 2
+  on 2026-09-30. It records how M3d of
   [ADR 0008](0008-desktop-architecture-and-binary-size.md) (section 1,
   "Each target ships with its basic adapters"; section 3, Phase 2) is done.
 - **Date:** 2026-09-30
@@ -71,14 +71,94 @@ each host's adapter keeps only its I/O.
   names, eleven searches on a fake machine (Windows paths included), the
   warnings and a realized spec. Both runtimes pass both.
 
+### 2. The Dart host: `dart/`, adapters over `dart:io`
+
+- **Where:** `dart/`, a ClojureDart project beside `kernel/dart` (its own
+  `deps.edn` and `pubspec.yaml`, ClojureDart and the Dart SDK pinned as
+  there), namespaces `watermark.dartvm.*`. The architecture test holds it
+  to the core library, its own namespaces and `clojure.string`, and keeps
+  everything else from requiring it.
+- **The adapters**, each the JVM's counterpart minus what moved in
+  section 1:
+  - `fs`: files through `dart:io`'s synchronous calls, and the files port.
+    A write goes to a temp file in the same folder, flushed, then renamed
+    over the target. Windows sharing violations (antivirus, sync clients)
+    are retried, as on the JVM.
+  - `store`: the profile store, one EDN file per profile. It reads and
+    writes the JVM's files, byte for byte, and passes the store contract,
+    which is now `.cljc` so any Dart store can run it.
+  - `media`: MediaIO over local files. The fingerprint reads only the
+    ranges `fingerprint-ranges` names; outputs are published from a
+    `.part` file by rename.
+  - `raster`: the Rasterizer, `watermark.raster/realize` plus files.
+  - `ffmpeg`: the engine. It finds the binaries with the library's search
+    over what `dart:io` reports (an execute bit on POSIX; the running
+    executable's folder, or none under `dart run`) and runs them by
+    absolute path, never through a shell.
+    - Short commands (describe, probe, a still, the sample clip) run with
+      `Process.runSync`. Output is decoded as UTF-8 that tolerates
+      malformed bytes, since FFmpeg prints file names as the OS gives them.
+    - Trial encodes run with `Process.start` and are killed after 30
+      seconds. The Dart VM can only time a process out asynchronously, so
+      discovery is a task: `ffmpeg-engine` returns a task of the engine,
+      and the trials go through `watermark.ffmpeg.engine/trial-encoders`,
+      which asks exactly what `discover` will (pinned in `adapters.edn`).
+    - Renders run with `Process.start`: `-progress` lines on stdout feed
+      the library's progress reader, and stderr streams into the render's
+      log file. A cancel sends SIGTERM (TerminateProcess on Windows) and
+      SIGKILL five seconds later.
+  - `home`: the JVM's rules, so both hosts share a home: `--home`,
+    `WMARK_HOME`, `./wmark-data`, then the platform's folder. The studio
+    secret is the same file (base64 of 32 bytes from `Random.secure`),
+    created exclusively. `dart:io` can't set permissions, so the host runs
+    `/bin/chmod 600` by absolute path and removes the secret again if that
+    fails. The font is `fonts/wmark.ttf` next to the program, else in a
+    checkout's `resources/`, else a system font.
+- **ClojureDart findings** (0.9.20260917, Dart 3.13.4):
+  - named arguments are written `.name value`; `:name value` is
+    deprecated;
+  - `Utf8Codec`'s constructor argument `allowMalformed` can't be named:
+    ClojureDart's analyzer sees the SDK's private field instead
+    (`_allowMalformed`). Decoding with `utf8.decode(bytes, allowMalformed:
+    true)`, a method argument, works;
+  - a callback Dart types `void` (a `Timer`'s) must return nil;
+  - a macro's body is compiled for Dart too, so it can't read a file on
+    the JVM. The version is a compile-time constant instead
+    (`String.fromEnvironment` with `^{:const :required}`).
+- **A finding of the golden vectors:** the trials' order came from
+  iterating a two-entry map literal, which the Dart VM iterates in another
+  order than the JVM (HEVC first). The results were the same, but the order
+  of the questions wasn't; codec families are now tried by name, on both.
+- **Limits, stated:** `File.renameSync` replaces an existing file ("that
+  entity is removed first", Dart's API). On POSIX that is `rename(2)`,
+  which is atomic; Dart doesn't say whether it is atomic on Windows.
+- **Tests** (`dart/test`, `bb dart`, CI's `dart` job with FFmpeg):
+  - the store contract and profile files;
+  - files, media publishing, conflicts and discards, and the secret;
+  - fingerprints of files equal `adapters.edn`'s;
+  - with the machine's FFmpeg: discovery, probing, a decoded still, the
+    sample clip, a batch through the Core API with render spec 1 and with
+    2 (`latest` recorded, no scratch left), and a cancelled render.
+
 ## Consequences
 
 - The JVM's `wmark` runs the library's CLI; its tests (`app-test`, the
   progress tests, now in `kernel/test`) pass unchanged but for the printer
   taking a writer.
 - A Dart program gets the same command line by supplying a host map.
+- The core library now runs on the Dart VM on its own: plans, profiles,
+  renders and previews, through adapters that pass the same contract and
+  golden vectors as the JVM's.
 
 ## Sources (checked 2026-09-30)
+
+- Dart `File.renameSync`: "If `newPath` identifies an existing file or
+  link, that entity is removed first":
+  <https://api.dart.dev/dart-io/File/renameSync.html>
+- Dart `File` has no method that sets permissions:
+  <https://api.dart.dev/dart-io/File-class.html>
+- Dart `String.fromEnvironment` is only guaranteed as a `const`
+  invocation: <https://api.dart.dev/dart-core/String/String.fromEnvironment.html>
 
 - `clojure.tools.cli` 1.4.256, `parse-opts` and its summary layout:
   <https://github.com/clojure/tools.cli>

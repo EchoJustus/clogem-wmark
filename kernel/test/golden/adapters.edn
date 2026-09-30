@@ -346,4 +346,24 @@
     :height 74,
     :path
     "/scratch/f0ae481c6d5db1e27f3ff1227f6cf8ff9e8f3d1d2b52e743b2ffe6dfd4e70c72.rgba"}},
-  :layers 3}}
+  :layers 3},
+ :trials
+ {:libx264-fails
+  {:asked [[:h264 "libx264"] [:h264 "libopenh264"] [:hevc "libx265"]],
+   :results
+   {[:h264 "libopenh264"] true,
+    [:h264 "libx264"] false,
+    [:hevc "libx265"] true}},
+  :all-fail
+  {:asked
+   [[:h264 "libx264"]
+    [:h264 "libopenh264"]
+    [:h264 "h264_nvenc"]
+    [:hevc "libx265"]
+    [:hevc "hevc_qsv"]],
+   :results
+   {[:h264 "h264_nvenc"] false,
+    [:h264 "libopenh264"] false,
+    [:h264 "libx264"] false,
+    [:hevc "hevc_qsv"] false,
+    [:hevc "libx265"] false}}}}

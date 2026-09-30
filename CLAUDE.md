@@ -53,6 +53,7 @@ shells (sidecar mode) and hosted APIs built on the same core.
 |---|---|---|
 | `kernel/` | The core library (decision 11): settings schema and resolution, render spec (v1, v2) and reference semantics, the v2 rasterizer (TrueType, text, warp), keyed seeds, SplitMix64 PRNG, text-mode registry, `VideoEngine` protocol, feature catalog, the settings form, the FFmpeg plan compiler and parsers, the profile rules and the store port, the job pipeline and the Core API (on tasks), the command line (`watermark.cli`), the media fingerprint and the executable search, its own Unicode tables | `.cljc` only: GraalVM/JVM, and the Dart VM through ClojureDart (`kernel/dart` runs its golden vectors there) |
 | `src/` | Host core: the home folder, local adapters (profile files, media, files, the in-process queue), FFmpeg and native engines, REST routes | JVM |
+| `dart/` | The Dart host (ADR 0014): adapters over `dart:io` (files, media, profiles, the rasterizer's I/O, FFmpeg through `Process`) and `wmark-dart`, the same CLI on the Dart VM | ClojureDart, the Dart VM |
 | `web/` | Built-in web UI: server-rendered HTML plus Datastar over SSE (vendored `datastar.js`, no npm) | JVM |
 | `desktop/` | CLI, http-kit server, loopback security, sidecar mode, native-image metadata | JVM / GraalVM |
 | `native/` | C ABI `wmark_engine.h`, mock engine, exported JSON Schemas | C |
@@ -389,6 +390,7 @@ bb test          # all tests (C compiler and FFmpeg groups skip themselves if ab
 bb lint          # build matrix and component deps.edn files vs repository
 bb e2e           # Chromium smoke test of the web UI (ffmpeg + Python Playwright)
 bb kernel-dart   # the kernel on the Dart VM: ClojureDart compiles it, golden vectors (Dart SDK 3.13.4)
+bb dart          # the Dart host's adapters on the Dart VM, renders with the ffmpeg on PATH
 bb dev           # engine from source, opens the web UI     bb dev doctor | bb dev run ...
 bb native        # GraalVM binary for this OS (GRAALVM_HOME)
 bb ffmpeg        # the pinned FFmpeg for this OS -> target/ffmpeg/<platform> (SHA-256 verified)

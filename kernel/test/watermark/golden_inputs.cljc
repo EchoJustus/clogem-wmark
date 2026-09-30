@@ -1003,8 +1003,19 @@
                            :absolute absolute}
                           opts))))
 
+(defn- trials
+  "The trial encodes a host runs for `listed` encoders when `failing` ones
+  fail, as a task: each asked question with its answer, in order."
+  [listed failing]
+  (let [asked (atom [])]
+    (task/then (fengine/trial-encoders listed (fn [codec enc]
+                                                (swap! asked conj [codec enc])
+                                                (task/resolved (not (contains? failing enc)))))
+               (fn [results] {:asked @asked :results (into (sorted-map) results)}))))
+
 (defn adapter-vectors
-  "adapters.edn, with `font-bytes` the bytes of resources/fonts/wmark.ttf."
+  "adapters.edn, as a task, with `font-bytes` the bytes of
+  resources/fonts/wmark.ttf."
   [font-bytes]
   (let [stored (atom [])
         spec2  (raster/realize (basic-spec)
@@ -1044,3 +1055,14 @@
                           (locate/working-dir-warning r {:cwd "/work" :app "/opt/wmark"
                                                          :same-folder? (constantly same?)})))
      :realized     {:stored @stored :bitmaps (:bitmaps spec2) :layers (count (:layers spec2))}}))
+
+(defn adapter-vectors-task
+  "adapters.edn with the trial encodes, which are tasks."
+  [font-bytes]
+  (let [listed #{"libx264" "libopenh264" "h264_nvenc" "libx265" "hevc_qsv" "mjpeg"}]
+    (task/then (trials listed #{"libx264"})
+               (fn [some-fail]
+                 (task/then (trials listed listed)
+                            (fn [all-fail]
+                              (assoc (adapter-vectors font-bytes)
+                                     :trials {:libx264-fails some-fail :all-fail all-fail})))))))

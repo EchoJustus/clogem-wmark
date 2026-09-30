@@ -4,6 +4,8 @@
 # test:    every push to main and every pull request.
 # kernel-dart: the kernel compiled by ClojureDart, its golden vectors on the
 #          Dart VM (ADR 0008, M3a).
+# dart:    the Dart host (ADR 0014, M3d): its adapters over dart:io, tested
+#          on the Dart VM with FFmpeg, renders included.
 # e2e:     the browser smoke test of the web UI, on the JVM.
 # native:  native binaries on every OS, by hand (workflow_dispatch) or on a
 #          pull request labelled `native`; releases build them in release.yml.
@@ -71,6 +73,21 @@ jobs:
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
         with: { sdk: "3.13.4" }
       - run: bb kernel-dart
+
+  dart:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with: { distribution: temurin, java-version: "25" }
+      - uses: DeLaGuardo/setup-clojure@6d46099eae24853c33c0482f2bb54edf4f1a4c74 # 13.7.0
+        with: { cli: latest, bb: latest }
+      # the Dart SDK the pubspec asks for; ClojureDart is pinned in dart/deps.edn
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        with: { sdk: "3.13.4" }
+      - name: FFmpeg for the adapters' render tests
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: bb dart
 
   e2e:
     runs-on: ubuntu-24.04

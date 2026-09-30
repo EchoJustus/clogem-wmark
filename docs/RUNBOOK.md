@@ -32,7 +32,7 @@ tool (`build/`).
 | C toolchain for native-image | Linux: `gcc`, zlib headers; macOS: Xcode Command Line Tools; Windows: Visual Studio 2022 Build Tools ("Desktop development with C++") | native binaries | |
 | C compiler (`cc`) | any | native-engine tests (optional) | `cc --version` |
 | Python 3 + Playwright | any recent | browser smoke test (optional) | `python3 -m playwright --version` |
-| Dart SDK | 3.13.4 (CI's pin; `scripts/cloud-setup.sh` installs it, checksum-verified) | the kernel on the Dart VM, `bb kernel-dart` (optional locally; CI runs it) | `dart --version` |
+| Dart SDK | 3.13.4 (CI's pin; `scripts/cloud-setup.sh` installs it, checksum-verified) | the kernel on the Dart VM, `bb kernel-dart`, and the Dart host, `bb dart` (optional locally; CI runs both) | `dart --version` |
 
 **No Node.js, npm or JavaScript build anywhere.** The web UI's only script is
 the vendored `web/resources/public/datastar.js`. Playwright is test tooling;
@@ -137,6 +137,7 @@ bb test        # every test namespace (clojure -M:dev:test)
 bb lint        # build matrix vs repository
 bb e2e         # browser smoke test of the web UI (ffmpeg + Python Playwright)
 bb kernel-dart # the kernel compiled by ClojureDart, its golden vectors on the Dart VM (Dart SDK)
+bb dart        # the Dart host (dart/, ADR 0014): its adapters' tests on the Dart VM, renders with the ffmpeg on PATH
 ```
 
 `bb test` runs 120 tests (11,081 assertions) in 34 namespaces (**verified**,

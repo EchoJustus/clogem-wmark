@@ -1,0 +1,58 @@
+;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
+;; SPDX-License-Identifier: EPL-2.0
+(ns watermark.dartvm.store
+  "The profile store on the Dart VM: one human-editable EDN file per
+  profile under <home>/profiles/<slug>.edn, the same files the JVM's store
+  (watermark.store.file) reads and writes, in the same layout
+  (watermark.store/encode-doc).
+
+  Writes go to a temp file in the same folder, flushed, then renamed over
+  the target, so readers see the old file or the new one, never a torn
+  one. An isolate runs one thing at a time, so a store needs no lock;
+  across processes the rename keeps every file whole and revisions catch
+  lost updates."
+  (:require [clojure.string :as str]
+            [watermark.dartvm.fs :as fs]
+            [watermark.store :as store]
+            [watermark.util.host :as util-host]))
+
+(def ^:private ext ".edn")
+
+(defn- profile-file [dir slug] (fs/join dir (str slug ext)))
+
+(defn- read-file [dir slug]
+  (let [f (profile-file dir slug)]
+    (when (fs/file? f)
+      (store/decode-doc (fs/read-text f) f))))
+
+(defn- list-slugs [dir]
+  (->> (fs/list-files dir)
+       (map :name)
+       (filter #(str/ends-with? % ext))
+       (remove #(str/starts-with? % "."))            ; temp and hidden files
+       (map #(subs % 0 (- (count %) (count ext))))
+       sort))
+
+(deftype FileStore [dir]
+  store/ProfileStore
+  (-read [_ slug] (read-file dir slug))
+  (-read-all [_]
+    (vec (for [slug (list-slugs dir)]
+           (let [[doc e] (util-host/attempt #(read-file dir slug))]
+             [slug (if e {:error (ex-message e)} doc)]))))
+  (-put! [_ slug doc expected-rev]
+    (when-not (= expected-rev ::store/any)
+      (store/check-rev! slug (first (util-host/attempt #(read-file dir slug))) ; a damaged file can be replaced unconditionally only
+                        expected-rev))
+    (fs/write-text-atomically! (profile-file dir slug) (store/encode-doc doc))
+    doc)
+  (-delete! [_ slug expected-rev]
+    (when (number? expected-rev)
+      (store/check-rev! slug (read-file dir slug) expected-rev))
+    (fs/with-retries #(fs/delete! (profile-file dir slug))))
+  (-transact [this f] (f this)))
+
+(defn file-store
+  "Store under `profiles-dir` (usually <home>/profiles)."
+  [profiles-dir]
+  (FileStore. (str profiles-dir)))

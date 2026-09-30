@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 The clogem-wmark authors
+# SPDX-License-Identifier: EPL-2.0
+#
+# The Dart host (deps.edn, docs/adr/0014): the core library's adapters over
+# dart:io and wmark-dart. Not published yet.
+name: wmark_dart
+description: "wmark on the Dart VM: the core library's adapters over dart:io and the wmark-dart command line (M3d)."
+publish_to: none
+version: 0.0.0
+
+environment:
+  sdk: ^3.13.4
+
+dependencies:
+  # HMAC-SHA256 for keyed seeds and SHA-256 for bitmaps and fingerprints
+  # (BSD-3-Clause, the Dart team), as in kernel/dart
+  crypto: 3.0.7
+
+dev_dependencies:
+  test: ^1.29.0

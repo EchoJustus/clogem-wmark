@@ -8,10 +8,12 @@
   (:require [clojure.java.io :as io]
             [clojure.test :refer [deftest]]
             [watermark.golden :as golden]
-            [watermark.golden-inputs :as inputs])
+            [watermark.golden-inputs :as inputs]
+            [watermark.util.task :as task])
   (:import (java.nio.file Files)))
 
 (set! *warn-on-reflection* true)
 
 (deftest golden-adapters
-  (golden/check "adapters" (inputs/adapter-vectors (Files/readAllBytes (.toPath (io/file "resources/fonts/wmark.ttf"))))))
+  (golden/check "adapters" (task/await (inputs/adapter-vectors-task
+                                        (Files/readAllBytes (.toPath (io/file "resources/fonts/wmark.ttf")))))))

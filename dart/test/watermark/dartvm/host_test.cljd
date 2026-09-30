@@ -1,0 +1,214 @@
+;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
+;; SPDX-License-Identifier: EPL-2.0
+(ns watermark.dartvm.host-test
+  "The Dart host's adapters on the Dart VM (docs/adr/0014): the profile
+  store passes the contract every store passes, files and media behave as
+  on the JVM, and the FFmpeg engine finds, probes, decodes and renders with
+  the ffmpeg on this machine (those tests say so and pass when there is
+  none).
+
+  Run from dart/: clojure -M:cljd test (bb dart)"
+  (:require ["dart:io" :as io]
+            [cljd.edn :as edn]
+            [clojure.string :as str]
+            [clojure.test :refer [deftest is testing]]
+            [watermark.config :as config]
+            [watermark.core.api :as api]
+            [watermark.core.features :as features]
+            [watermark.dartvm.ffmpeg :as ffmpeg]
+            [watermark.dartvm.fs :as fs]
+            [watermark.dartvm.home :as home]
+            [watermark.dartvm.main :as main]
+            [watermark.dartvm.media :as media]
+            [watermark.dartvm.raster :as raster]
+            [watermark.dartvm.store :as store]
+            [watermark.engine :as engine]
+            [watermark.media :as pmedia]
+            [watermark.raster.image :as image]
+            [watermark.store-contract :as contract]
+            [watermark.util.task :as task]))
+
+(defn- adapters-golden []
+  (edn/read-string (fs/read-text "../kernel/test/golden/adapters.edn")))
+
+(defn- pattern-bytes
+  "`n` bytes whose byte i is (7 + 31i) mod 256: adapters.edn's files."
+  [n]
+  (let [a (image/u8-array n)]
+    (dotimes [i n] (image/u8! a i (mod (+ 7 (* 31 i)) 256)))
+    a))
+
+(deftest the-file-store-passes-the-store-contract
+  (contract/run-all (store/file-store (fs/join (fs/temp-dir "wmark-store") "profiles"))))
+
+(deftest profiles-are-files-the-jvm-reads
+  (let [dir (fs/join (fs/temp-dir "wmark-store") "profiles")
+        st  (store/file-store dir)]
+    (contract/crud st)
+    (config/create-profile! st "Wide 16:9" {:logo {:anchor :top-left}})
+    (is (= ["wide-16-9.edn"] (mapv :name (fs/list-files dir))) "one file per profile, named by its slug")
+    (is (str/includes? (fs/read-text (fs/join dir "wide-16-9.edn")) ":anchor :top-left"))
+    (is (empty? (filter #(str/starts-with? (:name %) ".") (fs/list-files dir))) "no temp file is left behind")))
+
+(deftest files-behave-as-on-the-jvm
+  (let [dir (fs/temp-dir "wmark-fs")
+        p   (fs/join (fs/join dir "a") "b.txt")]
+    (fs/write-text-atomically! p "one")
+    (fs/write-text-atomically! p "two")
+    (is (= "two" (fs/read-text p)))
+    (is (= [{:name "b.txt"}] (mapv #(select-keys % [:name]) (fs/list-files (fs/join dir "a")))))
+    (is (true? (fs/delete! p)))
+    (is (false? (fs/delete! p)))
+    (is (= [] (fs/list-files (fs/join dir "missing"))))
+    (is (= "b.txt" (fs/file-name p)))
+    (is (= (fs/join dir "a") (fs/parent p)))))
+
+(deftest a-file's-fingerprint-is-the-jvm's
+  (let [dir    (fs/temp-dir "wmark-media")
+        golden (into {} (map (juxt :size :fingerprint)) (:fingerprints (adapters-golden)))]
+    (doseq [size [0 1 1000 1048577]]
+      (let [p (fs/join dir (str size ".bin"))]
+        (fs/write-bytes! p (pattern-bytes size))
+        (is (= (golden size) (media/fingerprint p)) (str "the fingerprint of " size " bytes"))))))
+
+(deftest media-publishes-a-finished-output-only
+  (let [dir   (fs/temp-dir "wmark-media")
+        input (fs/join dir "clip.mov")
+        io    (media/local-media)]
+    (fs/write-bytes! input (pattern-bytes 10))
+    (is (= {:id input :location input} (select-keys (pmedia/open-input io {} input) [:id :location])))
+    (is (= :invalid (try (pmedia/open-input io {} (fs/join dir "none.mov")) nil
+                         (catch cljd.core/ExceptionInfo e (:wmark/error (ex-data e))))))
+    (let [out (pmedia/open-output io {} input {:output {}})]
+      (is (= (fs/join dir "clip_wm.mp4") (:final out)))
+      (is (= (fs/join dir "clip_wm.part.mp4") (:temp out)))
+      (is (= :failed (try (pmedia/commit! io {} out) nil
+                          (catch cljd.core/ExceptionInfo e (:wmark/error (ex-data e)))))
+          "success without a file is a failure")
+      (fs/write-bytes! (:temp out) (pattern-bytes 3))
+      (is (= (:final out) (pmedia/commit! io {} out)))
+      (is (fs/file? (:final out)))
+      (is (not (fs/file? (:temp out))))
+      (is (= :conflict (try (pmedia/open-output io {} input {:output {}}) nil
+                            (catch cljd.core/ExceptionInfo e (:wmark/error (ex-data e)))))
+          "a taken name fails before any encoding")
+      (is (= (:final out) (:final (pmedia/open-output io {} input {:output {:overwrite? true}})))))
+    (let [out (pmedia/open-output io {} input {:output {:dir (fs/join dir "out") :suffix "-x" :container "mkv"}})]
+      (is (= (fs/join (fs/join dir "out") "clip-x.mkv") (:final out)))
+      (fs/write-bytes! (:temp out) (pattern-bytes 3))
+      (pmedia/discard! io {} out)
+      (is (not (fs/file? (:temp out)))))))
+
+(deftest the-home-keeps-a-secret
+  (let [h (fs/temp-dir "wmark-home")
+        a (home/studio-secret! h)
+        b (home/studio-secret! h)]
+    (is (= 32 (count a)))
+    (is (= (vec a) (vec b)) "created once, then read")
+    (is (= h (home/resolve-home {:home h})))))
+
+;; ---------------------------------------------------------------------------
+;; The FFmpeg engine, with the ffmpeg on this machine
+
+(defn- ffmpeg-path [] (:path (:ffmpeg (ffmpeg/locate-binaries {}))))
+
+(defn- sh! [argv]
+  (let [r (ffmpeg/exec argv)]
+    (when-not (zero? (:exit r)) (throw (ex-info (str "ffmpeg failed: " (:err r)) {})))
+    r))
+
+(defn- make-media!
+  "A 1-second white clip with silent audio and a two-colour logo."
+  [dir]
+  (let [ff   (ffmpeg-path)
+        clip (fs/join dir "clip.mp4")
+        logo (fs/join dir "logo.png")]
+    (sh! [ff "-hide_banner" "-loglevel" "error" "-y" "-f" "lavfi" "-i" "color=c=white:s=320x180:r=25"
+           "-f" "lavfi" "-i" "anullsrc=r=48000:cl=stereo" "-t" "1" "-c:v" "mpeg4" "-q:v" "3"
+           "-pix_fmt" "yuv420p" "-c:a" "aac" "-shortest" clip])
+    (sh! [ff "-hide_banner" "-loglevel" "error" "-y" "-f" "lavfi" "-i"
+           "color=c=0x2255dd:s=40x16,format=rgba" "-frames:v" "1" logo])
+    {:clip clip :logo logo}))
+
+(defn- when-ffmpeg [f]
+  (if (ffmpeg-path)
+    (f)
+    (do (println "  (skipped: no ffmpeg on this machine)") nil)))
+
+(deftest the-engine-finds-and-describes-ffmpeg
+  (when-ffmpeg
+   #(task/then (ffmpeg/ffmpeg-engine {:work-root (fs/temp-dir "wmark-work")})
+               (fn [eng]
+                 (let [info (engine/info eng)]
+                   (is (:available? info) (pr-str (:problems info)))
+                   (is (= :ffmpeg (:engine/id info)))
+                   (is (contains? (get-in info [:capabilities :spec-versions]) 2))
+                   (is (= :found (:status (last (get-in info [:binaries :ffmpeg :trail])))))
+                   (is (seq (:encoders info)) "trial encodes found an encoder that works"))))))
+
+(deftest the-engine-probes-decodes-and-samples
+  (when-ffmpeg
+   #(task/then (ffmpeg/ffmpeg-engine {:work-root (fs/temp-dir "wmark-work")})
+               (fn [eng]
+                 (let [dir (fs/temp-dir "wmark-media")
+                       {:keys [clip logo]} (make-media! dir)
+                       facts (engine/probe eng clip)
+                       still (engine/decode-still eng logo)
+                       px    (:px still)]
+                   (is (= {:kind :video :width 320 :height 180 :fps-num 25 :fps-den 1 :has-audio? true}
+                          (select-keys facts [:kind :width :height :fps-num :fps-den :has-audio?])))
+                   (is (= 25 (:frames facts)))
+                   (is (= [40 16] [(:width still) (:height still)]))
+                   (is (= [0x22 0x55 0xdd 0xff] (mapv (fn [i] (image/u8 px i)) (range 4))) "straight RGBA8")
+                   (is (= :invalid (try (engine/probe eng (fs/join dir "none.mp4")) nil
+                                        (catch cljd.core/ExceptionInfo e (:wmark/error (ex-data e))))))
+                   (let [sample (fs/join dir "sample.mp4")]
+                     (engine/sample-video eng {:width 64 :height 36 :fps 25 :seconds 1} sample)
+                     (is (= 64 (:width (engine/probe eng sample))))))))))
+
+(defn- render-with [spec-version]
+  (let [h   (fs/temp-dir "wmark-home")
+        dir (fs/temp-dir "wmark-media")
+        {:keys [clip logo]} (make-media! dir)
+        events (atom [])]
+    (-> (main/system {:home h :render-spec spec-version})
+        (task/then (fn [sys]
+                     (task/then (api/run-batch! sys {:tenant "local" :user "local"}
+                                                {:profile  :none
+                                                 :settings {:logo  {:path logo :anchor :top-left}
+                                                            :texts [{:mode :continuous :content "(c) Dart"}]}
+                                                 :inputs   [clip]}
+                                                {:on-event #(swap! events conj %)})
+                                (fn [r] [sys r]))))
+        (task/then (fn [[sys r]]
+                     (let [[res] (:results r)]
+                       (is (= :done (:state res)) (pr-str res))
+                       (is (fs/file? (fs/join dir "clip_wm.mp4")))
+                       (is (not (fs/file? (fs/join dir "clip_wm.part.mp4"))))
+                       (is (some #(= :progress (:type %)) @events) "progress came from -progress lines")
+                       (is (= [] (fs/list-files (fs/join h "work"))) "no scratch file is left")
+                       (is (= 25 (:frames (engine/probe (:engine sys) (fs/join dir "clip_wm.mp4")))))
+                       (is (some? (api/get-profile sys {:tenant "local" :user "local"} "latest"))
+                           "a real run records latest")))))))
+
+(deftest a-batch-renders-with-render-spec-1
+  (when-ffmpeg #(render-with 1)))
+
+(deftest a-batch-renders-with-render-spec-2
+  ;; the host draws: the logo decoded by the engine, text in the bundled font
+  (when-ffmpeg #(render-with 2)))
+
+(deftest a-cancelled-render-ends-its-ffmpeg
+  (when-ffmpeg
+   #(task/then (ffmpeg/ffmpeg-engine {:work-root (fs/temp-dir "wmark-work")})
+               (fn [eng]
+                 (let [dir  (fs/temp-dir "wmark-media")
+                       ff   (ffmpeg-path)
+                       out  (fs/join dir "long.mp4")
+                       plan {:workdir (fs/join dir "scratch") :files {} :total-us 60000000
+                             :argv [ff "-hide_banner" "-nostdin" "-y" "-re" "-f" "lavfi" "-i" "color=c=gray:s=64x36:r=25"
+                                    "-t" "60" "-progress" "pipe:1" out]}
+                       h    (engine/execute! eng plan nil)]
+                   (task/then (task/then (Future/delayed (Duration .milliseconds 500)) (fn [_] (engine/cancel! h)))
+                              (fn [_] (task/then (engine/outcome h)
+                                                 (fn [o] (is (= :cancelled (:status o)) (pr-str o)))))))))))

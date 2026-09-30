@@ -61,4 +61,5 @@
   (task/then (inputs/cli-vectors) #(check "cli" %)))
 
 (deftest adapters
-  (check "adapters" (inputs/adapter-vectors (.readAsBytesSync (io/File "../../resources/fonts/wmark.ttf")))))
+  (task/then (inputs/adapter-vectors-task (.readAsBytesSync (io/File "../../resources/fonts/wmark.ttf")))
+             #(check "adapters" %)))

@@ -212,6 +212,13 @@
   [encoders]
   (set (for [[codec names] encoder-preference :when (some encoders names)] codec)))
 
+(defn encoder-candidates
+  "[codec [encoder ...]] for each codec family, the families by name: the
+  `listed` encoders in preference order, the order trials go in. (A map's
+  own order differs between the JVM and the Dart VM.)"
+  [listed]
+  (for [[codec names] (sort-by (comp name key) encoder-preference)] [codec (filterv listed names)]))
+
 (defn usable-encoders
   "`encoders` minus the ones that fail on this machine. A build lists what it
   was compiled with, not what runs here: vendor hardware that isn't there,
@@ -223,8 +230,8 @@
   (let [failed (reduce (fn [failed [codec names]]
                          (into failed (reduce (fn [acc enc]
                                                 (if (works? codec enc) (reduced acc) (conj acc enc)))
-                                              [] (filter encoders names))))
-                       #{} encoder-preference)]
+                                              [] names)))
+                       #{} (encoder-candidates (set encoders)))]
     (reduce disj (set encoders) failed)))
 
 (defn video-args
