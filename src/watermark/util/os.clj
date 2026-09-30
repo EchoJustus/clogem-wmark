@@ -3,12 +3,16 @@
 (ns watermark.util.os
   "The only place that knows which OS it is on. Everything here uses portable
   JDK APIs; the per-OS differences are file names and one launcher command,
-  not Win32 calls."
+  not Win32 calls. It also tells watermark.util.locate (the core library's
+  search order) the folders and files it asks about."
   (:require [clojure.java.io :as io]
-            [clojure.string :as str])
-  (:import (java.io InputStream)
-           (java.nio.file CopyOption Files LinkOption Path StandardCopyOption)
-           (java.util Locale)))
+            [clojure.string :as str]
+            [watermark.util.locate :as locate])
+  (:import (java.io File InputStream)
+           (java.lang ProcessHandle)
+           (java.nio.file CopyOption Files LinkOption Path Paths StandardCopyOption)
+           (java.util Locale)
+           (java.util.regex Pattern)))
 
 (set! *warn-on-reflection* true)
 
@@ -57,3 +61,54 @@
                           (into-array CopyOption [StandardCopyOption/REPLACE_EXISTING]))))
           (str target)))
       (some #(when (.isFile (io/file %)) %) (system-fonts (family)))))
+
+;; ---------------------------------------------------------------------------
+;; Where things are: the host's side of watermark.util.locate
+
+(defn native-image?
+  "True inside a GraalVM native image (set by the image at run time)."
+  []
+  (= "runtime" (System/getProperty "org.graalvm.nativeimage.imagecode")))
+
+(defn app-dir
+  "Directory wmark was installed in: the executable's folder for a native
+  image, the jar's folder on the JVM, nil when running from sources."
+  ^File []
+  (if (native-image?)
+    (let [^String cmd (.orElse (.command (.info (ProcessHandle/current))) nil)]
+      (some-> cmd File. .getAbsoluteFile .getParentFile))
+    ;; our own class, not Clojure's: from an uberjar that is wmark's jar; from
+    ;; sources the class is generated at run time and has no code source
+    (let [src (some-> (class native-image?) .getProtectionDomain .getCodeSource .getLocation)
+          f   (some-> src .toURI Paths/get .toFile)]
+      (when (and f (.isFile f) (str/ends-with? (.getName f) ".jar"))
+        (.getParentFile (.getAbsoluteFile f))))))
+
+(defn cwd ^File [] (.getAbsoluteFile (io/file (System/getProperty "user.dir"))))
+
+(defn- path-dirs []
+  (->> (str/split (or (System/getenv "PATH") "") (re-pattern (Pattern/quote File/pathSeparator)))
+       (remove str/blank?)))
+
+(defn locate
+  "watermark.util.locate/locate on this machine. `opts` as there, plus
+    :ok?          (fn [File] bool), e.g. executable? (default: is a file)
+    :cwd, :app-dir  override the working / install directory (tests)"
+  [{:keys [ok?] :as opts}]
+  (let [ok? (or ok? #(.isFile ^File %))
+        app (if (contains? opts :app-dir) (:app-dir opts) (app-dir))]
+    (locate/locate (assoc (dissoc opts :ok? :app-dir)
+                          :cwd      (str (if (:cwd opts) (io/file (:cwd opts)) (cwd)))
+                          :app      (some-> app str)
+                          :path     (path-dirs)
+                          :dir?     #(.isDirectory (io/file %))
+                          :status   #(let [f (io/file %)] (cond (ok? f) :found (.exists f) :unusable :else :missing))
+                          :absolute #(.getAbsolutePath (io/file %))
+                          :join     #(str (io/file %1 %2))))))
+
+(defn working-dir-warning
+  "Why a resolution deserves a second look, or nil
+  (watermark.util.locate/working-dir-warning)."
+  [resolution]
+  (locate/working-dir-warning resolution {:cwd (cwd) :app (app-dir)
+                                          :same-folder? #(= (.getCanonicalFile ^File %1) (.getCanonicalFile ^File %2))}))

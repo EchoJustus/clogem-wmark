@@ -156,8 +156,11 @@ the PRNG, seeds, render specs, render spec v2 down to every bitmap's
 SHA-256, the settings schema's verdicts and messages (`schema.edn`), the
 settings form (`form.edn`), FFmpeg plans and parsers (`ffmpeg.edn`), the
 library's Unicode (`text.edn`), the profile rules with the text of stored
-profiles (`profiles.edn`) and the use cases on fake ports (`pipeline.edn`,
-which the Dart VM runs on Futures). Both runtimes compute them from the same inputs
+profiles (`profiles.edn`), the use cases on fake ports (`pipeline.edn`,
+which the Dart VM runs on Futures), every command of the CLI with its
+output and exit code (`cli.edn`), and what every host's adapters compute
+alike: fingerprints, output names, the executable search, a realized v2
+spec (`adapters.edn`). Both runtimes compute them from the same inputs
 (`kernel/test/watermark/golden_inputs.cljc`): `bb test` on the JVM, and
 `bb kernel-dart` on the Dart VM, which compares strictly (24 is not 24.0).
 They are also what a Swift or Rust port must reproduce. After an

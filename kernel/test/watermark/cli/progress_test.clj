@@ -39,7 +39,7 @@
 
 (defn- play [mode]
   (let [t (atom 0)
-        p (progress/printer mode 2 #(swap! t + 2))]
+        p (progress/printer mode 2 {:now-s #(swap! t + 2) :write print})]
     (with-out-str (run! p (events 0 "/in/a.mp4")))))
 
 (deftest lines-mode-prints-every-ten-percent

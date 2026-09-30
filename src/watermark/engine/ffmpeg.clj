@@ -17,7 +17,7 @@
             [watermark.engine.ffmpeg.probe :as probe]
             [watermark.engine.ffmpeg.process :as process]
             [watermark.ffmpeg.engine :as fe]
-            [watermark.util.locate :as locate]
+            [watermark.util.os :as os]
             [watermark.util.task :as task])
   (:import (java.lang Process)))
 
@@ -36,11 +36,11 @@
   `:app-dir` override the working and install folders (tests)."
   [{:keys [ffmpeg search] :as opts}]
   (let [base    (select-keys opts [:cwd :app-dir])
-        ff      (locate/locate (merge base {:names [(exe "ffmpeg")] :explicit ffmpeg :search search :ok? executable?}))
+        ff      (os/locate (merge base {:names [(exe "ffmpeg")] :explicit ffmpeg :search search :ok? executable?}))
         sibling (when (:path ff) (io/file (.getParentFile (io/file (:path ff))) (exe "ffprobe")))
         fp      (if (and sibling (executable? sibling))
                   {:path (str sibling) :source (:source ff) :trail []}
-                  (locate/locate (merge base {:names [(exe "ffprobe")] :search search :ok? executable?})))]
+                  (os/locate (merge base {:names [(exe "ffprobe")] :search search :ok? executable?})))]
     {:ffmpeg ff :ffprobe fp}))
 
 (defn- discover
@@ -51,7 +51,7 @@
   (let [{:keys [ffmpeg ffprobe] :as bins} (locate-binaries opts)
         found? (and (:path ffmpeg) (:path ffprobe))]
     (fe/discover {:binaries  bins
-                  :warnings  (vec (keep locate/working-dir-warning [ffmpeg ffprobe]))
+                  :warnings  (vec (keep os/working-dir-warning [ffmpeg ffprobe]))
                   :described (when found? (process/describe-binary (:path ffmpeg)))
                   :usable?   (fn [codec enc]
                                (process/trial-encode? (:path ffmpeg) (fe/trial-video-args codec enc)))})))

@@ -1,0 +1,245 @@
+{:runs
+ [{:args ["--help"],
+   :exit 0,
+   :out
+   "wmark 9.9.9 -- batch video watermarking\n\nUsage: wmark [global options] [command] [args]\n\nCommands:\n  run INPUT...        Watermark files from the command line (see: wmark run --help)\n  profiles ...        list | show | effective | save | rename | copy | delete\n  doctor              Show which engine and FFmpeg binaries wmark found, and why\n  version\n\nGlobal options:\n      --home DIR             Data directory (default: WMARK_HOME, ./wmark-data, else the per-user dir)\n      --engine NAME          Render engine: ffmpeg (default) or native\n      --ffmpeg PATH          ffmpeg executable or folder (default: ./, ./bin/, wmark's folder, its bin/, PATH)\n      --ffmpeg-search ORDER  Where to look, e.g. app,app-bin,path to skip the working folder\n      --native-lib PATH      Native engine library (wmark_engine.dll / libwmark_engine.dylib / .so)\n      --render-spec N        1: the engine draws; 2: wmark draws, the engine only composites (default: 1 if the engine can)\n  -h, --help                 Show help\n",
+   :err ""}
+  {:args ["version"],
+   :exit 0,
+   :out "wmark 9.9.9 (community)\n",
+   :err ""}
+  {:args ["doctor"],
+   :exit 0,
+   :out
+   "wmark 9.9.9 (community)  home: /home/wmark\nengine: golden 1  [ready]\n  warning: A warning about this engine.\nffmpeg: /opt/wmark/ffmpeg  (from app)\n    unusable  cwd       /work/ffmpeg\n    found     app       /opt/wmark/ffmpeg\n",
+   :err ""}
+  {:args [],
+   :exit 2,
+   :out "",
+   :err
+   "wmark 9.9.9 -- batch video watermarking\n\nUsage: wmark [global options] [command] [args]\n\nCommands:\n  run INPUT...        Watermark files from the command line (see: wmark run --help)\n  profiles ...        list | show | effective | save | rename | copy | delete\n  doctor              Show which engine and FFmpeg binaries wmark found, and why\n  version\n\nGlobal options:\n      --home DIR             Data directory (default: WMARK_HOME, ./wmark-data, else the per-user dir)\n      --engine NAME          Render engine: ffmpeg (default) or native\n      --ffmpeg PATH          ffmpeg executable or folder (default: ./, ./bin/, wmark's folder, its bin/, PATH)\n      --ffmpeg-search ORDER  Where to look, e.g. app,app-bin,path to skip the working folder\n      --native-lib PATH      Native engine library (wmark_engine.dll / libwmark_engine.dylib / .so)\n      --render-spec N        1: the engine draws; 2: wmark draws, the engine only composites (default: 1 if the engine can)\n  -h, --help                 Show help\n"}
+  {:args ["bogus"],
+   :exit 2,
+   :out "",
+   :err
+   "wmark 9.9.9 -- batch video watermarking\n\nUsage: wmark [global options] [command] [args]\n\nCommands:\n  run INPUT...        Watermark files from the command line (see: wmark run --help)\n  profiles ...        list | show | effective | save | rename | copy | delete\n  doctor              Show which engine and FFmpeg binaries wmark found, and why\n  version\n\nGlobal options:\n      --home DIR             Data directory (default: WMARK_HOME, ./wmark-data, else the per-user dir)\n      --engine NAME          Render engine: ffmpeg (default) or native\n      --ffmpeg PATH          ffmpeg executable or folder (default: ./, ./bin/, wmark's folder, its bin/, PATH)\n      --ffmpeg-search ORDER  Where to look, e.g. app,app-bin,path to skip the working folder\n      --native-lib PATH      Native engine library (wmark_engine.dll / libwmark_engine.dylib / .so)\n      --render-spec N        1: the engine draws; 2: wmark draws, the engine only composites (default: 1 if the engine can)\n  -h, --help                 Show help\n"}
+  {:args ["--render-spec" "3" "doctor"],
+   :exit 2,
+   :out "",
+   :err "Failed to validate \"--render-spec 3\": must be 1 or 2\n"}
+  {:args ["--home"],
+   :exit 2,
+   :out "",
+   :err "Missing required argument for \"--home DIR\"\n"}
+  {:args ["--frobnicate" "doctor"],
+   :exit 2,
+   :out "",
+   :err "Unknown option: \"--frobnicate\"\n"}
+  {:args
+   ["profiles"
+    "save"
+    "Evidence"
+    "--clean"
+    "--text"
+    "(c) Studio"
+    "--text-mode"
+    "canary"
+    "--opacity"
+    "0.7"],
+   :exit 0,
+   :out "Saved \"Evidence\" (evidence.edn)\n",
+   :err ""}
+  {:args
+   ["profiles"
+    "save"
+    "Wide"
+    "--clean"
+    "--anchor"
+    "top-left"
+    "--offset-x"
+    "-12"
+    "--flip-every"
+    "4"
+    "--text-file"
+    "/texts/warning.txt"
+    "--text-mode"
+    "scheduled"
+    "--text-at"
+    "1,2.5"
+    "--text-duration"
+    "1.5"],
+   :exit 0,
+   :out "Saved \"Wide\" (wide.edn)\n",
+   :err ""}
+  {:args
+   ["profiles"
+    "save"
+    "WIDE"
+    "--profile"
+    "wide"
+    "--opacity"
+    "0.5"
+    "--overwrite"],
+   :exit 0,
+   :out "Saved \"WIDE\" (wide.edn)\n",
+   :err ""}
+  {:args ["profiles"],
+   :exit 0,
+   :out
+   "Evidence                         <time>   \nWIDE                             <time>   \n",
+   :err ""}
+  {:args ["profiles" "show" "Evidence"],
+   :exit 0,
+   :out
+   "{:profile/created-at \"<time>\"\n :profile/name \"Evidence\"\n :profile/rev 1\n :profile/slug \"evidence\"\n :profile/updated-at \"<time>\"\n :settings {:logo {:offset {} :opacity 0.7}\n            :output {}\n            :texts [{:content \"(c) Studio\" :mode :canary}]}\n :wmark/format 1}\n",
+   :err ""}
+  {:args ["profiles" "effective" "Evidence"],
+   :exit 0,
+   :out
+   "Base: profile \"Evidence\"\n  encode.audio                   copy                         built-in default\n  encode.codec                   h264                         built-in default\n  encode.quality                 high                         built-in default\n  logo.anchor                    bottom-right                 built-in default\n  logo.animation.duration-s      1                            built-in default\n  logo.animation.every-s         60                           built-in default\n  logo.animation.type            flip-y                       built-in default\n  logo.enabled                   true                         built-in default\n  logo.offset.x                  24                           built-in default\n  logo.offset.y                  24                           built-in default\n  logo.opacity                   0.7                          from profile \"Evidence\"\n  logo.width-ratio               0.12                         built-in default\n  output.container               mp4                          built-in default\n  output.overwrite?              false                        built-in default\n  output.strip-metadata          true                         built-in default\n  output.suffix                  _wm                          built-in default\n  texts                          [{\"content\":\"(c) Studio\",\"mode\":\"canary\"}] from profile \"Evidence\"\nNeeds wmark Pro to run: Flash-frame canaries\n",
+   :err ""}
+  {:args ["profiles" "effective" "--clean"],
+   :exit 0,
+   :out
+   "Base: built-in defaults\n  encode.audio                   copy                         built-in default\n  encode.codec                   h264                         built-in default\n  encode.quality                 high                         built-in default\n  logo.anchor                    bottom-right                 built-in default\n  logo.animation.duration-s      1                            built-in default\n  logo.animation.every-s         60                           built-in default\n  logo.animation.type            flip-y                       built-in default\n  logo.enabled                   true                         built-in default\n  logo.offset.x                  24                           built-in default\n  logo.offset.y                  24                           built-in default\n  logo.opacity                   0.85                         built-in default\n  logo.width-ratio               0.12                         built-in default\n  output.container               mp4                          built-in default\n  output.overwrite?              false                        built-in default\n  output.strip-metadata          true                         built-in default\n  output.suffix                  _wm                          built-in default\n  texts                          []                           built-in default\n",
+   :err ""}
+  {:args ["profiles" "effective" "Nope"],
+   :exit 1,
+   :out "",
+   :err "Error: No profile named \"Nope\".\n"}
+  {:args ["profiles" "rename" "Wide" "Wide 16:9"],
+   :exit 0,
+   :out "",
+   :err ""}
+  {:args ["profiles" "copy" "Wide 16:9" "Copy"],
+   :exit 0,
+   :out "",
+   :err ""}
+  {:args ["profiles" "delete" "Copy"], :exit 0, :out "", :err ""}
+  {:args ["profiles" "list"],
+   :exit 0,
+   :out
+   "Evidence                         <time>   \nWide 16:9                        <time>   \n",
+   :err ""}
+  {:args ["profiles" "bogus"],
+   :exit 2,
+   :out "",
+   :err
+   "Usage: wmark profiles [list | show NAME | effective [NAME | --clean] | save NAME [flags] | rename OLD NEW | copy FROM TO | delete NAME]\n"}
+  {:args ["run"],
+   :exit 2,
+   :out "",
+   :err
+   "Usage: wmark run [options] INPUT...\n\n  -p, --profile NAME                   Base profile (default: latest)\n      --clean                          Ignore profiles; start from built-in defaults\n      --logo PATH                      Logo image (PNG with transparency)\n      --anchor POS                     top-left | top-center | top-right | center-left | center | ... | bottom-right\n      --offset-x PX                    Horizontal offset from the anchored edge\n      --offset-y PX                    Vertical offset from the anchored edge\n      --logo-width RATIO               Logo width as a fraction of the frame width\n      --opacity A                      Logo opacity, 0-1\n      --flip-every SEC                 Seconds between logo flips\n      --flip-duration SEC              Duration of one flip\n      --static-logo                    No flip animation\n      --text TEXT                      Add a warning-text layer (replaces the profile's text layers)\n      --text-file PATH                 Like --text, read as UTF-8 from a file (safe in any terminal locale)\n      --text-mode MODE     continuous  continuous | scheduled | canary (Pro) | random (Pro)\n      --text-at SECONDS                Comma-separated start times (scheduled mode)\n      --text-duration SEC              How long each scheduled text shows\n  -o, --out DIR                        Output directory (default: next to each input)\n      --cover-at SEC                   Embed each copy's frame at SEC as its cover (its thumbnail in file browsers; MP4)\n      --dry-run                        Print the FFmpeg command and filtergraph only\n      --progress MODE      auto        auto (a bar on a terminal, else lines) | bar | lines | none\n  -h, --help                           Show this help\n"}
+  {:args ["run" "--help"],
+   :exit 0,
+   :out
+   "Usage: wmark run [options] INPUT...\n\n  -p, --profile NAME                   Base profile (default: latest)\n      --clean                          Ignore profiles; start from built-in defaults\n      --logo PATH                      Logo image (PNG with transparency)\n      --anchor POS                     top-left | top-center | top-right | center-left | center | ... | bottom-right\n      --offset-x PX                    Horizontal offset from the anchored edge\n      --offset-y PX                    Vertical offset from the anchored edge\n      --logo-width RATIO               Logo width as a fraction of the frame width\n      --opacity A                      Logo opacity, 0-1\n      --flip-every SEC                 Seconds between logo flips\n      --flip-duration SEC              Duration of one flip\n      --static-logo                    No flip animation\n      --text TEXT                      Add a warning-text layer (replaces the profile's text layers)\n      --text-file PATH                 Like --text, read as UTF-8 from a file (safe in any terminal locale)\n      --text-mode MODE     continuous  continuous | scheduled | canary (Pro) | random (Pro)\n      --text-at SECONDS                Comma-separated start times (scheduled mode)\n      --text-duration SEC              How long each scheduled text shows\n  -o, --out DIR                        Output directory (default: next to each input)\n      --cover-at SEC                   Embed each copy's frame at SEC as its cover (its thumbnail in file browsers; MP4)\n      --dry-run                        Print the FFmpeg command and filtergraph only\n      --progress MODE      auto        auto (a bar on a terminal, else lines) | bar | lines | none\n  -h, --help                           Show this help\n",
+   :err ""}
+  {:args ["run" "--progress" "fancy" "x.mp4"],
+   :exit 2,
+   :out "",
+   :err
+   "Failed to validate \"--progress fancy\": must be auto, bar, lines or none\n"}
+  {:args ["run" "--cover-at" "soon" "x.mp4"],
+   :exit 2,
+   :out "",
+   :err "Failed to validate \"--cover-at soon\": must be a number\n"}
+  {:args
+   ["run" "--dry-run" "-p" "wide 16:9" "--cover-at" "1" "a b.mp4"],
+   :exit 0,
+   :out
+   "Base: profile \"Wide 16:9\"\n  logo.anchor                  <- profile\n  logo.animation.every-s       <- profile\n  logo.animation.type          <- profile\n  logo.offset.x                <- profile\n  logo.opacity                 <- profile\n  texts                        <- profile\n\n# a b.mp4 -> /out/a b.mp4\n# 1 layers, 300 frames at 30000/1001 fps\n/opt/wmark/ffmpeg -i \"/in/a b.mp4\" -filter_complex \"[0:v]null[v]; [v]copy\" \"/out/a b.mp4.part\"\n\n# filtergraph\n[0:v]null[v]; [v]copy\n",
+   :err ""}
+  {:args
+   ["run" "--dry-run" "--text-mode" "canary" "--text" "(c)" "a.mp4"],
+   :exit 1,
+   :out "",
+   :err
+   "Error: Not available on the community plan: Flash-frame canaries\nLocked features: Flash-frame canaries -- see `wmark license`.\n"}
+  {:args ["run" "--dry-run" "--text-file" "/texts/none.txt" "a.mp4"],
+   :exit 1,
+   :out "",
+   :err "Error: No such text file: /texts/none.txt\n"}
+  {:args
+   ["run" "--dry-run" "--clean" "--text" "broken � text" "a.mp4"],
+   :exit 1,
+   :out "",
+   :err
+   "Error: The text arrived with undecodable characters: this terminal's locale isn't UTF-8 (try LANG=C.UTF-8), or use --text-file.\n"}
+  {:args ["run" "--progress" "lines" "--clean" "a.mp4" "fail.mp4"],
+   :exit 1,
+   :out
+   "[1/2] a.mp4 -> /out/a.mp4\n     50%\n    done\n[2/2] fail.mp4 -> /out/fail.mp4\n     50%\n    failed: The golden engine fails this input.\n",
+   :err ""}
+  {:args ["run" "--progress" "none" "-p" "Evidence" "b.mov"],
+   :exit 1,
+   :out "",
+   :err
+   "Error: Not available on the community plan: Flash-frame canaries\nLocked features: Flash-frame canaries -- see `wmark license`.\n"}
+  {:args ["run" "--clean" "--" "c.mp4"],
+   :exit 0,
+   :out "[1/1] c.mp4 -> /out/c.mp4\n     50%\n    done\n",
+   :err ""}
+  {:args ["profiles" "effective"],
+   :exit 0,
+   :out
+   "Base: latest (auto-saved from the previous run)\n  encode.audio                   copy                         from your last run\n  encode.codec                   h264                         from your last run\n  encode.quality                 high                         from your last run\n  logo.anchor                    bottom-right                 from your last run\n  logo.animation.duration-s      1                            from your last run\n  logo.animation.every-s         60                           from your last run\n  logo.animation.type            flip-y                       from your last run\n  logo.enabled                   true                         from your last run\n  logo.offset.x                  24                           from your last run\n  logo.offset.y                  24                           from your last run\n  logo.opacity                   0.85                         from your last run\n  logo.width-ratio               0.12                         from your last run\n  output.container               mp4                          from your last run\n  output.overwrite?              false                        from your last run\n  output.strip-metadata          true                         from your last run\n  output.suffix                  _wm                          from your last run\n  texts                          []                           from your last run\n",
+   :err ""}],
+ :progress
+ {:bar
+  "\r[1/2]  a.mp4  [=>                    ]    5%  2.5x  ETA 0:38\r[1/2]  a.mp4  [==>                   ]   10%  2.5x  ETA 0:36\r[1/2]  a.mp4  [===>                  ]   15%  2.5x  ETA 0:34\r[1/2]  a.mp4  [===========>          ]   50%  2.5x  ETA 0:08\r[1/2]  a.mp4  [====================> ]   95%  2.5x  ETA 0:01\r[1/2]  a.mp4  [======================]  100%  2.5x  ETA 0:00\r[1/2]  a.mp4  done  in 0:14                                 \n\r[2/2]  b.mp4  [=>                    ]    5%  2.5x  ETA 0:38\r[2/2]  b.mp4  [==>                   ]   10%  2.5x  ETA 0:36\r[2/2]  b.mp4  [===>                  ]   15%  2.5x  ETA 0:34\r[2/2]  b.mp4  [===========>          ]   50%  2.5x  ETA 0:08\r[2/2]  b.mp4  [====================> ]   95%  2.5x  ETA 0:01\r[2/2]  b.mp4  [======================]  100%  2.5x  ETA 0:00\r[2/2]  b.mp4  done  in 0:14                                 \n",
+  :lines
+  "[1/2] /in/a.mp4 -> /in/a.mp4.out\n     10%\n     50%\n     95%\n    done\n[2/2] C:\\in\\b.mp4 -> C:\\in\\b.mp4.out\n     10%\n     50%\n     95%\n    done\n",
+  :none
+  "[1/2] /in/a.mp4 -> /in/a.mp4.out\n    done\n[2/2] C:\\in\\b.mp4 -> C:\\in\\b.mp4.out\n    done\n"},
+ :parsed
+ [{:options
+   {:text-mode :continuous,
+    :progress :auto,
+    :clean true,
+    :opacity 0.5},
+   :arguments ["a.mp4" "--not-an-option"],
+   :errors nil}
+  {:options
+   {:text-mode :continuous,
+    :progress :auto,
+    :opacity -0.5,
+    :out "/out"},
+   :arguments ["b.mp4"],
+   :errors nil}
+  {:options
+   {:text-mode :continuous, :progress :auto, :text-at [1.0 nil]},
+   :arguments ["c.mp4"],
+   :errors ["Option \"--clean\" takes no value"]}
+  {:options {:text-mode :continuous, :progress :auto, :dry-run true},
+   :arguments ["-"],
+   :errors nil}],
+ :quoted
+ ["plain"
+  "\"a b\""
+  "\"x\\\"y\""
+  "\"[0:v]\""
+  "\"semi;colon\""
+  "\"tab\\there\""
+  "back\\slash"
+  "\"it's\""],
+ :search [[:app :app-bin :path] [:cwd :path] [] nil],
+ :json
+ ["{\"a\":[1,2.5,0.1,0,0.0000001,\"x\\\"y\\n\\u0001é😀\"],\"b\":1,\"c\":null,\"d\":true,\"e\":\"canary\"}"
+  "[1,2,3]"
+  "[]"
+  "{}"
+  "\"\\\\\""
+  "12345678901234"],
+ :lines
+ {:profiles
+  ["latest                           2026-09-30T00:00:00.000Z   (auto, from Wide)"
+   "Broken                                                      ERROR: Not valid EDN."
+   "Auto                                                        (auto)"
+   "Plain                                                       "],
+  :errors
+  [["Error: Malformed settings."
+    "{:logo {:opacity [\"should be at most 1\"]}}"]
+   ["Error: Locked."
+    "Locked features: Flash-frame canaries, no/such-feature -- see `wmark license`."]]}}

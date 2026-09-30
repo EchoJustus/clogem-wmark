@@ -8,6 +8,9 @@
   Each function takes what only the host can provide (the font's bytes) and
   returns the value its golden file holds."
   (:require [clojure.string :as str]
+            [watermark.cli :as cli]
+            [watermark.cli.opts :as opts]
+            [watermark.cli.progress :as progress]
             [watermark.config :as config]
             [watermark.core.api :as api]
             [watermark.core.features :as features]
@@ -30,7 +33,10 @@
             [watermark.store :as store]
             [watermark.store.memory :as memory]
             [watermark.util.chars :as chars]
+            [watermark.util.digest :as digest]
             [watermark.util.host :as host]
+            [watermark.util.json :as json]
+            [watermark.util.locate :as locate]
             [watermark.util.num :as number]
             [watermark.util.prng :as prng]
             [watermark.util.task :as task]
@@ -822,3 +828,219 @@
                                           (-> (dissoc p :id)
                                               (assoc :file (api/preview-file sys ctx (:id p))))))
                          :ports    {:log @log :files (vec (sort (map scrub-ids (keys @fs))))}}))))))))
+
+;; ---------------------------------------------------------------------------
+;; cli.edn: the command line (watermark.cli), end to end on fake ports
+
+(defn- cli-engine
+  "The golden engine with what doctor and a dry run show of a real one: how
+  its binary was found, a warning, and a plan with a command line and a
+  filtergraph."
+  [log files]
+  (let [e (golden-engine log files)]
+    (reify
+      engine/VideoEngine
+      (info [_] (assoc (engine/info e)
+                       :warnings ["A warning about this engine."]
+                       :binaries {:ffmpeg {:path "/opt/wmark/ffmpeg" :source :app
+                                           :trail [{:source :cwd :path "/work/ffmpeg" :status :unusable}
+                                                   {:source :app :path "/opt/wmark/ffmpeg" :status :found}]}}))
+      (probe [_ source] (engine/probe e source))
+      (prepare [_ request]
+        (assoc (engine/prepare e request)
+               :argv  ["/opt/wmark/ffmpeg" "-i" (:source request) "-filter_complex" "[0:v]null[v]; [v]copy"
+                       (get-in request [:output :path])]
+               :graph "[0:v]null[v]; [v]copy"))
+      (execute! [_ plan listener] (engine/execute! e plan listener))
+      engine/SampleSource
+      (sample-video [_ opts path] (engine/sample-video e opts path)))))
+
+(defn- scrub-times
+  "`s` with every ISO instant written as <time>: profiles carry the time
+  they were saved."
+  [s]
+  (str/replace s #"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z" "<time>"))
+
+(def ^:private cli-commands
+  [["--help"]
+   ["version"]
+   ["doctor"]
+   []
+   ["bogus"]
+   ["--render-spec" "3" "doctor"]
+   ["--home"]
+   ["--frobnicate" "doctor"]
+   ["profiles" "save" "Evidence" "--clean" "--text" "(c) Studio" "--text-mode" "canary" "--opacity" "0.7"]
+   ["profiles" "save" "Wide" "--clean" "--anchor" "top-left" "--offset-x" "-12" "--flip-every" "4"
+    "--text-file" "/texts/warning.txt" "--text-mode" "scheduled" "--text-at" "1,2.5" "--text-duration" "1.5"]
+   ["profiles" "save" "WIDE" "--profile" "wide" "--opacity" "0.5" "--overwrite"]
+   ["profiles"]
+   ["profiles" "show" "Evidence"]
+   ["profiles" "effective" "Evidence"]
+   ["profiles" "effective" "--clean"]
+   ["profiles" "effective" "Nope"]
+   ["profiles" "rename" "Wide" "Wide 16:9"]
+   ["profiles" "copy" "Wide 16:9" "Copy"]
+   ["profiles" "delete" "Copy"]
+   ["profiles" "list"]
+   ["profiles" "bogus"]
+   ["run"]
+   ["run" "--help"]
+   ["run" "--progress" "fancy" "x.mp4"]
+   ["run" "--cover-at" "soon" "x.mp4"]
+   ["run" "--dry-run" "-p" "wide 16:9" "--cover-at" "1" "a b.mp4"]
+   ["run" "--dry-run" "--text-mode" "canary" "--text" "(c)" "a.mp4"]
+   ["run" "--dry-run" "--text-file" "/texts/none.txt" "a.mp4"]
+   ["run" "--dry-run" "--clean" "--text" "broken \uFFFD text" "a.mp4"]
+   ["run" "--progress" "lines" "--clean" "a.mp4" "fail.mp4"]
+   ["run" "--progress" "none" "-p" "Evidence" "b.mov"]
+   ["run" "--clean" "--" "c.mp4"]
+   ["profiles" "effective"]])
+
+(defn- progress-events [n input]
+  (concat [{:type :started :index n :input input :output (str input ".out")}]
+          (for [f [0.05 0.1 0.15 0.5 0.95 1.0]] {:type :progress :index n :fraction f :speed "2.5x"})
+          [{:type :finished :index n :state :done}]))
+
+(defn cli-vectors
+  "cli.edn, as a task: every command of watermark.cli run through `main` on
+  the pipeline's fake ports, with what it wrote and its exit code; then the
+  progress printer on a fake clock, and the text helpers."
+  []
+  (let [log  (atom [])
+        fs   (atom {})
+        st   (memory/memory-store)
+        sys  {:edition      :community
+              :version      "9.9.9"
+              :home         "/home/wmark"
+              :profiles-for (constantly st)
+              :entitlements (features/community)
+              :engine       (cli-engine log fs)
+              :media        (golden-media log)
+              :files        (golden-files fs)
+              :secret-for   (constantly (secret))
+              :font         "/fonts/wmark.ttf"
+              :preview-dir  "/previews"}
+        out  (atom [])
+        err  (atom [])
+        host {:program        "wmark"
+              :version        "9.9.9"
+              :edition        :community
+              :system         (fn [_] sys)
+              :usage-commands ["run" "profiles" "doctor" "version"]
+              :write          (fn [s] (swap! out conj s))
+              :write-err      (fn [s] (swap! err conj s))
+              :read-text      (fn [path]
+                                (if (= path "/texts/warning.txt")
+                                  "  Warning: (c) Studio\n"
+                                  (throw (ex-info (str "No such text file: " path) {:wmark/error :invalid}))))
+              :terminal?      (constantly false)
+              :env            (constantly nil)}]
+    (task/then
+     (task/reduce (fn [runs args]
+                    (reset! out [])
+                    (reset! err [])
+                    (task/then (cli/main host args)
+                               (fn [code] (conj runs {:args args :exit code
+                                                      :out (scrub-times (apply str @out))
+                                                      :err (scrub-times (apply str @err))}))))
+                  [] cli-commands)
+     (fn [runs]
+       {:runs     runs
+        :progress (into (sorted-map)
+                        (for [mode [:bar :lines :none]]
+                          (let [writes (atom [])
+                                t      (atom 0)
+                                p      (progress/printer mode 2 {:now-s #(swap! t + 2) :write #(swap! writes conj %)})]
+                            (run! p (concat (progress-events 0 "/in/a.mp4")
+                                            (progress-events 1 "C:\\in\\b.mp4")))
+                            [mode (apply str @writes)])))
+        :parsed   (vec (for [args [["a.mp4" "--clean" "--opacity=0.5" "--" "--not-an-option"]
+                                   ["--opacity" "-0.5" "-o" "/out" "b.mp4"]
+                                   ["--clean=yes" "--text-at" "1,x" "c.mp4"]
+                                   ["-" "--dry-run"]]]
+                         (select-keys (opts/parse-opts args cli/run-options) [:options :arguments :errors])))
+        :quoted   (mapv cli/shell-quote ["plain" "a b" "x\"y" "[0:v]" "semi;colon" "tab\there" "back\\slash" "it's"])
+        :search   (mapv cli/search-order ["app,app-bin,path" " cwd , path " "" nil])
+        :json     (mapv json/write [{:b 1 :a [1 2.5 0.1 -0.0 1e-7 "x\"y\n\u0001é😀"] :c nil :d true :e :canary}
+                                    #{3 1 2} [] {} "\\" 12345678901234])
+        :lines    {:profiles (vec (cli/profile-list-lines
+                                   [{:name "latest" :updated-at "2026-09-30T00:00:00.000Z" :auto? true :derived-from "Wide"}
+                                    {:name "Broken" :error "Not valid EDN."}
+                                    {:name "Auto" :auto? true}
+                                    {:name "Plain"}]))
+                   :errors   (vec (for [e [(ex-info "Malformed settings." {:wmark/error :invalid
+                                                                            :errors {:logo {:opacity ["should be at most 1"]}}})
+                                           (ex-info "Locked." {:wmark/error :feature-locked
+                                                               :features [:text.mode/subliminal :no/such-feature]})]]
+                                  (vec (cli/error-lines "wmark" e))))}}))))
+
+;; ---------------------------------------------------------------------------
+;; adapters.edn: what every host's adapters compute alike
+
+(defn- pattern-bytes
+  "`n` bytes of a file whose byte i is (7 + 31i) mod 256, from `offset` on."
+  [offset n]
+  (let [a (image/u8-array n)]
+    (dotimes [i n] (image/u8! a i (mod (+ 7 (* 31 (+ offset i))) 256)))
+    a))
+
+(def ^:private fake-folders
+  "What the fake machine of the locate cases holds."
+  {"/usr/bin/ffmpeg" :exec "/opt/wmark/bin/ffmpeg" :exec "/work/ffmpeg" :file "/custom" :dir
+   "/custom/ffmpeg" :exec "/work/tools/ffmpeg" :exec "/opt/wmark/lib/libwmark_engine.so" :exec
+   "C:\\ff\\ffmpeg.exe" :exec})
+
+(defn- locate-case [present opts]
+  (let [absolute #(if (or (str/starts-with? % "/") (str/includes? % ":")) % (str "/work/" %))
+        entries  (comp (select-keys fake-folders present) absolute)]
+    (locate/locate (merge {:names    ["ffmpeg"]
+                           :cwd      "/work"
+                           :app      "/opt/wmark"
+                           :path     ["/usr/local/bin" "/usr/bin"]
+                           :dir?     #(= :dir (entries %))
+                           :status   #(case (entries %) :exec :found (:file :dir) :unusable :missing)
+                           :absolute absolute}
+                          opts))))
+
+(defn adapter-vectors
+  "adapters.edn, with `font-bytes` the bytes of resources/fonts/wmark.ttf."
+  [font-bytes]
+  (let [stored (atom [])
+        spec2  (raster/realize (basic-spec)
+                               {:decode     (constantly (synthetic-logo))
+                                :font-bytes (constantly font-bytes)
+                                :store!     (fn [id img]
+                                              (swap! stored conj [id (:width img) (:height img)])
+                                              (str "/scratch/" id ".rgba"))})]
+    {:sha256       (mapv digest/sha256-hex [[] [""] ["abc"] ["a" "bc"] ["é"] [(pattern-bytes 0 3) "x"]])
+     :fingerprints (vec (for [size [0 1 1000 1048576 1048577 2097152 3000001]
+                              :let [[[ho hn] [to tn] :as ranges] (media/fingerprint-ranges size)]]
+                          {:size size :ranges ranges
+                           :fingerprint (media/fingerprint size (pattern-bytes ho hn) (pattern-bytes to tn))}))
+     :output-names (vec (for [[n o] [["clip.mov" {}] ["clip.tar.gz" {:suffix "-wm" :container "mkv"}]
+                                     ["noext" {}] [".hidden" {}] ["é 😀.mp4" {:container "mov"}]]]
+                          (media/output-name n o)))
+     :part-paths   (mapv media/part-path ["/out/clip_wm.mp4" "C:\\out\\clip_wm.mov" "/out/.hidden"
+                                          "/out.d/noext" "clip." "a.b/c" "plain"])
+     :locate       (vec (for [[present opts] [[["/usr/bin/ffmpeg"] {}]
+                                              [["/usr/bin/ffmpeg" "/opt/wmark/bin/ffmpeg"] {}]
+                                              [["/work/ffmpeg" "/opt/wmark/bin/ffmpeg"] {}]
+                                              [["/custom/ffmpeg" "/usr/bin/ffmpeg"] {:explicit "/custom/ffmpeg"}]
+                                              [["/custom" "/custom/ffmpeg"] {:explicit "/custom"}]
+                                              [["/work/tools/ffmpeg"] {:explicit "tools/ffmpeg"}]
+                                              [["/usr/bin/ffmpeg"] {:explicit "/nowhere/ffmpeg"}]
+                                              [["/work/ffmpeg" "/usr/bin/ffmpeg"] {:search [:app :app-bin :path]}]
+                                              [["/opt/wmark/lib/libwmark_engine.so"]
+                                               {:names ["libwmark_engine.so"] :bin-dir "lib"}]
+                                              [[] {:app nil}]
+                                              [["C:\\ff\\ffmpeg.exe"] {:names ["ffmpeg.exe"] :cwd "C:\\work"
+                                                                            :app nil :path ["C:\\ff"]}]]]
+                            (locate-case present opts)))
+     :warnings     (vec (for [[r same?] [[{:path "/work/ffmpeg" :source :cwd} false]
+                                         [{:path "/work/bin/ffmpeg" :source :cwd-bin} true]
+                                         [{:path "/usr/bin/ffmpeg" :source :path} false]
+                                         [{:path nil :source nil} false]]]
+                          (locate/working-dir-warning r {:cwd "/work" :app "/opt/wmark"
+                                                         :same-folder? (constantly same?)})))
+     :realized     {:stored @stored :bitmaps (:bitmaps spec2) :layers (count (:layers spec2))}}))

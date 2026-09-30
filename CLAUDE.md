@@ -51,7 +51,7 @@ shells (sidecar mode) and hosted APIs built on the same core.
 
 | Directory | Role | Language / runs on |
 |---|---|---|
-| `kernel/` | The core library (decision 11): settings schema and resolution, render spec (v1, v2) and reference semantics, the v2 rasterizer (TrueType, text, warp), keyed seeds, SplitMix64 PRNG, text-mode registry, `VideoEngine` protocol, feature catalog, the settings form, the FFmpeg plan compiler and parsers, the profile rules and the store port, the job pipeline and the Core API (on tasks), its own Unicode tables | `.cljc` only: GraalVM/JVM, and the Dart VM through ClojureDart (`kernel/dart` runs its golden vectors there) |
+| `kernel/` | The core library (decision 11): settings schema and resolution, render spec (v1, v2) and reference semantics, the v2 rasterizer (TrueType, text, warp), keyed seeds, SplitMix64 PRNG, text-mode registry, `VideoEngine` protocol, feature catalog, the settings form, the FFmpeg plan compiler and parsers, the profile rules and the store port, the job pipeline and the Core API (on tasks), the command line (`watermark.cli`), the media fingerprint and the executable search, its own Unicode tables | `.cljc` only: GraalVM/JVM, and the Dart VM through ClojureDart (`kernel/dart` runs its golden vectors there) |
 | `src/` | Host core: the home folder, local adapters (profile files, media, files, the in-process queue), FFmpeg and native engines, REST routes | JVM |
 | `web/` | Built-in web UI: server-rendered HTML plus Datastar over SSE (vendored `datastar.js`, no npm) | JVM |
 | `desktop/` | CLI, http-kit server, loopback security, sidecar mode, native-image metadata | JVM / GraalVM |
@@ -218,7 +218,7 @@ its own matrix.
 - Runtime-specific behaviour lives in small host primitives with one
   `#?(:clj … :cljd …)` branch per runtime: `watermark.util.num` (numbers,
   their text both ways, 64-bit wrapping arithmetic), `watermark.core.seeds`
-  (HMAC), `watermark.raster` (SHA-256), `watermark.raster.image` (byte
+  (HMAC), `watermark.util.digest` (SHA-256), `watermark.raster.image` (byte
   arrays), `watermark.util.chars` (code points), `watermark.util.host`
   (catching ex-info errors, a lock, the clock, reading EDN),
   `watermark.util.task` (eventual values: `CompletableFuture`, `Future`),
