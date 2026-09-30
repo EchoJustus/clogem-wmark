@@ -1,0 +1,557 @@
+{:session
+ [{:step :health,
+   :request [:get "/api/v1/health" nil],
+   :answer
+   {:status 200,
+    :body
+    {"status" "ok",
+     "version" "9.9.9",
+     "edition" "community",
+     "home" "/home/wmark",
+     "engine"
+     {"engine/id" "golden",
+      "engine/version" "1",
+      "available?" true,
+      "capabilities"
+      {"sources" ["file" "url"],
+       "placement" ["burst-scatter" "fixed" "per-window"],
+       "extras" ["cover" "metadata"],
+       "codecs" ["h264" "hevc"],
+       "animations" ["flip-y"],
+       "spec-versions" [1],
+       "audio" ["aac" "copy" "none"],
+       "layers" ["image" "text"],
+       "preview" ["frame" "sample"],
+       "containers" ["mkv" "mov" "mp4"],
+       "timing" ["always" "periodic" "windows"]},
+      "binaries" {}}}}}
+  {:step :features,
+   :request [:get "/api/v1/features" nil],
+   :answer
+   {:status 200,
+    :body
+    {"entitlements" {"plan" "community", "status" "community"},
+     "features"
+     [{"tier" "pro",
+       "title" "Parallel encodes",
+       "id" "jobs/parallel",
+       "entitled" false}
+      {"tier" "community",
+       "title" "Periodic logo flip",
+       "id" "logo/flip",
+       "entitled" true}
+      {"tier" "community",
+       "title" "Static logo",
+       "id" "logo/static",
+       "entitled" true}
+      {"tier" "community",
+       "title" "Continuous text",
+       "id" "text.mode/continuous",
+       "entitled" true}
+      {"tier" "pro",
+       "title" "Randomized text",
+       "id" "text.mode/random",
+       "entitled" false}
+      {"tier" "community",
+       "title" "Scheduled text",
+       "id" "text.mode/scheduled",
+       "entitled" true}
+      {"tier" "pro",
+       "title" "Flash-frame canaries",
+       "display-name" "canary",
+       "id" "text.mode/subliminal",
+       "entitled" false}]}}}
+  {:step :doctor,
+   :request [:get "/api/v1/doctor" nil],
+   :answer
+   {:status 200,
+    :body
+    {"status" "ok",
+     "version" "9.9.9",
+     "edition" "community",
+     "home" "/home/wmark",
+     "engine"
+     {"engine/id" "golden",
+      "engine/version" "1",
+      "available?" true,
+      "capabilities"
+      {"sources" ["file" "url"],
+       "placement" ["burst-scatter" "fixed" "per-window"],
+       "extras" ["cover" "metadata"],
+       "codecs" ["h264" "hevc"],
+       "animations" ["flip-y"],
+       "spec-versions" [1],
+       "audio" ["aac" "copy" "none"],
+       "layers" ["image" "text"],
+       "preview" ["frame" "sample"],
+       "containers" ["mkv" "mov" "mp4"],
+       "timing" ["always" "periodic" "windows"]},
+      "binaries" {}},
+     "binaries" nil}}}
+  {:step :none-yet,
+   :request [:get "/api/v1/profiles" nil],
+   :answer {:status 200, :body {"profiles" []}}}
+  {:step :create,
+   :request
+   [:post
+    "/api/v1/profiles"
+    {:name "Clip",
+     :settings
+     {:logo {:path "/logos/l.png", :anchor "top-right"},
+      :texts [{:mode "continuous", :content "(c) Studio"}]}}],
+   :answer
+   {:status 201,
+    :body
+    {"wmark/format" 1,
+     "profile/name" "Clip",
+     "profile/rev" 1,
+     "profile/created-at" "<time>",
+     "profile/updated-at" "<time>",
+     "settings"
+     {"logo" {"path" "/logos/l.png", "anchor" "top-right"},
+      "texts" [{"mode" "continuous", "content" "(c) Studio"}]},
+     "profile/slug" "clip"}}}
+  {:step :taken,
+   :request [:post "/api/v1/profiles" {:name "clip", :settings {}}],
+   :answer
+   {:status 409,
+    :body
+    {"error" "conflict",
+     "message" "A profile named \"Clip\" already exists.",
+     "name" "Clip",
+     "existing" "Clip"}}}
+  {:step :invalid,
+   :request
+   [:post
+    "/api/v1/profiles"
+    {:name "Bad", :settings {:logo {:opacity 3}}}],
+   :answer
+   {:status 422,
+    :body
+    {"error" "invalid",
+     "message" "Invalid settings.",
+     "errors" {"logo" {"opacity" ["should be at most 1.0"]}}}}}
+  {:step :get,
+   :request [:get "/api/v1/profiles/clip" nil],
+   :answer
+   {:status 200,
+    :body
+    {"wmark/format" 1,
+     "profile/name" "Clip",
+     "profile/rev" 1,
+     "profile/created-at" "<time>",
+     "profile/updated-at" "<time>",
+     "settings"
+     {"logo" {"path" "/logos/l.png", "anchor" "top-right"},
+      "texts" [{"mode" "continuous", "content" "(c) Studio"}]},
+     "profile/slug" "clip"}}}
+  {:step :stale,
+   :request
+   [:put
+    "/api/v1/profiles/clip"
+    {:settings {:logo {:opacity 0.5}}, :if-rev 99}],
+   :answer
+   {:status 409,
+    :body
+    {"error" "conflict",
+     "message"
+     "This profile changed since it was loaded. Reload it to see the latest version.",
+     "reason" "stale"}}}
+  {:step :save,
+   :request
+   [:put
+    "/api/v1/profiles/clip"
+    {:settings {:logo {:path "/logos/l.png", :opacity 0.5}},
+     :if-rev 1}],
+   :answer
+   {:status 200,
+    :body
+    {"wmark/format" 1,
+     "profile/name" "Clip",
+     "profile/rev" 2,
+     "profile/created-at" "<time>",
+     "profile/updated-at" "<time>",
+     "settings" {"logo" {"path" "/logos/l.png", "opacity" 0.5}},
+     "profile/slug" "clip"}}}
+  {:step :rename,
+   :request [:post "/api/v1/profiles/clip/rename" {:to "Wide 16:9"}],
+   :answer
+   {:status 200,
+    :body
+    {"wmark/format" 1,
+     "profile/name" "Wide 16:9",
+     "profile/rev" 3,
+     "profile/created-at" "<time>",
+     "profile/updated-at" "<time>",
+     "settings" {"logo" {"path" "/logos/l.png", "opacity" 0.5}},
+     "profile/slug" "wide-16-9"}}}
+  {:step :by-slug,
+   :request [:get "/api/v1/profiles/wide-16-9" nil],
+   :answer
+   {:status 200,
+    :body
+    {"wmark/format" 1,
+     "profile/name" "Wide 16:9",
+     "profile/rev" 3,
+     "profile/created-at" "<time>",
+     "profile/updated-at" "<time>",
+     "settings" {"logo" {"path" "/logos/l.png", "opacity" 0.5}},
+     "profile/slug" "wide-16-9"}}}
+  {:step :by-name,
+   :request [:get "/api/v1/profiles/Wide%2016%3A9" nil],
+   :answer
+   {:status 200,
+    :body
+    {"wmark/format" 1,
+     "profile/name" "Wide 16:9",
+     "profile/rev" 3,
+     "profile/created-at" "<time>",
+     "profile/updated-at" "<time>",
+     "settings" {"logo" {"path" "/logos/l.png", "opacity" 0.5}},
+     "profile/slug" "wide-16-9"}}}
+  {:step :copy,
+   :request [:post "/api/v1/profiles/wide-16-9/copy" {:to "Copy"}],
+   :answer
+   {:status 201,
+    :body
+    {"wmark/format" 1,
+     "profile/name" "Copy",
+     "profile/rev" 1,
+     "profile/created-at" "<time>",
+     "profile/updated-at" "<time>",
+     "settings" {"logo" {"path" "/logos/l.png", "opacity" 0.5}},
+     "profile/slug" "copy"}}}
+  {:step :delete,
+   :request [:delete "/api/v1/profiles/copy" nil],
+   :answer {:status 200, :body {"deleted" "copy"}}}
+  {:step :missing,
+   :request [:get "/api/v1/profiles/nope" nil],
+   :answer
+   {:status 404,
+    :body
+    {"error" "not-found",
+     "message" "No profile named \"nope\".",
+     "name" "nope"}}}
+  {:step :listed,
+   :request [:get "/api/v1/profiles" nil],
+   :answer
+   {:status 200,
+    :body
+    {"profiles"
+     [{"name" "Wide 16:9",
+       "slug" "wide-16-9",
+       "rev" 3,
+       "auto?" false,
+       "updated-at" "<time>"}]}}}
+  {:step :form,
+   :request [:get "/api/v1/profiles/wide-16-9/form" nil],
+   :answer
+   {:status 200,
+    :keys ["form" "locked" "profile" "warnings"],
+    :sha256
+    "14ef400d1cab0a04b27f39ad1484d60295c2fbda09b53542e9bb0b8054a5bd6b"}}
+  {:step :draft,
+   :request
+   [:post
+    "/api/v1/profiles/wide-16-9/form"
+    {:settings {:logo {:path "/logos/l.png", :opacity 0.5}},
+     :edit {:op "set", :id "logo.opacity", :value "70"}}],
+   :answer
+   {:status 200,
+    :keys ["form" "locked" "profile" "settings" "unsaved?" "warnings"],
+    :sha256
+    "77c9bd913da501df62a83ec28ed5df5b01dca1d184db8023f26fca0b4fcac8de"}}
+  {:step :edit,
+   :request
+   [:post
+    "/api/v1/profiles/wide-16-9/edit"
+    {:op "set", :id "logo.opacity", :value "70", :if-rev 3}],
+   :answer
+   {:status 200,
+    :keys ["form" "locked" "profile" "saved" "warnings"],
+    :sha256
+    "8a84761278a9a38d8a128d8226da2375dd64d372d26057e9d6fb76362b36c756"}}
+  {:step :edit-stale,
+   :request
+   [:post
+    "/api/v1/profiles/wide-16-9/edit"
+    {:op "unset", :id "logo.opacity", :if-rev 1}],
+   :answer
+   {:status 409,
+    :body
+    {"error" "conflict",
+     "message"
+     "This profile changed since it was loaded. Reload it to see the latest version.",
+     "reason" "stale"}}}
+  {:step :preview,
+   :request
+   [:post
+    "/api/v1/preview"
+    {:profile "wide-16-9", :source "a.mp4", :t 2}],
+   :answer
+   {:status 200,
+    :body
+    {"width" 1280,
+     "url" "/api/v1/previews/<id>",
+     "height" 720,
+     "duration-s" 10.01,
+     "id" "<id>",
+     "t" 1.9686333333333332,
+     "notes" [],
+     "frame" 59,
+     "aspect" nil,
+     "sample?" false}}}
+  {:step :preview-file,
+   :request [:get "/api/v1/previews/<id>" nil],
+   :answer
+   {:status 200,
+    :file "/previews/<id>.png",
+    :content-type "image/png"}}
+  {:step :sample,
+   :request
+   [:post
+    "/api/v1/preview"
+    {:clean true,
+     :settings {:texts [{:mode "continuous", :content "x"}]},
+     :aspect "9:16"}],
+   :answer
+   {:status 200,
+    :body
+    {"width" 1280,
+     "url" "/api/v1/previews/<id>",
+     "height" 720,
+     "duration-s" 10.01,
+     "id" "<id>",
+     "t" 0.0,
+     "notes" [],
+     "frame" 0,
+     "aspect" "9:16",
+     "sample?" true}}}
+  {:step :resolve,
+   :request [:post "/api/v1/resolve" {:profile "wide-16-9"}],
+   :answer
+   {:status 200,
+    :keys ["base" "locked" "provenance" "settings" "warnings"],
+    :sha256
+    "485b675405d5d1602c3f0a4e1e522836959148d5b9f738ef390ebb73d8353342"}}
+  {:step :plan,
+   :request
+   [:post
+    "/api/v1/plan"
+    {:profile "wide-16-9", :inputs ["a.mp4"], :cover {:t 1}}],
+   :answer
+   {:status 200,
+    :keys ["base" "locked" "plans" "provenance" "settings" "warnings"],
+    :sha256
+    "0f3a8be06184538a68bde67ffd3067e5925ff87a57769edfa7ff7a1bf145125e"}}
+  {:step :locked,
+   :request
+   [:post
+    "/api/v1/plan"
+    {:clean true,
+     :inputs ["a.mp4"],
+     :settings {:texts [{:mode "canary", :content "x"}]}}],
+   :answer
+   {:status 402,
+    :body
+    {"error" "feature-locked",
+     "message"
+     "Not available on the community plan: Flash-frame canaries",
+     "features" ["text.mode/subliminal"]}}}
+  {:step :submit,
+   :request
+   [:post
+    "/api/v1/jobs"
+    {:profile "wide-16-9", :inputs ["a.mp4" "b.mov"]}],
+   :answer
+   {:status 202,
+    :body
+    {"ctx" {"tenant" "t", "user" "u"},
+     "inputs" ["a.mp4" "b.mov"],
+     "settings"
+     {"output"
+      {"suffix" "_wm",
+       "container" "mp4",
+       "overwrite?" false,
+       "strip-metadata" true},
+      "encode" {"codec" "h264", "quality" "high", "audio" "copy"},
+      "logo"
+      {"enabled" true,
+       "anchor" "bottom-right",
+       "offset" {"x" 24, "y" 24},
+       "width-ratio" 0.12,
+       "opacity" 0.7,
+       "animation" {"type" "flip-y", "every-s" 60.0, "duration-s" 1.0},
+       "path" "/logos/l.png"},
+      "texts" []},
+     "id" "<id>",
+     "state" "queued",
+     "created-at" "<time>"}}}
+  {:step :no-inputs,
+   :request [:post "/api/v1/jobs" {:profile "wide-16-9", :inputs []}],
+   :answer
+   {:status 422,
+    :body
+    {"error" "invalid",
+     "message" "No input files.",
+     "field" "inputs"}}}
+  {:step :jobs,
+   :request [:get "/api/v1/jobs" nil],
+   :answer
+   {:status 200,
+    :body
+    {"jobs"
+     [{"settings"
+       {"output"
+        {"suffix" "_wm",
+         "container" "mp4",
+         "overwrite?" false,
+         "strip-metadata" true},
+        "encode" {"codec" "h264", "quality" "high", "audio" "copy"},
+        "logo"
+        {"enabled" true,
+         "anchor" "bottom-right",
+         "offset" {"x" 24, "y" 24},
+         "width-ratio" 0.12,
+         "opacity" 0.7,
+         "animation"
+         {"type" "flip-y", "every-s" 60.0, "duration-s" 1.0},
+         "path" "/logos/l.png"},
+        "texts" []},
+       "state" "running",
+       "inputs" ["a.mp4" "b.mov"],
+       "id" "<id>",
+       "ctx" {"tenant" "t", "user" "u"},
+       "created-at" "<time>"}]}}}
+  {:step :cancel,
+   :request [:delete "/api/v1/jobs/<id>" nil],
+   :answer {:status 200, :body {"cancelled" true}}}
+  {:step :cancel-none,
+   :request [:delete "/api/v1/jobs/nope" nil],
+   :answer
+   {:status 404, :body {"error" "not-found", "message" "No job nope"}}}
+  {:step :after,
+   :request [:get "/api/v1/jobs" nil],
+   :answer
+   {:status 200,
+    :body
+    {"jobs"
+     [{"settings"
+       {"output"
+        {"suffix" "_wm",
+         "container" "mp4",
+         "overwrite?" false,
+         "strip-metadata" true},
+        "encode" {"codec" "h264", "quality" "high", "audio" "copy"},
+        "logo"
+        {"enabled" true,
+         "anchor" "bottom-right",
+         "offset" {"x" 24, "y" 24},
+         "width-ratio" 0.12,
+         "opacity" 0.7,
+         "animation"
+         {"type" "flip-y", "every-s" 60.0, "duration-s" 1.0},
+         "path" "/logos/l.png"},
+        "texts" []},
+       "state" "running",
+       "inputs" ["a.mp4" "b.mov"],
+       "id" "<id>",
+       "ctx" {"tenant" "t", "user" "u"},
+       "created-at" "<time>"}]}}}
+  {:step :not-json,
+   :request [:post "/api/v1/profiles" "<not JSON>"],
+   :answer
+   {:status 422,
+    :body
+    {"error" "invalid", "message" "Request body is not valid JSON."}}}
+  {:step :no-route,
+   :request [:get "/api/v1/nowhere" nil],
+   :answer
+   {:status 404,
+    :body {"error" "not-found", "message" "No such endpoint."}}}
+  {:step :wrong-method,
+   :request [:patch "/api/v1/profiles" nil],
+   :answer
+   {:status 404,
+    :body {"error" "not-found", "message" "No such endpoint."}}}
+  {:step :bad-escape,
+   :request [:get "/api/v1/profiles/%ZZ" nil],
+   :answer
+   {:status 422,
+    :body
+    {"error" "invalid", "message" "Malformed path segment: %ZZ"}}}
+  {:step :not-utf8,
+   :request [:get "/api/v1/profiles/%C3%28" nil],
+   :answer
+   {:status 422,
+    :body
+    {"error" "invalid", "message" "Malformed path segment: %C3%28"}}}],
+ :events
+ [{"type" "job",
+   "job"
+   {"settings"
+    {"output"
+     {"suffix" "_wm",
+      "container" "mp4",
+      "overwrite?" false,
+      "strip-metadata" true},
+     "encode" {"codec" "h264", "quality" "high", "audio" "copy"},
+     "logo"
+     {"enabled" true,
+      "anchor" "bottom-right",
+      "offset" {"x" 24, "y" 24},
+      "width-ratio" 0.12,
+      "opacity" 0.7,
+      "animation" {"type" "flip-y", "every-s" 60.0, "duration-s" 1.0},
+      "path" "/logos/l.png"},
+     "texts" []},
+    "state" "queued",
+    "inputs" ["a.mp4" "b.mov"],
+    "id" "<id>",
+    "ctx" {"tenant" "t", "user" "u"},
+    "created-at" "<time>"}}
+  {"type" "job",
+   "job"
+   {"settings"
+    {"output"
+     {"suffix" "_wm",
+      "container" "mp4",
+      "overwrite?" false,
+      "strip-metadata" true},
+     "encode" {"codec" "h264", "quality" "high", "audio" "copy"},
+     "logo"
+     {"enabled" true,
+      "anchor" "bottom-right",
+      "offset" {"x" 24, "y" 24},
+      "width-ratio" 0.12,
+      "opacity" 0.7,
+      "animation" {"type" "flip-y", "every-s" 60.0, "duration-s" 1.0},
+      "path" "/logos/l.png"},
+     "texts" []},
+    "state" "running",
+    "inputs" ["a.mp4" "b.mov"],
+    "id" "<id>",
+    "ctx" {"tenant" "t", "user" "u"},
+    "created-at" "<time>"}}],
+ :segments
+ [["plain" "plain"]
+  ["a%20b" "a b"]
+  ["a+b" "a+b"]
+  ["%e4%B8%AD%E6%96%87" "中文"]
+  ["%F0%9F%98%80" "😀"]
+  ["100%25" "100%"]
+  ["%ZZ" [:error :invalid]]
+  ["%4" [:error :invalid]]
+  ["%" [:error :invalid]]
+  ["%C3%28" [:error :invalid]]
+  ["%ED%A0%80" [:error :invalid]]
+  ["%F4%90%80%80" [:error :invalid]]
+  ["%C0%AF" [:error :invalid]]
+  ["%E2%82" [:error :invalid]]],
+ :jsonable
+ {"set" [1 2 3],
+  "names" ["a" "b"],
+  "list" [1 "x"],
+  "path"
+  {"logo.anchor" "text.mode/subliminal", "texts.0.content" "user"},
+  "nested" {"e/f" nil, "g" [true 1.5]}}}

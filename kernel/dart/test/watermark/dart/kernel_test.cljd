@@ -15,6 +15,7 @@
             [watermark.core.modes :as modes]
             [watermark.core.queue]
             [watermark.core.resolve]
+            [watermark.core.rest]
             [watermark.core.schema :as schema]
             [watermark.core.seeds]
             [watermark.engine]
