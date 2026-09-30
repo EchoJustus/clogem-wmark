@@ -1,0 +1,92 @@
+;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
+;; SPDX-License-Identifier: EPL-2.0
+(ns watermark.dartvm.home
+  "Where configuration lives on this machine, on the Dart VM: the home
+  folder, the profile store and the studio secret in it, and a font. The
+  rules are the JVM's (watermark.home, watermark.util.fs, watermark.util.os),
+  so both hosts share one home: the same folder, the same profile files,
+  the same secret."
+  (:require ["dart:convert" :as convert]
+            ["dart:io" :as io]
+            ["dart:math" :as math]
+            ["dart:typed_data" :as td]
+            [clojure.string :as str]
+            [watermark.dartvm.fs :as fs]
+            [watermark.dartvm.store :as store]))
+
+(defn- env [k]
+  (let [v (. io/Platform.environment "[]" k)]
+    (when-not (str/blank? v) v)))
+
+(defn default-home
+  "The per-user config folder, by each platform's convention."
+  []
+  (let [home (or (env "HOME") (env "USERPROFILE") "")]
+    (cond io/Platform.isWindows (fs/join (or (env "APPDATA") (str home "\\AppData\\Roaming")) "wmark")
+          io/Platform.isMacOS   (fs/join (fs/join (fs/join home "Library") "Application Support") "wmark")
+          :else                 (fs/join (or (env "XDG_CONFIG_HOME") (str home "/.config")) "wmark"))))
+
+(defn resolve-home
+  "The config home, first match wins:
+     1. explicit `:home` (the --home flag)
+     2. the WMARK_HOME environment variable
+     3. `./wmark-data` when that folder exists: portable mode
+     4. the platform's default."
+  [{:keys [home]}]
+  (let [portable (fs/join (fs/cwd) "wmark-data")]
+    (fs/absolute (cond home                 (str home)
+                       (env "WMARK_HOME")   (env "WMARK_HOME")
+                       (fs/dir? portable)   portable
+                       :else                (default-home)))))
+
+(defn file-store
+  "The profile store under `<home>/profiles/`."
+  [home]
+  (store/file-store (fs/join home "profiles")))
+
+(defn- restrict-to-owner!
+  "Owner-only permissions on POSIX; on Windows the per-user AppData ACL
+  already restricts it. dart:io has no chmod, so chmod runs, by absolute
+  path; the secret is removed again if it fails."
+  [p]
+  (when-not io/Platform.isWindows
+    (let [^io/ProcessResult r (io/Process.runSync "/bin/chmod" ["600" (str p)])]
+      (when-not (zero? (.-exitCode r))
+        (fs/delete! p)
+        (throw (ex-info (str "Couldn't make " p " private: " (.-stderr r)) {:wmark/error :failed}))))))
+
+(defn studio-secret!
+  "32 random bytes at `<home>/secret.key` (base64 text), created on first
+  use. Keys every Pro schedule: back it up -- without it, old schedules
+  can't be reproduced as evidence."
+  [home]
+  (let [p (fs/join home "secret.key")]
+    (if (fs/file? p)
+      (.decode convert/base64 (str/trim (fs/read-text p)))
+      (let [rnd (math/Random.secure)
+            b   (td/Uint8List 32)]
+        (dotimes [i 32] (. b "[]=" i (.nextInt rnd 256)))
+        (fs/make-dirs! home)
+        ;; created exclusively, as on the JVM: never over another's secret
+        (.createSync (io/File p) .exclusive true)
+        (.writeAsStringSync (io/File p) (.encode convert/base64 b) .flush true)
+        (restrict-to-owner! p)
+        b))))
+
+(def ^:private system-fonts
+  {:windows ["C:/Windows/Fonts/segoeuib.ttf" "C:/Windows/Fonts/arialbd.ttf" "C:/Windows/Fonts/arial.ttf"]
+   :macos   ["/System/Library/Fonts/Supplemental/Arial Bold.ttf" "/Library/Fonts/Arial.ttf"]
+   :unix    ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+             "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf"
+             "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf"]})
+
+(defn default-font
+  "A font file FFmpeg and the v2 rasterizer can open: `fonts/wmark.ttf`
+  next to the program (the bundled Fira Sans Bold, OFL), else in `dirs` (a
+  checkout's resources/, when the Dart VM runs sources), then common system
+  fonts."
+  [app-dir dirs]
+  (or (some #(let [f (fs/join (fs/join % "fonts") "wmark.ttf")] (when (fs/file? f) f))
+            (remove nil? (cons app-dir dirs)))
+      (some #(when (fs/file? %) %)
+            (system-fonts (cond io/Platform.isWindows :windows io/Platform.isMacOS :macos :else :unix)))))

@@ -1,0 +1,63 @@
+;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
+;; SPDX-License-Identifier: EPL-2.0
+(ns watermark.dartvm.media
+  "MediaIO over local files on the Dart VM, as the JVM's
+  (watermark.media.local): outputs next to the input or in an output
+  folder, written as a .part file and renamed into place when the render
+  succeeds. The fingerprint and the names are the core library's
+  (watermark.media), so a render made here keys the same schedules."
+  (:require ["dart:io" :as io]
+            [watermark.dartvm.fs :as fs]
+            [watermark.media :as media]))
+
+(defn fingerprint
+  "The media fingerprint of the file at `p` (watermark.media/fingerprint):
+  only the bytes `fingerprint-ranges` names are read."
+  [p]
+  (let [raf  (.openSync (io/File (str p)))]
+    (try
+      (let [size (.lengthSync raf)
+            read (fn [[offset n]]
+                   (.setPositionSync raf offset)
+                   (.readSync raf n))
+            [head tail] (mapv read (media/fingerprint-ranges size))]
+        (media/fingerprint size head tail))
+      (finally (.closeSync raf)))))
+
+(defn output-path
+  "<output dir or the input's folder>/<input stem><suffix>.<container>"
+  [input {:keys [dir] :as output}]
+  (let [abs (fs/absolute input)]
+    (fs/join (or dir (fs/parent abs)) (media/output-name (fs/file-name abs) output))))
+
+(defn local-media []
+  (reify media/MediaIO
+    (open-input [_ _ input]
+      (let [abs (fs/absolute input)]
+        (when-not (fs/file? abs)
+          (throw (ex-info (str "No such file: " input) {:wmark/error :invalid :path (str input)})))
+        {:id (str input) :location abs :fingerprint (fingerprint abs)}))
+
+    (open-output [_ ctx input {:keys [output]}]
+      (let [final (output-path input output)]
+        (when (and (not (:overwrite? output)) (fs/exists? final))
+          (throw (ex-info (str "Output exists: " final " (enable overwrite to replace it)")
+                          {:wmark/error :conflict :path final})))
+        (when-not (:dry-run? ctx)                   ; a dry run creates nothing
+          (fs/make-dirs! (fs/parent final)))
+        {:final final :temp (media/part-path final) :container (:container output "mp4")
+         :overwrite? (boolean (:overwrite? output))}))
+
+    (commit! [_ _ {:keys [final temp overwrite?]}]
+      (when-not (fs/file? temp)
+        (throw (ex-info (str "The engine reported success but wrote no output (" temp ").")
+                        {:wmark/error :failed :path (str temp)})))
+      (when (and (not overwrite?) (fs/exists? final))
+        (throw (ex-info (str "Output exists: " final " (enable overwrite to replace it)")
+                        {:wmark/error :conflict :path (str final)})))
+      (fs/replace! temp final)
+      final)
+
+    (discard! [_ _ {:keys [temp]}]
+      (try (fs/delete! temp) (catch Object _ nil))
+      nil)))

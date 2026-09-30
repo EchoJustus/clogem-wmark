@@ -1,0 +1,252 @@
+;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
+;; SPDX-License-Identifier: EPL-2.0
+(ns watermark.dartvm.ffmpeg
+  "The FFmpeg engine on the Dart VM: the watermark.engine/VideoEngine the
+  Dart host renders with. As on the JVM (watermark.engine.ffmpeg), this is
+  only the machine's side: finding the binaries (watermark.util.locate's
+  order, over what dart:io reports) and running them with absolute paths,
+  never through a shell. What they print and what it means (capabilities,
+  checks, plans, progress, outcomes) is the core library's
+  (watermark.ffmpeg.engine), so both hosts decide alike.
+
+  Short commands run with Process.runSync. A trial encode may hang (a
+  hardware encoder without its hardware), and the Dart VM can time a process
+  out only asynchronously, so discovery is a task: `ffmpeg-engine` returns
+  a task of the engine, whose `info` is then at hand. Renders run with
+  Process.start: -progress lines on stdout feed the progress reader, stderr
+  goes to the render's log file."
+  (:require ["dart:async" :as async]
+            ["dart:convert" :as convert]
+            ["dart:io" :as io]
+            ["dart:typed_data" :as td]
+            [clojure.string :as str]
+            [watermark.dartvm.fs :as fs]
+            [watermark.engine :as engine]
+            [watermark.ffmpeg.engine :as fe]
+            [watermark.ffmpeg.parse :as parse]
+            [watermark.util.locate :as locate]
+            [watermark.util.task :as task]))
+
+;; ---------------------------------------------------------------------------
+;; Finding the binaries
+
+(defn- exe [base] (if (fs/windows?) (str base ".exe") base))
+
+(defn executable?
+  "A regular file this user may run: on Windows any file; elsewhere one with
+  an execute bit."
+  [p]
+  (and (fs/file? p)
+       (or (fs/windows?)
+           (pos? (bit-and (.-mode (.statSync (io/File (str p)))) 0x49)))))   ; 0o111
+
+(defn app-dir
+  "The folder of the running executable, or nil when this is the Dart VM
+  running sources (`dart run`, `dart test`)."
+  []
+  (let [self io/Platform.resolvedExecutable]
+    (when-not (#{"dart" "dart.exe" "dartvm" "dartvm.exe" "dartaotruntime" "dartaotruntime.exe"} (fs/file-name self))
+      (fs/parent self))))
+
+(defn- path-dirs []
+  (->> (str/split (or (. io/Platform.environment "[]" "PATH") "") (if (fs/windows?) #";" #":"))
+       (remove str/blank?)
+       vec))
+
+(defn- canonical [p]
+  (try (.resolveSymbolicLinksSync (io/Directory (str p))) (catch Object _ (fs/absolute p))))
+
+(defn locate
+  "watermark.util.locate/locate on this machine. `opts` as there, plus
+    :ok?          (fn [path] bool) (default: executable?)
+    :cwd, :app-dir  override the working and install folders (tests)"
+  [{:keys [ok?] :as opts}]
+  (let [ok? (or ok? executable?)]
+    (locate/locate (assoc (dissoc opts :ok? :app-dir)
+                          :cwd      (fs/absolute (or (:cwd opts) (fs/cwd)))
+                          :app      (if (contains? opts :app-dir) (:app-dir opts) (app-dir))
+                          :path     (path-dirs)
+                          :dir?     fs/dir?
+                          :status   #(cond (ok? %) :found (fs/exists? %) :unusable :else :missing)
+                          :absolute fs/absolute
+                          :join     fs/join))))
+
+(defn- working-dir-warning [resolution]
+  (locate/working-dir-warning resolution {:cwd (fs/cwd) :app (app-dir)
+                                          :same-folder? #(= (canonical %1) (canonical %2))}))
+
+(defn locate-binaries
+  "ffmpeg, then ffprobe, preferring the ffprobe next to the chosen ffmpeg so
+  both come from one build."
+  [{:keys [ffmpeg search] :as opts}]
+  (let [base    (select-keys opts [:cwd :app-dir])
+        ff      (locate (merge base {:names [(exe "ffmpeg")] :explicit ffmpeg :search search}))
+        sibling (when (:path ff) (fs/join (fs/parent (:path ff)) (exe "ffprobe")))
+        fp      (if (and sibling (executable? sibling))
+                  {:path sibling :source (:source ff) :trail []}
+                  (locate (merge base {:names [(exe "ffprobe")] :search search})))]
+    {:ffmpeg ff :ffprobe fp}))
+
+;; ---------------------------------------------------------------------------
+;; Running commands
+
+(defn- text
+  "Bytes as UTF-8 text that doesn't throw on what isn't: FFmpeg prints file
+  names as the OS gives them."
+  [bytes]
+  (.decode convert/utf8 bytes .allowMalformed true))
+
+(defn exec
+  "Run `argv` to completion: {:exit :out :err}, as UTF-8 text. Short
+  commands only."
+  [argv]
+  (let [^io/ProcessResult r (io/Process.runSync (first argv) (mapv str (rest argv))
+                                                .stdoutEncoding nil .stderrEncoding nil)]
+    {:exit (.-exitCode r) :out (text (.-stdout r)) :err (text (.-stderr r))}))
+
+(defn- passes?
+  "A task of true when `argv` exits 0 within `timeout-ms`; one still running
+  then is killed. Output is thrown away."
+  [argv timeout-ms]
+  (-> (io/Process.start (first argv) (mapv str (rest argv)))
+      (task/then (fn [^io/Process p]
+                   (.drain (.-stdout p))
+                   (.drain (.-stderr p))
+                   (.timeout (.then (.-exitCode p) (fn [code] (zero? code)))
+                             (Duration .milliseconds timeout-ms)
+                             .onTimeout (fn [] (.kill p io/ProcessSignal.sigkill) false))))
+      (task/recover (fn [_] false))))
+
+(defn- describe-binary [ffmpeg]
+  (try (fe/describe (into {} (for [[k argv] (fe/describe-argv ffmpeg)] [k (:out (exec argv))])))
+       (catch Object _ nil)))
+
+(defn- json->data
+  "JSON decoded by dart:convert as Clojure data, keys as keywords (as the
+  JVM reads ffprobe's output)."
+  [x]
+  (cond (dart/is? x Map)  (into {} (for [^MapEntry e (.-entries ^Map x)] [(keyword (.-key e)) (json->data (.-value e))]))
+        (dart/is? x List) (mapv json->data x)
+        :else x))
+
+(defn- log-tail [path n]
+  (when (fs/file? path)
+    (->> (str/split-lines (text (fs/read-bytes path))) (take-last n) (str/join "\n"))))
+
+;; ---------------------------------------------------------------------------
+;; The engine
+
+(defn- probe [ffprobe input]
+  (let [{:keys [exit out err]} (exec (fe/probe-argv ffprobe input))]
+    (if (zero? exit)
+      (parse/probe-facts (json->data (convert/jsonDecode out)))
+      (throw (ex-info (str "Can't read " input ": " err) {:wmark/error :invalid :path (str input)})))))
+
+(defn- execute
+  "Start the render of `plan`: a RenderHandle whose outcome is a task."
+  [plan listener]
+  (let [result    (task/deferred)
+        cancelled (atom false)
+        proc      (atom nil)
+        {:keys [workdir files argv total-us]} plan
+        log       (fe/log-path plan)
+        finish    (fn [outcome]
+                    (when-not (fe/keep-scratch? outcome) (fs/delete-tree! workdir))
+                    (task/complete! result outcome))
+        stop      (fn [^io/Process p]
+                    (.kill p)                                   ; SIGTERM / TerminateProcess
+                    (async/Timer (Duration .seconds 5) (fn [] (.kill p io/ProcessSignal.sigkill) nil)))]
+    (-> (task/attempt
+         (fn []
+           (doseq [[path content] files]
+             (fs/make-dirs! (fs/parent path))
+             (.writeAsStringSync (io/File (str path)) (str content) .flush true))
+           (fs/make-dirs! (fs/parent log))
+           (io/Process.start (first argv) (mapv str (rest argv)))))
+        (task/then
+         (fn [^io/Process p]
+           (reset! proc p)
+           (when @cancelled (stop p))
+           (let [sink     (.openWrite (io/File log))
+                 err-done (.then (.addStream sink (.-stderr p)) (fn [_] (.close sink)))
+                 on-line  (fe/progress-reader total-us #(when listener (listener %)))
+                 ;; -progress writes ASCII key=value lines
+                 out-done (.forEach (.transform (.transform (.-stdout p) (.-decoder convert/utf8)) (convert/LineSplitter))
+                                    (fn [line] (on-line line) nil))]
+             (-> (task/then out-done (fn [_] err-done))
+                 (task/then (fn [_] (.-exitCode p)))
+                 (task/then (fn [exit]
+                              (let [c? @cancelled]
+                                (fe/outcome {:cancelled? c?
+                                             :exit       exit
+                                             :log        log
+                                             :log-tail   (when-not (or c? (zero? exit)) (log-tail log 12))}))))))))
+        (task/recover (fn [e] (engine/failed (str "Could not run FFmpeg: " (or (ex-message e) (str e))))))
+        (task/then finish))
+    (reify engine/RenderHandle
+      (cancel! [_]
+        (reset! cancelled true)
+        (when-let [p @proc] (stop p))
+        nil)
+      (outcome [_] (task/task-of result)))))
+
+(defn- decode-still
+  "The first frame of `source` as straight RGBA8 at its probed size, from one
+  FFmpeg run (watermark.ffmpeg.engine/decode-argv)."
+  [eng source]
+  (let [size (engine/probe eng source)
+        argv (fe/decode-argv (fe/binary! (engine/info eng) :ffmpeg) source)
+        ^io/ProcessResult r (io/Process.runSync (first argv) (mapv str (rest argv))
+                                                .stdoutEncoding nil .stderrEncoding nil)
+        out  (.-stdout r)
+        px   (if (dart/is? out td/Uint8List) out (td/Uint8List.fromList out))]
+    (fe/still size source {:exit (.-exitCode r) :px px :err (text (.-stderr r))} (.-length ^td/Uint8List px))))
+
+(defn- sample-video
+  "The sample clip for previews (watermark.ffmpeg.engine/sample-argv)."
+  [eng opts path]
+  (let [r (exec (fe/sample-argv (fe/binary! (engine/info eng) :ffmpeg) opts path))]
+    (when-not (zero? (:exit r))
+      (throw (ex-info (str "FFmpeg couldn't make the sample clip: " (str/trim (:err r)))
+                      {:wmark/error :unavailable})))
+    (str path)))
+
+(defn discover
+  "Everything the engine's `info` reports, as a task: the binaries found,
+  what they print, and trial encodes of the encoders listed
+  (watermark.ffmpeg.engine/trial-encoders, 30 seconds each at most)."
+  [opts]
+  (let [{:keys [ffmpeg ffprobe] :as bins} (locate-binaries opts)
+        described (when (and (:path ffmpeg) (:path ffprobe)) (describe-binary (:path ffmpeg)))
+        trial     (fn [codec enc]
+                    (passes? (fe/trial-argv (:path ffmpeg) (fe/trial-video-args codec enc)) 30000))]
+    (task/then (if described (fe/trial-encoders (:encoders described) trial) (task/resolved {}))
+               (fn [results]
+                 (fe/discover {:binaries  bins
+                               :warnings  (vec (keep working-dir-warning [ffmpeg ffprobe]))
+                               :described described
+                               :usable?   (fn [codec enc] (get results [codec enc] false))})))))
+
+(defn engine-of
+  "The engine for discovery result `info`."
+  [info {:keys [work-root]}]
+  (reify
+    engine/VideoEngine
+    (info [_] info)
+    (probe [_ source] (probe (fe/binary! info :ffprobe) source))
+    (prepare [_ request] (fe/plan-render info request (fe/scratch-dir (str work-root))))
+    (execute! [_ plan listener] (execute plan listener))
+
+    engine/StillDecoder
+    (decode-still [this source] (decode-still this source))
+
+    engine/SampleSource
+    (sample-video [this opts path] (sample-video this opts path))))
+
+(defn ffmpeg-engine
+  "A task of the FFmpeg engine.
+    :ffmpeg    explicit ffmpeg path or folder (--ffmpeg / WMARK_FFMPEG)
+    :search    locate order (default watermark.util.locate/default-search)
+    :work-root folder for per-render scratch folders (graph, text files, log)"
+  [opts]
+  (task/then (discover opts) #(engine-of % opts)))

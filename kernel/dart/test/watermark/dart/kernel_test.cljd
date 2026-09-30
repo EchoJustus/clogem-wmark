@@ -4,6 +4,9 @@
   "Every kernel namespace, compiled for the Dart VM and loaded (the JVM's
   architecture test keeps this list complete), and what differs by host."
   (:require [clojure.test :refer [deftest is]]
+            [watermark.cli]
+            [watermark.cli.opts]
+            [watermark.cli.progress]
             [watermark.config]
             [watermark.core.api]
             [watermark.core.features]
@@ -32,8 +35,11 @@
             [watermark.store]
             [watermark.store.memory]
             [watermark.util.chars]
+            [watermark.util.digest]
             [watermark.util.edn]
             [watermark.util.host]
+            [watermark.util.json]
+            [watermark.util.locate]
             [watermark.util.num :as number]
             [watermark.util.prng]
             [watermark.util.schema]

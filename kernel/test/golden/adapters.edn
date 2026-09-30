@@ -1,0 +1,369 @@
+{:sha256
+ ["e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+  "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+  "4a99557e4033c3539de2eb65472017cad5f9557f7a0625a09f1c3f6e2ba69c4c"
+  "8313a13ca4412cb79dae1eb03f79697417616fb271570f22e65ca274ae084939"],
+ :fingerprints
+ [{:size 0,
+   :ranges [[0 0] [0 0]],
+   :fingerprint
+   "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9"}
+  {:size 1,
+   :ranges [[0 1] [0 1]],
+   :fingerprint
+   "1ad3a04596429f0f484523ed2e979819b9393650b67e362cc1767426dbc0dbeb"}
+  {:size 1000,
+   :ranges [[0 1000] [0 1000]],
+   :fingerprint
+   "6c203513f843c33ea61d19ca366da9e346e75b2803e2984ea962b8d21128dc14"}
+  {:size 1048576,
+   :ranges [[0 1048576] [0 1048576]],
+   :fingerprint
+   "5d072c8860b7d4fd289b0dcdaf83c978001ae41754eca833e8b8b272627af6ed"}
+  {:size 1048577,
+   :ranges [[0 1048576] [1 1048576]],
+   :fingerprint
+   "4484ea0d43121fb966e68ec0e9c6c4a4d12c672c814a29b4fceadb71173be7ca"}
+  {:size 2097152,
+   :ranges [[0 1048576] [1048576 1048576]],
+   :fingerprint
+   "f1c6d03849823fb5dd87cf773ad6635f47093dd98bef5636b56cce222924fe00"}
+  {:size 3000001,
+   :ranges [[0 1048576] [1951425 1048576]],
+   :fingerprint
+   "c025c2b972c26fa1875edff3c1c08cfbc68fc6f28fb2d768332b5b90c00b4e81"}],
+ :output-names
+ ["clip_wm.mp4"
+  "clip.tar-wm.mkv"
+  "noext_wm.mp4"
+  "_wm.mp4"
+  "é 😀_wm.mov"],
+ :part-paths
+ ["/out/clip_wm.part.mp4"
+  "C:\\out\\clip_wm.part.mov"
+  "/out/.part.hidden"
+  "/out.d/noext"
+  "clip."
+  "a.b/c"
+  "plain"],
+ :locate
+ [{:path "/usr/bin/ffmpeg",
+   :source :path,
+   :trail
+   [{:source :cwd, :path "/work/ffmpeg", :status :missing}
+    {:source :cwd-bin, :path "/work/bin/ffmpeg", :status :missing}
+    {:source :app, :path "/opt/wmark/ffmpeg", :status :missing}
+    {:source :app-bin, :path "/opt/wmark/bin/ffmpeg", :status :missing}
+    {:source :path, :path "/usr/local/bin/ffmpeg", :status :missing}
+    {:source :path, :path "/usr/bin/ffmpeg", :status :found}]}
+  {:path "/opt/wmark/bin/ffmpeg",
+   :source :app-bin,
+   :trail
+   [{:source :cwd, :path "/work/ffmpeg", :status :missing}
+    {:source :cwd-bin, :path "/work/bin/ffmpeg", :status :missing}
+    {:source :app, :path "/opt/wmark/ffmpeg", :status :missing}
+    {:source :app-bin, :path "/opt/wmark/bin/ffmpeg", :status :found}]}
+  {:path "/opt/wmark/bin/ffmpeg",
+   :source :app-bin,
+   :trail
+   [{:source :cwd, :path "/work/ffmpeg", :status :unusable}
+    {:source :cwd-bin, :path "/work/bin/ffmpeg", :status :missing}
+    {:source :app, :path "/opt/wmark/ffmpeg", :status :missing}
+    {:source :app-bin, :path "/opt/wmark/bin/ffmpeg", :status :found}]}
+  {:path "/custom/ffmpeg",
+   :source :explicit,
+   :trail
+   [{:source :explicit, :path "/custom/ffmpeg", :status :found}]}
+  {:path "/custom/ffmpeg",
+   :source :explicit,
+   :trail
+   [{:source :explicit, :path "/custom/ffmpeg", :status :found}]}
+  {:path "/work/tools/ffmpeg",
+   :source :explicit,
+   :trail [{:source :explicit, :path "tools/ffmpeg", :status :found}]}
+  {:path "/usr/bin/ffmpeg",
+   :source :path,
+   :trail
+   [{:source :explicit, :path "/nowhere/ffmpeg", :status :missing}
+    {:source :cwd, :path "/work/ffmpeg", :status :missing}
+    {:source :cwd-bin, :path "/work/bin/ffmpeg", :status :missing}
+    {:source :app, :path "/opt/wmark/ffmpeg", :status :missing}
+    {:source :app-bin, :path "/opt/wmark/bin/ffmpeg", :status :missing}
+    {:source :path, :path "/usr/local/bin/ffmpeg", :status :missing}
+    {:source :path, :path "/usr/bin/ffmpeg", :status :found}]}
+  {:path "/usr/bin/ffmpeg",
+   :source :path,
+   :trail
+   [{:source :app, :path "/opt/wmark/ffmpeg", :status :missing}
+    {:source :app-bin, :path "/opt/wmark/bin/ffmpeg", :status :missing}
+    {:source :path, :path "/usr/local/bin/ffmpeg", :status :missing}
+    {:source :path, :path "/usr/bin/ffmpeg", :status :found}]}
+  {:path "/opt/wmark/lib/libwmark_engine.so",
+   :source :app-bin,
+   :trail
+   [{:source :cwd, :path "/work/libwmark_engine.so", :status :missing}
+    {:source :cwd-bin,
+     :path "/work/lib/libwmark_engine.so",
+     :status :missing}
+    {:source :app,
+     :path "/opt/wmark/libwmark_engine.so",
+     :status :missing}
+    {:source :app-bin,
+     :path "/opt/wmark/lib/libwmark_engine.so",
+     :status :found}]}
+  {:path nil,
+   :trail
+   [{:source :cwd, :path "/work/ffmpeg", :status :missing}
+    {:source :cwd-bin, :path "/work/bin/ffmpeg", :status :missing}
+    {:source :path, :path "/usr/local/bin/ffmpeg", :status :missing}
+    {:source :path, :path "/usr/bin/ffmpeg", :status :missing}]}
+  {:path "C:\\ff\\ffmpeg.exe",
+   :source :path,
+   :trail
+   [{:source :cwd, :path "C:\\work\\ffmpeg.exe", :status :missing}
+    {:source :cwd-bin,
+     :path "C:\\work\\bin\\ffmpeg.exe",
+     :status :missing}
+    {:source :path, :path "C:\\ff\\ffmpeg.exe", :status :found}]}],
+ :warnings
+ ["Using /work/ffmpeg from the current folder, not from wmark's own folder (/opt/wmark). Run wmark from its own folder or pass --ffmpeg to be explicit."
+  nil
+  nil
+  nil],
+ :realized
+ {:stored
+  [["4a71fbcce7c9d2ddab1b24bf161c687fcef30a7486395a577e9b67a380c57683"
+    154
+    62]
+   ["4a71fbcce7c9d2ddab1b24bf161c687fcef30a7486395a577e9b67a380c57683"
+    154
+    62]
+   ["ebcd86325e8aa7d6741085bf616844085810af2f0f3d298937dd2f41288ec464"
+    155
+    64]
+   ["3e62088d1fde0606e9bd38cfc3140ac02bfad29eb1cdb4a4393955b1991a788a"
+    154
+    64]
+   ["7bb6c0443d5aa41cb95e860003e25896c249921f00e7d995d65295ea0108a343"
+    151
+    66]
+   ["2597e5a2b0bfbd2d1bbd1b60d45a474eec7ead4a78713bae3fa34d8256b867d9"
+    142
+    68]
+   ["431aff30c226a6a3637a2206cbf0c9403b17e70dbd704403aa7df18b2b241a1c"
+    125
+    72]
+   ["2e2f8a25ad8e92c2b7cc1548803f56484b77c768a8bbba753d763f02f8dfa009"
+    97
+    74]
+   ["1274467b5152e49e6b8dc3482dde51a0349ea82c1ee458321955e1577c636de8"
+    54
+    78]
+   ["eea0ad6a6be3b2d2ec27aeda81b13a1e9a2250d0e8a87bbf1b9e723b105c0755"
+    4
+    78]
+   ["46145ca56ccc403592a3caa75e8ff9695d557d53e574ab211ba5ab5126b6384e"
+    59
+    78]
+   ["f0ae481c6d5db1e27f3ff1227f6cf8ff9e8f3d1d2b52e743b2ffe6dfd4e70c72"
+    109
+    74]
+   ["7fe0d320f25cef9816e02c7e35441fc40a1f532ff4f4f9be1f0eb67909af34b4"
+    143
+    68]
+   ["518687b611416988d3bddc2ebf5a7094d49338b7b181b66a4b028a46f9ef951c"
+    154
+    63]
+   ["2fd19db2d3e87bba4b937588ce7dfa02fb637391a3077ea0a507c5ed10d05697"
+    143
+    68]
+   ["0ae0535e45509d82dd3bd2c55e992e4030326eb1762bf88179e06fc182276e1e"
+    109
+    74]
+   ["b9d049a3246ef3ab1aac0e31b0febaf0f17c79a638b95e47988338dc035d4dbc"
+    59
+    78]
+   ["0609266cb56e854657e505227f304034951f403038aba1e8fa81d17ac85aaeae"
+    4
+    78]
+   ["e1abfed906ec10c2553e83667d5d008d306b01ec65239798eee3d7317faab345"
+    54
+    78]
+   ["e3da761886e2d2f90a073d993991b9279e2942e08044c1ac1c5ea47074a90c4c"
+    97
+    74]
+   ["0a400287f08864d08372ec443af5763d24b262add04a62f2427b8e8f385866a7"
+    125
+    72]
+   ["18b4e15551fc7aeda806c9a0c2ae39488e24232367f5e58698bcdf61eaa6b1f1"
+    142
+    68]
+   ["4ddaefce28f4ca15372a2eb89fe4f137b7d9a2dbde09cacc6e36fb6107bcc679"
+    151
+    66]
+   ["8c54d6322dcf31bc2eb4a0404de239a2a7587084c7ab7e59635b25bcea5f61e9"
+    154
+    64]
+   ["e5c265a1f7414b7c5b9283c7ebddd9be76dd15f3f5f86eceefccc934f1bcbdf7"
+    155
+    64]
+   ["c125e822b8ac507666ad43ec49bffeb00acdfc6cda8b39009556d90af37fa46a"
+    117
+    35]
+   ["04e03788ace31a20c0f8e83ab723bb84b110ef886b95366e33a124f808f14acd"
+    127
+    28]],
+  :bitmaps
+  {"04e03788ace31a20c0f8e83ab723bb84b110ef886b95366e33a124f808f14acd"
+   {:width 127,
+    :height 28,
+    :path
+    "/scratch/04e03788ace31a20c0f8e83ab723bb84b110ef886b95366e33a124f808f14acd.rgba"},
+   "0609266cb56e854657e505227f304034951f403038aba1e8fa81d17ac85aaeae"
+   {:width 4,
+    :height 78,
+    :path
+    "/scratch/0609266cb56e854657e505227f304034951f403038aba1e8fa81d17ac85aaeae.rgba"},
+   "0a400287f08864d08372ec443af5763d24b262add04a62f2427b8e8f385866a7"
+   {:width 125,
+    :height 72,
+    :path
+    "/scratch/0a400287f08864d08372ec443af5763d24b262add04a62f2427b8e8f385866a7.rgba"},
+   "0ae0535e45509d82dd3bd2c55e992e4030326eb1762bf88179e06fc182276e1e"
+   {:width 109,
+    :height 74,
+    :path
+    "/scratch/0ae0535e45509d82dd3bd2c55e992e4030326eb1762bf88179e06fc182276e1e.rgba"},
+   "1274467b5152e49e6b8dc3482dde51a0349ea82c1ee458321955e1577c636de8"
+   {:width 54,
+    :height 78,
+    :path
+    "/scratch/1274467b5152e49e6b8dc3482dde51a0349ea82c1ee458321955e1577c636de8.rgba"},
+   "18b4e15551fc7aeda806c9a0c2ae39488e24232367f5e58698bcdf61eaa6b1f1"
+   {:width 142,
+    :height 68,
+    :path
+    "/scratch/18b4e15551fc7aeda806c9a0c2ae39488e24232367f5e58698bcdf61eaa6b1f1.rgba"},
+   "2597e5a2b0bfbd2d1bbd1b60d45a474eec7ead4a78713bae3fa34d8256b867d9"
+   {:width 142,
+    :height 68,
+    :path
+    "/scratch/2597e5a2b0bfbd2d1bbd1b60d45a474eec7ead4a78713bae3fa34d8256b867d9.rgba"},
+   "2e2f8a25ad8e92c2b7cc1548803f56484b77c768a8bbba753d763f02f8dfa009"
+   {:width 97,
+    :height 74,
+    :path
+    "/scratch/2e2f8a25ad8e92c2b7cc1548803f56484b77c768a8bbba753d763f02f8dfa009.rgba"},
+   "2fd19db2d3e87bba4b937588ce7dfa02fb637391a3077ea0a507c5ed10d05697"
+   {:width 143,
+    :height 68,
+    :path
+    "/scratch/2fd19db2d3e87bba4b937588ce7dfa02fb637391a3077ea0a507c5ed10d05697.rgba"},
+   "3e62088d1fde0606e9bd38cfc3140ac02bfad29eb1cdb4a4393955b1991a788a"
+   {:width 154,
+    :height 64,
+    :path
+    "/scratch/3e62088d1fde0606e9bd38cfc3140ac02bfad29eb1cdb4a4393955b1991a788a.rgba"},
+   "431aff30c226a6a3637a2206cbf0c9403b17e70dbd704403aa7df18b2b241a1c"
+   {:width 125,
+    :height 72,
+    :path
+    "/scratch/431aff30c226a6a3637a2206cbf0c9403b17e70dbd704403aa7df18b2b241a1c.rgba"},
+   "46145ca56ccc403592a3caa75e8ff9695d557d53e574ab211ba5ab5126b6384e"
+   {:width 59,
+    :height 78,
+    :path
+    "/scratch/46145ca56ccc403592a3caa75e8ff9695d557d53e574ab211ba5ab5126b6384e.rgba"},
+   "4a71fbcce7c9d2ddab1b24bf161c687fcef30a7486395a577e9b67a380c57683"
+   {:width 154,
+    :height 62,
+    :path
+    "/scratch/4a71fbcce7c9d2ddab1b24bf161c687fcef30a7486395a577e9b67a380c57683.rgba"},
+   "4ddaefce28f4ca15372a2eb89fe4f137b7d9a2dbde09cacc6e36fb6107bcc679"
+   {:width 151,
+    :height 66,
+    :path
+    "/scratch/4ddaefce28f4ca15372a2eb89fe4f137b7d9a2dbde09cacc6e36fb6107bcc679.rgba"},
+   "518687b611416988d3bddc2ebf5a7094d49338b7b181b66a4b028a46f9ef951c"
+   {:width 154,
+    :height 63,
+    :path
+    "/scratch/518687b611416988d3bddc2ebf5a7094d49338b7b181b66a4b028a46f9ef951c.rgba"},
+   "7bb6c0443d5aa41cb95e860003e25896c249921f00e7d995d65295ea0108a343"
+   {:width 151,
+    :height 66,
+    :path
+    "/scratch/7bb6c0443d5aa41cb95e860003e25896c249921f00e7d995d65295ea0108a343.rgba"},
+   "7fe0d320f25cef9816e02c7e35441fc40a1f532ff4f4f9be1f0eb67909af34b4"
+   {:width 143,
+    :height 68,
+    :path
+    "/scratch/7fe0d320f25cef9816e02c7e35441fc40a1f532ff4f4f9be1f0eb67909af34b4.rgba"},
+   "8c54d6322dcf31bc2eb4a0404de239a2a7587084c7ab7e59635b25bcea5f61e9"
+   {:width 154,
+    :height 64,
+    :path
+    "/scratch/8c54d6322dcf31bc2eb4a0404de239a2a7587084c7ab7e59635b25bcea5f61e9.rgba"},
+   "b9d049a3246ef3ab1aac0e31b0febaf0f17c79a638b95e47988338dc035d4dbc"
+   {:width 59,
+    :height 78,
+    :path
+    "/scratch/b9d049a3246ef3ab1aac0e31b0febaf0f17c79a638b95e47988338dc035d4dbc.rgba"},
+   "c125e822b8ac507666ad43ec49bffeb00acdfc6cda8b39009556d90af37fa46a"
+   {:width 117,
+    :height 35,
+    :path
+    "/scratch/c125e822b8ac507666ad43ec49bffeb00acdfc6cda8b39009556d90af37fa46a.rgba"},
+   "e1abfed906ec10c2553e83667d5d008d306b01ec65239798eee3d7317faab345"
+   {:width 54,
+    :height 78,
+    :path
+    "/scratch/e1abfed906ec10c2553e83667d5d008d306b01ec65239798eee3d7317faab345.rgba"},
+   "e3da761886e2d2f90a073d993991b9279e2942e08044c1ac1c5ea47074a90c4c"
+   {:width 97,
+    :height 74,
+    :path
+    "/scratch/e3da761886e2d2f90a073d993991b9279e2942e08044c1ac1c5ea47074a90c4c.rgba"},
+   "e5c265a1f7414b7c5b9283c7ebddd9be76dd15f3f5f86eceefccc934f1bcbdf7"
+   {:width 155,
+    :height 64,
+    :path
+    "/scratch/e5c265a1f7414b7c5b9283c7ebddd9be76dd15f3f5f86eceefccc934f1bcbdf7.rgba"},
+   "ebcd86325e8aa7d6741085bf616844085810af2f0f3d298937dd2f41288ec464"
+   {:width 155,
+    :height 64,
+    :path
+    "/scratch/ebcd86325e8aa7d6741085bf616844085810af2f0f3d298937dd2f41288ec464.rgba"},
+   "eea0ad6a6be3b2d2ec27aeda81b13a1e9a2250d0e8a87bbf1b9e723b105c0755"
+   {:width 4,
+    :height 78,
+    :path
+    "/scratch/eea0ad6a6be3b2d2ec27aeda81b13a1e9a2250d0e8a87bbf1b9e723b105c0755.rgba"},
+   "f0ae481c6d5db1e27f3ff1227f6cf8ff9e8f3d1d2b52e743b2ffe6dfd4e70c72"
+   {:width 109,
+    :height 74,
+    :path
+    "/scratch/f0ae481c6d5db1e27f3ff1227f6cf8ff9e8f3d1d2b52e743b2ffe6dfd4e70c72.rgba"}},
+  :layers 3},
+ :trials
+ {:libx264-fails
+  {:asked [[:h264 "libx264"] [:h264 "libopenh264"] [:hevc "libx265"]],
+   :results
+   {[:h264 "libopenh264"] true,
+    [:h264 "libx264"] false,
+    [:hevc "libx265"] true}},
+  :all-fail
+  {:asked
+   [[:h264 "libx264"]
+    [:h264 "libopenh264"]
+    [:h264 "h264_nvenc"]
+    [:hevc "libx265"]
+    [:hevc "hevc_qsv"]],
+   :results
+   {[:h264 "h264_nvenc"] false,
+    [:h264 "libopenh264"] false,
+    [:h264 "libx264"] false,
+    [:hevc "hevc_qsv"] false,
+    [:hevc "libx265"] false}}}}

@@ -193,9 +193,12 @@ and measurements: [ADR 0006](adr/0006-render-spec-v2-host-rendered-overlays.md).
     font file.
   - The engine decodes the logo (`StillDecoder`), so image formats stay its
     business.
-  - The local adapter (`watermark.raster.local`) writes the bitmaps to
-    `<home>/work/v2-<uuid>/`, validates the spec against the schema, and
-    deletes the folder after the render.
+  - `watermark.raster/realize` draws every bitmap, names it by its
+    SHA-256, assembles the v2 spec and validates it against the schema; a
+    host's rasterizer supplies only the I/O (decoding, the font's bytes,
+    storing a bitmap). The JVM's (`watermark.raster.local`) writes the
+    bitmaps to `<home>/work/v2-<uuid>/` and deletes the folder after the
+    render; the Dart host's does the same over `dart:io` (ADR 0014).
 - **Negotiation:** engines list `:spec-versions` (absent means `#{1}`), and
   a v2 request requires 2. The job pipeline gives an engine v1 when it
   takes it, else v2; `--render-spec N` forces a version. The FFmpeg engine

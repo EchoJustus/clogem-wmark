@@ -14,14 +14,11 @@
   (watermark.raster.local) writes bitmaps to scratch, named by `bitmap-id`,
   and deletes them after the render."
   (:require [watermark.raster.image :as image]
-            [watermark.raster.text :as text])
-  ;; :cljd first: ClojureDart's macro pass reads both branches' features
-  #?(:cljd (:require ["dart:convert" :as convert]
-                     ["dart:typed_data" :as td]
-                     ["package:crypto/crypto.dart" :as crypto])
-     :clj  (:import (java.nio.charset StandardCharsets)
-                    (java.security MessageDigest)
-                    (java.util HexFormat))))
+            [watermark.raster.text :as text]
+            [watermark.raster.truetype :as tt]
+            [watermark.render.schema :as spec-schema]
+            [watermark.render.v2 :as v2]
+            [watermark.util.digest :as digest]))
 
 #?(:clj (set! *warn-on-reflection* true))
 
@@ -37,17 +34,7 @@
   \"<width>x<height>:\" followed by its straight RGBA8 pixels, so equal
   bitmaps get equal names on every host."
   [{:keys [width height px]}]
-  #?(:clj  (let [md (MessageDigest/getInstance "SHA-256")]
-             (.update md (.getBytes (str width "x" height ":") StandardCharsets/UTF_8))
-             (.update md ^bytes px)
-             (.formatHex (HexFormat/of) (.digest md)))
-     :cljd (let [^List prefix (.encode convert/utf8 (str width "x" height ":"))
-                 ^List px px
-                 n (.-length prefix)
-                 all (td/Uint8List (+ n (.-length px)))]
-             (.setRange all 0 n prefix)
-             (.setRange all n (.-length all) px)
-             (.toString (.convert crypto/sha256 all)))))
+  (digest/sha256-hex [(str width "x" height ":") px]))
 
 (defn draw
   "One raster request as a straight RGBA8 image {:width :height :px}.
@@ -68,3 +55,28 @@
   [requests {:keys [decoded] :as sources}]
   (let [scaled (memoize (fn [path size] (image/scale-card (decoded path) size)))]
     (mapv #(draw % (assoc sources :scaled scaled)) requests)))
+
+(defn realize
+  "The v2 spec for the v1 `spec`: every raster request drawn, each bitmap
+  stored once under its `bitmap-id`, and the result checked against the
+  published v2 schema before any engine sees it. The host supplies the I/O:
+    :decode      (fn [path] image), normally the engine's decode-still
+    :font-bytes  (fn [path] bytes) of a TrueType file
+    :store!      (fn [id image] path) where the bitmap's raw RGBA8 lives,
+                 written unless it is already there
+  Every host's rasterizer (watermark.raster.local on the JVM, the Dart
+  host's) is this function plus those three."
+  [spec {:keys [decode font-bytes store!]}]
+  (let [requests (v2/raster-requests spec)
+        font     (memoize (fn [path]
+                            (when-not path
+                              (throw (ex-info "Text layers need a font file (the layer's font-path, or the bundled default)."
+                                              {:wmark/error :invalid})))
+                            (tt/parse (font-bytes path))))
+        images   (draw-all requests {:decoded (memoize decode) :font font})
+        results  (reduce (fn [acc [req img]]
+                           (let [id (bitmap-id img)]
+                             (assoc acc (:key req) {:bitmap id :width (:width img) :height (:height img)
+                                                    :path (store! id img)})))
+                         {} (map vector requests images))]
+    (spec-schema/validate! (v2/assemble spec results))))

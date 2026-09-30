@@ -1,0 +1,42 @@
+;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
+;; SPDX-License-Identifier: EPL-2.0
+(ns watermark.dartvm.raster
+  "The Rasterizer on the Dart VM: the I/O around the core library's
+  drawing (watermark.raster/realize), as the JVM's watermark.raster.local.
+  Fonts are read from files, stills are decoded by the engine, and each
+  bitmap is written once as raw RGBA8 (<bitmap-id>.rgba) in a scratch
+  folder per render, which `release!` deletes."
+  (:require [watermark.dartvm.fs :as fs]
+            [watermark.engine :as engine]
+            [watermark.raster :as raster]))
+
+(defn- font-bytes [path]
+  (when-not (fs/file? path)
+    (throw (ex-info (str "Font file not found: " path) {:wmark/error :invalid :path (str path)})))
+  (fs/read-bytes path))
+
+(defn realize
+  "The v2 spec for the v1 `spec`, its bitmaps written to folder `dir`.
+  `decode`: (fn [path] image), normally the engine's decode-still."
+  [spec dir decode]
+  (with-meta
+    (raster/realize spec {:decode     decode
+                          :font-bytes font-bytes
+                          :store!     (fn [id {:keys [px]}]
+                                        (let [p (fs/join dir (str id ".rgba"))]
+                                          (when-not (fs/file? p) (fs/write-bytes! p px))
+                                          p))})
+    {::dir dir}))
+
+(defn local-rasterizer
+  "Bitmaps go to per-render folders under `work-root`."
+  [{:keys [work-root]}]
+  (reify raster/Rasterizer
+    (realize! [_ eng spec]
+      (when-not (satisfies? engine/StillDecoder eng)
+        (throw (ex-info "This engine can't decode images, which host rendering (render spec v2) needs."
+                        {:wmark/error :unsupported})))
+      (realize spec (fs/join (fs/absolute work-root) (str "v2-" (random-uuid)))
+               #(engine/decode-still eng %)))
+    (release! [_ spec2]
+      (when-let [dir (::dir (meta spec2))] (fs/delete-tree! dir)))))

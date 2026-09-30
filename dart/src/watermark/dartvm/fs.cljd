@@ -1,0 +1,152 @@
+;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
+;; SPDX-License-Identifier: EPL-2.0
+(ns watermark.dartvm.fs
+  "Files on the Dart VM (dart:io, synchronous calls): what the Dart host's
+  adapters need, and the core library's files port (watermark.files) over
+  it. Paths are strings, in the platform's own form.
+
+  The core library runs off a UI's thread on every host (docs/adr/0013,
+  section 3), so blocking calls are fine here."
+  (:require ["dart:io" :as io]
+            [clojure.string :as str]
+            [watermark.files :as files]))
+
+(defn windows? [] io/Platform.isWindows)
+
+(defn separator [] io/Platform.pathSeparator)
+
+(defn join
+  "`dir`/`name` with this platform's separator (a folder that already ends
+  with one keeps it)."
+  [dir name]
+  (let [dir (str dir)]
+    (if (or (str/ends-with? dir "/") (and (windows?) (str/ends-with? dir "\\")))
+      (str dir name)
+      (str dir (separator) name))))
+
+(defn- last-separator [p]
+  (max (or (str/last-index-of p "/") -1)
+       (if (windows?) (or (str/last-index-of p "\\") -1) -1)))
+
+(defn file-name
+  "The last component of path `p`."
+  [p]
+  (let [p (str p)] (subs p (inc (last-separator p)))))
+
+(defn absolute
+  "Path `p` made absolute against the working folder."
+  [p]
+  (.-path (.-absolute (io/File (str p)))))
+
+(defn parent
+  "The folder that holds path `p`."
+  [p]
+  (.-path (.-parent (io/File (absolute p)))))
+
+(defn cwd [] (.-path io/Directory.current))
+
+(defn file? [p] (io/FileSystemEntity.isFileSync (str p)))
+
+(defn dir? [p] (io/FileSystemEntity.isDirectorySync (str p)))
+
+(defn exists? [p] (not= io/FileSystemEntityType.notFound (io/FileSystemEntity.typeSync (str p))))
+
+(defn make-dirs! [p] (.createSync (io/Directory (str p)) .recursive true) nil)
+
+(defn read-bytes [p] (.readAsBytesSync (io/File (str p))))
+
+(defn read-text
+  "A UTF-8 file's text."
+  [p]
+  (.readAsStringSync (io/File (str p))))
+
+(defn write-bytes!
+  "Write `bytes` to `p`, creating its folder, flushed to the disk."
+  [p bytes]
+  (make-dirs! (parent p))
+  (.writeAsBytesSync (io/File (str p)) bytes .flush true)
+  nil)
+
+(defn delete!
+  "Delete the file at `p`; true if one was there."
+  [p]
+  (if (file? p)
+    (do (.deleteSync (io/File (str p))) true)
+    false))
+
+(defn delete-tree!
+  "Remove folder `p` and what it holds (best effort)."
+  [p]
+  (try (when (dir? p) (.deleteSync (io/Directory (str p)) .recursive true))
+       (catch Object _ nil))
+  nil)
+
+(defn- transient-error?
+  "A Windows sharing violation or access denied: antivirus scanners and
+  sync clients (OneDrive, Dropbox) briefly lock fresh files."
+  [e]
+  (and (dart/is? e io/FileSystemException)
+       (windows?)
+       (some-> ^io/FileSystemException e .-osError .-errorCode #{5 32})))
+
+(defn with-retries
+  "(f), retried five times with a growing pause while it fails with a
+  transient Windows file error."
+  [f]
+  (loop [attempt 0]
+    (let [r (try {:ok (f)}
+                 (catch Object e
+                   (if (and (transient-error? e) (< attempt 5)) ::retry (throw e))))]
+      (if (= ::retry r)
+        (do (io/sleep (Duration .milliseconds (* 20 (bit-shift-left 1 attempt))))
+            (recur (inc attempt)))
+        (:ok r)))))
+
+(defn replace!
+  "Move file `from` over `to`, replacing it: a rename, atomic when both are
+  on one volume."
+  [from to]
+  (with-retries #(.renameSync (io/File (str from)) (str to)))
+  nil)
+
+(defn write-text-atomically!
+  "Write `text` (UTF-8) to `p` through a temp file in the same folder,
+  flushed, then renamed over `p`: readers see the old file or the new one,
+  never a torn one."
+  [p text]
+  (let [tmp (join (parent p) (str "." (file-name p) "." (random-uuid) ".tmp"))]
+    (make-dirs! (parent p))
+    (try
+      (.writeAsStringSync (io/File tmp) text .flush true)
+      (replace! tmp p)
+      (finally
+        (when (file? tmp) (.deleteSync (io/File tmp)))))
+    nil))
+
+(defn list-files
+  "The regular files in folder `dir`: [{:path :name :modified-ms}], by name."
+  [dir]
+  (if-not (dir? dir)
+    []
+    (->> (.listSync (io/Directory (str dir)) .followLinks false)
+         (filter #(dart/is? % io/File))
+         (map (fn [^io/File f]
+                {:path (.-path f)
+                 :name (file-name (.-path f))
+                 :modified-ms (.-millisecondsSinceEpoch (.lastModifiedSync f))}))
+         (sort-by :name)
+         vec)))
+
+(defn temp-dir
+  "A new folder under the system's temp folder."
+  [prefix]
+  (.-path (.createTempSync io/Directory.systemTemp prefix)))
+
+(defn local-files
+  "The core library's files port (watermark.files) on this machine."
+  []
+  (reify files/Files
+    (file? [_ p] (file? p))
+    (make-dirs! [_ p] (make-dirs! p))
+    (list-files [_ dir] (list-files dir))
+    (delete! [_ p] (delete! p))))

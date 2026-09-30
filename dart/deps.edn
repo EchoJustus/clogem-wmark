@@ -1,0 +1,21 @@
+;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
+;; SPDX-License-Identifier: EPL-2.0
+;;
+;; The Dart host (docs/adr/0014, M3d): the core library's adapters over
+;; dart:io (files, media, profiles, the rasterizer's I/O, FFmpeg) and
+;; wmark-dart, the command line on the Dart VM. ClojureDart compiles the
+;; kernel (../kernel) with these adapters to Dart.
+;;
+;;   clojure -M:cljd test       the adapters' tests on the Dart VM (bb dart)
+;;   clojure -M:cljd compile    then dart compile exe: wmark-dart (bb dart-cli)
+;;
+;; ClojureDart is pinned as in kernel/dart/deps.edn; the Dart SDK by the
+;; pubspec's constraint and the version CI installs.
+{:paths ["src" "test"]
+ :deps  {tensegritics/clojuredart {:git/url "https://github.com/tensegritics/ClojureDart.git"
+                                   :git/tag "0.9.20260917" :git/sha "9f9cef5e0735026b667c28372e6967dcf43dc13e"}
+         wmark/kernel             {:local/root "../kernel"}
+         ;; the store contract every ProfileStore passes (watermark.store-contract)
+         wmark/testkit            {:local/root "../testkit"}}
+ :aliases {:cljd {:main-opts ["-m" "cljd.build"]}}
+ :cljd/opts {:kind :dart :main watermark.dartvm.main}}

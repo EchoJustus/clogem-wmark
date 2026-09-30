@@ -1,9 +1,11 @@
 ;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
 ;; SPDX-License-Identifier: EPL-2.0
 (ns watermark.util.locate-test
+  "The search order on the JVM: watermark.util.locate (the core library)
+  over this machine's folders and files (watermark.util.os/locate)."
   (:require [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]
-            [watermark.util.locate :as locate])
+            [watermark.util.os :as os])
   (:import (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)))
 
@@ -19,9 +21,9 @@
     (str (.getAbsolutePath f))))
 
 (defn- find-ff [opts]
-  (locate/locate (merge {:names ["ffmpeg"] :ok? #(and (.isFile ^java.io.File %) (.canExecute ^java.io.File %))
-                         :search [:cwd :cwd-bin :app :app-bin]}
-                        opts)))
+  (os/locate (merge {:names ["ffmpeg"] :ok? #(and (.isFile ^java.io.File %) (.canExecute ^java.io.File %))
+                     :search [:cwd :cwd-bin :app :app-bin]}
+                    opts)))
 
 (deftest search-order
   (let [cwd (tmp) app (tmp)]

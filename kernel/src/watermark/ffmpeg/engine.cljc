@@ -14,6 +14,7 @@
             [watermark.ffmpeg.parse :as parse]
             [watermark.ffmpeg.plan :as plan]
             [watermark.files :as files]
+            [watermark.util.task :as task]
             [watermark.util.text :as text]))
 
 #?(:clj (set! *warn-on-reflection* true))
@@ -49,6 +50,23 @@
   "The encoder arguments a trial of encoder `enc` for `codec` runs with."
   [codec enc]
   (plan/video-args {:codec codec} enc {:width 256 :height 144} 30))
+
+(defn trial-encoders
+  "Trial encodes for the `listed` encoders, as a task of {[codec encoder]
+  works?}: per codec family, in preference order, until one works, which
+  are exactly the questions `discover`'s :usable? gets. `trial` (fn [codec
+  encoder]) returns a task of true when a trial encode (`trial-argv`)
+  works. For hosts that time out a process only asynchronously (the Dart
+  VM); a host that can wait answers :usable? directly."
+  [listed trial]
+  (task/reduce (fn [acc [codec names]]
+                 (task/reduce (fn [acc enc]
+                                (task/then (trial codec enc)
+                                           (fn [ok?]
+                                             (let [acc (assoc acc [codec enc] (boolean ok?))]
+                                               (if ok? (reduced acc) acc)))))
+                              acc names))
+               {} (plan/encoder-candidates (set listed))))
 
 (defn probe-argv
   "ffprobe on `input`; its JSON output, decoded by the host, goes to

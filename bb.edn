@@ -21,6 +21,22 @@
               :task (apply clojure "-T:build sdk" *command-line-args*)}
   kernel-dart {:doc "The kernel on the Dart VM: ClojureDart compiles it, its golden vectors run there (Dart SDK on PATH)"
                :task (apply shell {:dir "kernel/dart"} "clojure" "-M:cljd" "test" *command-line-args*)}
+  dart       {:doc "The Dart host on the Dart VM: its adapters' tests, with the ffmpeg on PATH (Dart SDK on PATH)"
+              :task (apply shell {:dir "dart"} "clojure" "-M:cljd" "test" *command-line-args*)}
+  dart-cli   {:doc "wmark-dart, the CLI on the Dart VM: target/dart-cli/wmark-dart with the bundled font (Dart SDK on PATH)"
+              :requires ([babashka.fs :as fs] [clojure.string :as str])
+              :task (let [out "target/dart-cli"
+                          exe (str out "/wmark-dart" (when (fs/windows?) ".exe"))]
+                      (shell {:dir "dart"} "dart" "pub" "get")
+                      (shell {:dir "dart"} "clojure" "-M:cljd" "compile")
+                      (fs/create-dirs (str out "/fonts"))
+                      ;; the version the release workflow stamps, as a compile-time constant
+                      (shell {:dir "dart"} "dart" "compile" "exe" "bin/wmark_dart.dart" "-o" (str "../" exe)
+                             (str "-DWMARK_VERSION=" (str/trim (slurp "desktop/resources/wmark/version.txt"))))
+                      ;; next to the program, where wmark-dart looks first (Fira Sans Bold, OFL)
+                      (fs/copy "resources/fonts/wmark.ttf" (str out "/fonts/wmark.ttf") {:replace-existing true})
+                      (fs/copy "licenses/FiraSans-OFL.txt" (str out "/fonts/OFL.txt") {:replace-existing true})
+                      (println "wmark-dart:" exe (fs/size exe) "bytes"))}
   e2e        {:doc "Browser smoke test of the built-in UI: needs ffmpeg and Python Playwright (test tooling only)"
               :requires ([babashka.fs :as fs])
               :task (shell "python3" "test/e2e/ui_smoke.py"

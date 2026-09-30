@@ -4,14 +4,17 @@
   "Behaviour every ProfileStore must show through watermark.config.
 
   Run against the file store, the memory store and the PostgreSQL store: if
-  all pass, config and the Core API need no change to switch backends."
+  all pass, config and the Core API need no change to switch backends.
+  Portable, so a store on the Dart VM runs it too (the Dart host's file
+  store, docs/adr/0014); there an isolate runs one thing at a time, so the
+  racing editors take turns and the rules they check still hold."
   (:require [clojure.test :refer [is testing]]
             [watermark.config :as config]))
 
-(set! *warn-on-reflection* true)
+#?(:clj (set! *warn-on-reflection* true))
 
 (defn- kind [f]
-  (try (f) nil (catch clojure.lang.ExceptionInfo e (:wmark/error (ex-data e)))))
+  (try (f) nil (catch #?(:clj clojure.lang.ExceptionInfo :cljd cljd.core/ExceptionInfo) e (:wmark/error (ex-data e)))))
 
 (def defaults
   {:logo  {:enabled true :anchor :bottom-right :offset {:x 24 :y 24} :opacity 0.85}
@@ -96,19 +99,22 @@
           "saving over someone else's newer revision fails")
       (is (= 2 (:profile/rev (config/save-profile! store "Shared" {:logo {:opacity 0.6}}
                                                    {:if-rev (:profile/rev p)})))))
-    (let [results (doall (pmap (fn [i] (try (config/save-profile! store "Shared" {:logo {:opacity (/ i 10.0)}}
-                                                                  {:if-rev 2})
-                                            :won
-                                            (catch clojure.lang.ExceptionInfo e (:wmark/error (ex-data e)))))
-                               (range 8)))]
+    (let [results (doall (#?(:clj pmap :cljd map)
+                          (fn [i] (try (config/save-profile! store "Shared" {:logo {:opacity (/ i 10.0)}}
+                                                             {:if-rev 2})
+                                       :won
+                                       (catch #?(:clj clojure.lang.ExceptionInfo :cljd cljd.core/ExceptionInfo) e
+                                         (:wmark/error (ex-data e)))))
+                          (range 8)))]
       (is (= 1 (count (filter #{:won} results))) "exactly one of eight racing editors wins")
       (is (every? #{:won :conflict} results)))
     (config/delete-profile! store "Shared")))
 
 (defn concurrent-latest [store]
   (testing "40 concurrent auto-saves: last writer wins, nothing torn"
-    (run! deref (doall (for [i (range 40)]
-                         (future (config/record-latest! store {:logo {:opacity (/ i 100.0)}})))))
+    #?(:clj  (run! deref (doall (for [i (range 40)]
+                                  (future (config/record-latest! store {:logo {:opacity (/ i 100.0)}})))))
+       :cljd (dotimes [i 40] (config/record-latest! store {:logo {:opacity (/ i 100.0)}})))
     (is (number? (get-in (config/get-profile! store "latest") [:settings :logo :opacity])))
     (is (empty? (filter :error (config/list-profiles store))))
     (config/delete-profile! store "latest")))

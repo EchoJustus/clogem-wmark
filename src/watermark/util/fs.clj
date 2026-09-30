@@ -2,14 +2,15 @@
 ;; SPDX-License-Identifier: EPL-2.0
 (ns watermark.util.fs
   "File helpers for the job pipeline."
-  (:require [clojure.java.io :as io])
+  (:require [clojure.java.io :as io]
+            [watermark.media :as media])
   (:import (java.io RandomAccessFile)
            (java.nio.charset StandardCharsets)
            (java.nio.file CopyOption Files LinkOption OpenOption Path Paths
                           StandardCopyOption StandardOpenOption)
            (java.nio.file.attribute FileAttribute PosixFilePermissions)
-           (java.security MessageDigest SecureRandom)
-           (java.util Base64 HexFormat)))
+           (java.security SecureRandom)
+           (java.util Base64)))
 
 (set! *warn-on-reflection* true)
 
@@ -21,22 +22,18 @@
 (defn mkdirs! ^Path [p] (Files/createDirectories (path p) no-attrs))
 
 (defn fingerprint
-  "SHA-256 over size + first MiB + last MiB. Deterministic and instant even
-  for multi-GB masters; it keys schedules, it is not an integrity hash (the
-  studio's audit ledger keeps full hashes)."
+  "The media fingerprint of file `f` (watermark.media/fingerprint): SHA-256
+  over its size, first MiB and last MiB."
   ^String [f]
   (with-open [raf (RandomAccessFile. (io/file f) "r")]
-    (let [md    (MessageDigest/getInstance "SHA-256")
-          size  (.length raf)
-          chunk (int (min size (* 1024 1024)))
-          buf   (byte-array chunk)]
-      (.update md (.getBytes (str size) StandardCharsets/UTF_8))
-      (.readFully raf buf)
-      (.update md buf)
-      (.seek raf (max 0 (- size chunk)))
-      (.readFully raf buf)
-      (.update md buf)
-      (.formatHex (HexFormat/of) (.digest md)))))
+    (let [size (.length raf)
+          read (fn [[offset n]]
+                 (let [buf (byte-array n)]
+                   (.seek raf (long offset))
+                   (.readFully raf buf)
+                   buf))
+          [head tail] (map read (media/fingerprint-ranges size))]
+      (media/fingerprint size head tail))))
 
 (defn- restrict-to-owner! [^Path p]
   (when (contains? (.supportedFileAttributeViews (.getFileSystem p)) "posix")

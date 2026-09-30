@@ -28,7 +28,7 @@
             [clojure.string :as str]
             [clojure.walk :as walk]
             [watermark.engine :as engine]
-            [watermark.util.locate :as locate]
+            [watermark.util.os :as os]
             [watermark.util.task :as task])
   (:import (java.lang.foreign AddressLayout Arena FunctionDescriptor Linker Linker$Option
                               MemoryLayout MemorySegment SymbolLookup ValueLayout)
@@ -166,7 +166,7 @@
 (defn- load-engine
   "Locate, bind, handshake, open. Returns {:fns :engine :info} or {:problems}."
   [{:keys [library search config]}]
-  (let [found (locate/locate {:names [(library-name)] :explicit library :search search :bin-dir "lib"})]
+  (let [found (os/locate {:names [(library-name)] :explicit library :search search :bin-dir "lib"})]
     (if-not (:path found)
       {:located found
        :problems [(str "No native engine library (" (library-name) ") found. Pass --native-lib or set WMARK_ENGINE_LIB.")]}

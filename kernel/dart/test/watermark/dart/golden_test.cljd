@@ -55,3 +55,11 @@
 (deftest pipeline
   ;; the use cases on Futures: the test ends when the task does
   (task/then (inputs/pipeline-vectors) #(check "pipeline" %)))
+
+(deftest cli
+  ;; the command line end to end on fake ports, on Futures
+  (task/then (inputs/cli-vectors) #(check "cli" %)))
+
+(deftest adapters
+  (task/then (inputs/adapter-vectors-task (.readAsBytesSync (io/File "../../resources/fonts/wmark.ttf")))
+             #(check "adapters" %)))

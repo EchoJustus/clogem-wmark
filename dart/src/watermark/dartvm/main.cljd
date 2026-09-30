@@ -1,0 +1,87 @@
+;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors
+;; SPDX-License-Identifier: EPL-2.0
+(ns watermark.dartvm.main
+  "wmark-dart: the wmark command line on the Dart VM (docs/adr/0014). The
+  command line is the core library's (watermark.cli), the program the JVM's
+  wmark runs too; this is its Dart host: the system over the dart:io
+  adapters, and the terminal.
+
+  It has run, profiles, doctor and version. The JVM's ui, serve and license
+  commands are the JVM's own, and so is the native engine (a library
+  behind the C ABI, through FFM); here the engine is FFmpeg."
+  (:require ["dart:io" :as io]
+            [clojure.string :as str]
+            [watermark.cli :as cli]
+            [watermark.core.features :as features]
+            [watermark.dartvm.ffmpeg :as ffmpeg]
+            [watermark.dartvm.fs :as fs]
+            [watermark.dartvm.home :as home]
+            [watermark.dartvm.media :as media]
+            [watermark.dartvm.raster :as raster]
+            [watermark.util.task :as task]))
+
+(def version
+  "This build's version: WMARK_VERSION as `dart compile exe` was given it
+  (`bb dart-cli` passes the version the release workflow stamps into
+  desktop/resources/wmark/version.txt, so wmark and wmark-dart built from
+  one checkout report one version). A compile-time constant."
+  ^{:const :required} (String.fromEnvironment "WMARK_VERSION" .defaultValue "unknown"))
+
+(defn- env [k]
+  (let [v (. io/Platform.environment "[]" k)]
+    (when-not (str/blank? v) v)))
+
+(defn system
+  "Everything the Core API needs, as a task: the FFmpeg engine is found and
+  its encoders tried first."
+  [{:keys [engine ffmpeg ffmpeg-search render-spec] :as opts}]
+  (when (and engine (not= engine "ffmpeg"))
+    (throw (ex-info (str "Unknown engine: " engine " (wmark-dart renders with ffmpeg)") {:wmark/error :invalid})))
+  (let [h      (home/resolve-home opts)
+        work   (fs/join h "work")
+        secret (delay (home/studio-secret! h))
+        store  (home/file-store h)]
+    (task/then (ffmpeg/ffmpeg-engine {:ffmpeg    (or ffmpeg (env "WMARK_FFMPEG"))
+                                      :search    (cli/search-order (or ffmpeg-search (env "WMARK_FFMPEG_SEARCH")))
+                                      :work-root work})
+               (fn [eng]
+                 {:edition      :community
+                  :version      version
+                  :home         h
+                  :profiles-for (constantly store)
+                  :entitlements (features/community)
+                  :engine       eng
+                  :media        (media/local-media)
+                  :rasterizer   (raster/local-rasterizer {:work-root work})
+                  :spec-version render-spec
+                  :secret-for   (fn [_ctx] @secret)
+                  :font         (delay (home/default-font (ffmpeg/app-dir) [(fs/join (fs/cwd) "resources")]))
+                  :preview-dir  (fs/join work "previews")
+                  :files        (fs/local-files)}))))
+
+(defn host
+  "The Dart VM's host map for watermark.cli."
+  []
+  {:program        "wmark-dart"
+   :version        version
+   :edition        :community
+   :system         system
+   :usage-commands ["run" "profiles" "doctor" "version"]
+   :write          (fn [s] (.write io/stdout s))
+   :write-err      (fn [s] (.write io/stderr s))
+   :read-text      (fn [path]
+                     (when-not (fs/file? path)
+                       (throw (ex-info (str "No such text file: " path) {:wmark/error :invalid :path (str path)})))
+                     (fs/read-text path))
+   :terminal?      (fn [] (.-hasTerminal io/stdout))
+   :env            env})
+
+(defn main [args]
+  (-> (cli/main (host) (vec args))
+      (task/recover (fn [e]
+                      (.write io/stderr (str "Error: " e "\n"))
+                      1))
+      (task/then (fn [code]
+                   (-> (.flush io/stdout)
+                       (task/then (fn [_] (.flush io/stderr)))
+                       (task/then (fn [_] (io/exit code))))))))

@@ -51,8 +51,9 @@ shells (sidecar mode) and hosted APIs built on the same core.
 
 | Directory | Role | Language / runs on |
 |---|---|---|
-| `kernel/` | The core library (decision 11): settings schema and resolution, render spec (v1, v2) and reference semantics, the v2 rasterizer (TrueType, text, warp), keyed seeds, SplitMix64 PRNG, text-mode registry, `VideoEngine` protocol, feature catalog, the settings form, the FFmpeg plan compiler and parsers, the profile rules and the store port, the job pipeline and the Core API (on tasks), its own Unicode tables | `.cljc` only: GraalVM/JVM, and the Dart VM through ClojureDart (`kernel/dart` runs its golden vectors there) |
+| `kernel/` | The core library (decision 11): settings schema and resolution, render spec (v1, v2) and reference semantics, the v2 rasterizer (TrueType, text, warp), keyed seeds, SplitMix64 PRNG, text-mode registry, `VideoEngine` protocol, feature catalog, the settings form, the FFmpeg plan compiler and parsers, the profile rules and the store port, the job pipeline and the Core API (on tasks), the command line (`watermark.cli`), the media fingerprint and the executable search, its own Unicode tables | `.cljc` only: GraalVM/JVM, and the Dart VM through ClojureDart (`kernel/dart` runs its golden vectors there) |
 | `src/` | Host core: the home folder, local adapters (profile files, media, files, the in-process queue), FFmpeg and native engines, REST routes | JVM |
+| `dart/` | The Dart host (ADR 0014): adapters over `dart:io` (files, media, profiles, the rasterizer's I/O, FFmpeg through `Process`) and `wmark-dart`, the same CLI on the Dart VM | ClojureDart, the Dart VM |
 | `web/` | Built-in web UI: server-rendered HTML plus Datastar over SSE (vendored `datastar.js`, no npm) | JVM |
 | `desktop/` | CLI, http-kit server, loopback security, sidecar mode, native-image metadata | JVM / GraalVM |
 | `native/` | C ABI `wmark_engine.h`, mock engine, exported JSON Schemas | C |
@@ -218,7 +219,7 @@ its own matrix.
 - Runtime-specific behaviour lives in small host primitives with one
   `#?(:clj … :cljd …)` branch per runtime: `watermark.util.num` (numbers,
   their text both ways, 64-bit wrapping arithmetic), `watermark.core.seeds`
-  (HMAC), `watermark.raster` (SHA-256), `watermark.raster.image` (byte
+  (HMAC), `watermark.util.digest` (SHA-256), `watermark.raster.image` (byte
   arrays), `watermark.util.chars` (code points), `watermark.util.host`
   (catching ex-info errors, a lock, the clock, reading EDN),
   `watermark.util.task` (eventual values: `CompletableFuture`, `Future`),
@@ -389,6 +390,8 @@ bb test          # all tests (C compiler and FFmpeg groups skip themselves if ab
 bb lint          # build matrix and component deps.edn files vs repository
 bb e2e           # Chromium smoke test of the web UI (ffmpeg + Python Playwright)
 bb kernel-dart   # the kernel on the Dart VM: ClojureDart compiles it, golden vectors (Dart SDK 3.13.4)
+bb dart          # the Dart host's adapters on the Dart VM, renders with the ffmpeg on PATH
+bb dart-cli      # wmark-dart, the CLI on the Dart VM -> target/dart-cli/
 bb dev           # engine from source, opens the web UI     bb dev doctor | bb dev run ...
 bb native        # GraalVM binary for this OS (GRAALVM_HOME)
 bb ffmpeg        # the pinned FFmpeg for this OS -> target/ffmpeg/<platform> (SHA-256 verified)
@@ -495,7 +498,17 @@ first cut (ADR 0011, "Implementation"); what remains of them is listed there.
      ADR 0013, section 4, says why.
 4. **M3d · The Dart adapters and the Dart CLI** (`dart:io` files,
    `Process.start` for FFmpeg), with a conformance run on real frames. GUI
-   apps then embed the library in-process (Phase 2).
+   apps then embed the library in-process (Phase 2). ADR 0014.
+   - *done:* what the adapters share, into the library: the command line
+     (`watermark.cli`: the JVM's `wmark` runs it too), the media
+     fingerprint, output names, the executable search, realizing v2
+     (`cli.edn`, `adapters.edn`);
+   - *done:* the Dart host (`dart/`, `bb dart`): files, media, the profile
+     store (it passes the store contract), the rasterizer and the FFmpeg
+     engine over `dart:io`;
+   - *done:* `wmark-dart` (`bb dart-cli`), checked on real frames: pixel
+     for pixel the JVM's `wmark`, render spec 1 and 2, the LGPL build
+     included (`watermark.dart-cli-test`, CI's `dart` job).
 
 **Done before:**
 - **M1 · CI/CD** (PR #1). Its exit was met by `v0.1.0-rc.1` (2026-09-27): a

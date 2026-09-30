@@ -13,6 +13,9 @@
                                 without http-kit or local files
     web UI sits on the API   -> the same views serve the local UI and a
                                 hosted dashboard; it never touches engines
+    Dart host only adapts    -> wmark-dart and the GUI apps' Phase 2 run the
+                                core library over dart:io adapters, and
+                                nothing else depends on them
     open core stays open     -> no commercial namespace is named, required
                                 or licensed here; the commercial repository
                                 depends on this one, never the reverse
@@ -25,12 +28,13 @@
 
 (set! *warn-on-reflection* true)
 
-(def kernel (sources "kernel/src"))
-(def host   (sources "src"))
+(def kernel    (sources "kernel/src"))
+(def host      (sources "src"))
+(def dart-host (sources "dart/src"))
 
 (def public-roots
   "Everything clogem-wmark publishes, as source roots."
-  ["kernel" "src" "test" "testkit" "web" "desktop" "build" "native" "resources" "spikes"
+  ["kernel" "src" "test" "testkit" "web" "desktop" "dart" "build" "native" "resources" "spikes"
    "scripts/cloud-setup.sh"])
 
 (def vendored
@@ -69,6 +73,17 @@
                       :when ('#{num int double bool dynamic void} a)]
                   [(:ns src) a])))))
 
+(deftest the-dart-host-only-adapts-the-core-library
+  (testing "the Dart host (dart/) uses the core library and its own adapters: nothing of the JVM's"
+    (let [kernel-nses (set (map :ns kernel))]
+      (is (seq dart-host))
+      (is (empty? (violations dart-host #(not (or (kernel-nses %) (under? ["watermark.dartvm."] %)
+                                                  ('#{clojure.string} %)))))))
+    (is (every? #(str/ends-with? (:file %) ".cljd") dart-host) "ClojureDart only"))
+  (testing "nothing depends on it: the library and the JVM's hosts don't know it exists"
+    (is (empty? (violations (concat kernel host (sources "web/src") (sources "desktop/src"))
+                            #(under? ["watermark.dartvm"] %))))))
+
 (deftest orchestration-never-sees-an-engine-implementation
   (let [jobs (filter #(str/starts-with? (str (:ns %)) "watermark.core.") (concat kernel host))]
     (is (some #(= 'watermark.core.jobs (:ns %)) jobs))
@@ -98,8 +113,8 @@
   (is (empty? (violations host #(under? ["watermark.web"] %))) "the host core doesn't know the UI exists"))
 
 (deftest the-open-core-names-no-commercial-code
-  (let [nses (mapcat sources ["kernel/src" "src" "web/src" "desktop/src" "testkit/src" "build/src"
-                              "kernel/test" "test" "web/test" "desktop/test"])]
+  (let [nses (mapcat sources ["kernel/src" "src" "web/src" "desktop/src" "testkit/src" "build/src" "dart/src"
+                              "kernel/test" "test" "web/test" "desktop/test" "dart/test"])]
     (is (< 50 (count nses)))
     (is (empty? (filter #(under? ["watermark.pro" "watermark.saas"] (:ns %)) nses))
         "no namespace of the commercial editions lives in the open core")

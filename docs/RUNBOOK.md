@@ -32,7 +32,7 @@ tool (`build/`).
 | C toolchain for native-image | Linux: `gcc`, zlib headers; macOS: Xcode Command Line Tools; Windows: Visual Studio 2022 Build Tools ("Desktop development with C++") | native binaries | |
 | C compiler (`cc`) | any | native-engine tests (optional) | `cc --version` |
 | Python 3 + Playwright | any recent | browser smoke test (optional) | `python3 -m playwright --version` |
-| Dart SDK | 3.13.4 (CI's pin; `scripts/cloud-setup.sh` installs it, checksum-verified) | the kernel on the Dart VM, `bb kernel-dart` (optional locally; CI runs it) | `dart --version` |
+| Dart SDK | 3.13.4 (CI's pin; `scripts/cloud-setup.sh` installs it, checksum-verified) | the kernel on the Dart VM, `bb kernel-dart`, and the Dart host, `bb dart` (optional locally; CI runs both) | `dart --version` |
 
 **No Node.js, npm or JavaScript build anywhere.** The web UI's only script is
 the vendored `web/resources/public/datastar.js`. Playwright is test tooling;
@@ -137,6 +137,9 @@ bb test        # every test namespace (clojure -M:dev:test)
 bb lint        # build matrix vs repository
 bb e2e         # browser smoke test of the web UI (ffmpeg + Python Playwright)
 bb kernel-dart # the kernel compiled by ClojureDart, its golden vectors on the Dart VM (Dart SDK)
+bb dart        # the Dart host (dart/, ADR 0014): its adapters' tests on the Dart VM, renders with the ffmpeg on PATH
+bb dart-cli    # wmark-dart, the CLI on the Dart VM: target/dart-cli/wmark-dart, the bundled font beside it
+clojure -M:dev:test -n watermark.dart-cli-test   # wmark-dart on real frames vs the reference and the JVM's wmark (after bb dart-cli)
 ```
 
 `bb test` runs 120 tests (11,081 assertions) in 34 namespaces (**verified**,
@@ -150,14 +153,18 @@ tools are missing:
 | v2 conformance on the pinned LGPL FFmpeg the downloads ship (M2's exit test) | `target/ffmpeg/linux-x64/` from `bb ffmpeg`, or `WMARK_FFMPEG_LGPL` | `bb ffmpeg`; CI sets `WMARK_REQUIRE_LGPL=1`, so it can't skip there |
 | Native engine (C mock through Java's FFM API, ABI 1 to 3 builds, v2 frames) | `cc` | install a C compiler |
 | v2 conformance on the C mock | `cc` and `ffmpeg` | both of the above |
+| `wmark-dart` on real frames, against the reference and the JVM's `wmark` (ADR 0014) | `target/dart-cli/wmark-dart` (or `WMARK_DART_CLI`) and `ffmpeg`; the LGPL case also `target/ffmpeg/linux-x64/` | `bb dart-cli`, `bb ffmpeg`; CI's `dart` job sets `WMARK_REQUIRE_DART_CLI=1`, so it can't skip there |
 
 **Golden vectors.** `kernel/test/golden/*.edn` pin the kernel's outputs:
 the PRNG, seeds, render specs, render spec v2 down to every bitmap's
 SHA-256, the settings schema's verdicts and messages (`schema.edn`), the
 settings form (`form.edn`), FFmpeg plans and parsers (`ffmpeg.edn`), the
 library's Unicode (`text.edn`), the profile rules with the text of stored
-profiles (`profiles.edn`) and the use cases on fake ports (`pipeline.edn`,
-which the Dart VM runs on Futures). Both runtimes compute them from the same inputs
+profiles (`profiles.edn`), the use cases on fake ports (`pipeline.edn`,
+which the Dart VM runs on Futures), every command of the CLI with its
+output and exit code (`cli.edn`), and what every host's adapters compute
+alike: fingerprints, output names, the executable search, a realized v2
+spec (`adapters.edn`). Both runtimes compute them from the same inputs
 (`kernel/test/watermark/golden_inputs.cljc`): `bb test` on the JVM, and
 `bb kernel-dart` on the Dart VM, which compares strictly (24 is not 24.0).
 They are also what a Swift or Rust port must reproduce. After an

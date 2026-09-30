@@ -2,8 +2,7 @@
 ;; SPDX-License-Identifier: EPL-2.0
 (ns watermark.media.local
   "MediaIO over the local file system (desktop editions)."
-  (:require [clojure.string :as str]
-            [watermark.media :as media]
+  (:require [watermark.media :as media]
             [watermark.util.fs :as fs])
   (:import (java.io File)))
 
@@ -11,16 +10,9 @@
 
 (defn output-path
   "<output dir or the input's dir>/<input stem><suffix>.<container>"
-  [input {:keys [dir suffix container] :or {suffix "_wm" container "mp4"}}]
-  (let [f    (.getAbsoluteFile (File. (str input)))
-        stem (str/replace (.getName f) #"\.[^.]+$" "")]
-    (str (File. (str (or dir (.getParent f))) (str stem suffix "." container)))))
-
-(defn part-path
-  "Temp name the engine writes to; renamed on success. Keeps the extension so
-  muxers can still infer the format from it."
-  [output]
-  (str/replace output #"(\.[^.\\/]+)$" ".part$1"))
+  [input {:keys [dir] :as output}]
+  (let [f (.getAbsoluteFile (File. (str input)))]
+    (str (File. (str (or dir (.getParent f))) ^String (media/output-name (.getName f) output)))))
 
 (defrecord LocalMedia []
   media/MediaIO
@@ -37,7 +29,7 @@
                         {:wmark/error :conflict :path final})))
       (when-not (:dry-run? ctx)                     ; a dry run creates nothing
         (fs/mkdirs! (.getParent (File. final))))
-      {:final final :temp (part-path final) :container (:container output "mp4")
+      {:final final :temp (media/part-path final) :container (:container output "mp4")
        :overwrite? (boolean (:overwrite? output))}))
 
   (commit! [_ _ {:keys [final temp overwrite?]}]
