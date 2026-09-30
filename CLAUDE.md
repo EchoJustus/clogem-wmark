@@ -119,7 +119,8 @@ its own matrix.
    source file starts with
    `;; SPDX-FileCopyrightText: 2026 The clogem-wmark authors` and
    `;; SPDX-License-Identifier: EPL-2.0` (or the same in the file's comment
-   syntax). Contributions carry a DCO sign-off (`git commit -s`).
+   syntax). Contributions carry a DCO sign-off (`git commit -s`; the
+   project's own commits: section 5, "Commit identity").
 5. **Repositories:** this one is public and upstream. The commercial one
    depends on it through git (`:deps/root`), never the reverse. The kernel
    stays here as an independent subproject for now.
@@ -373,8 +374,14 @@ its own matrix.
 - **Platform facts change.** For FFmpeg or GraalVM behaviour, cloud limits and
   library versions, check current docs before relying on memory, and cite
   them in the doc you touch.
-- **Commits:** imperative subject; the body says why; `git commit -s` (DCO).
-  Branch for anything non-trivial. Don't force-push shared branches.
+- **Commits:** imperative subject; the body says why. Branch for anything
+  non-trivial. Don't force-push shared branches.
+- **Commit identity** (owner, 2026-09-30): author and committer
+  `EchoJustus <68955865+EchoJustus@users.noreply.github.com>` (set
+  `user.name` and `user.email`), web-based commits included; the DCO
+  sign-off is written into the message as
+  `Signed-off-by: EchoJustus <echojustus.oss@outlook.com>`, not by
+  `git commit -s`, which would sign with the noreply address.
 - **Decisions:** record each non-trivial one as a short ADR in
   `docs/adr/NNNN-title.md`. Escalate to the owner instead of deciding alone:
   purchases and credentials, anything that changes what is public or how it
