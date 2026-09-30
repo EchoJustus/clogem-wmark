@@ -489,8 +489,10 @@ first cut (ADR 0011, "Implementation"); what remains of them is listed there.
      `profiles.edn`);
    - *done:* planning, the job pipeline and the Core API, on one async
      core (`watermark.util.task`) and a files port (`pipeline.edn`);
-   - *to do:* the FFmpeg engine itself (finding capabilities, probing,
-     running) behind a process-runner port, so M3d only writes adapters.
+   - *done:* the FFmpeg engine's decisions (`watermark.ffmpeg.engine`:
+     capabilities, checks, command lines, progress, outcomes), so each
+     host's engine adapter only runs processes. No process-runner port:
+     ADR 0013, section 4, says why.
 4. **M3d · The Dart adapters and the Dart CLI** (`dart:io` files,
    `Process.start` for FFmpeg), with a conformance run on real frames. GUI
    apps then embed the library in-process (Phase 2).

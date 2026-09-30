@@ -1369,5 +1369,220 @@
    :total-us 180180000,
    :output "/out/clip_wm.part.mp4",
    :workdir "/tmp/job"}},
+ :engine
+ {:argv
+  {:describe
+   {:version ["/bin/ffmpeg" "-hide_banner" "-version"],
+    :filters ["/bin/ffmpeg" "-hide_banner" "-filters"],
+    :encoders ["/bin/ffmpeg" "-hide_banner" "-encoders"]},
+   :trial
+   ["/bin/ffmpeg"
+    "-hide_banner"
+    "-v"
+    "error"
+    "-nostdin"
+    "-f"
+    "lavfi"
+    "-i"
+    "color=c=gray:s=256x144:r=30"
+    "-frames:v"
+    "5"
+    "-c:v"
+    "libx264"
+    "-crf"
+    "18"
+    "-preset"
+    "medium"
+    "-f"
+    "null"
+    "-"],
+   :probe
+   ["/bin/ffprobe"
+    "-v"
+    "error"
+    "-show_entries"
+    "stream=index,codec_type,width,height,r_frame_rate,avg_frame_rate,nb_frames,start_time:stream_side_data=rotation:format=duration,format_name"
+    "-of"
+    "json"
+    "/in/a b.mov"],
+   :sample
+   ["/bin/ffmpeg"
+    "-hide_banner"
+    "-nostdin"
+    "-y"
+    "-loglevel"
+    "error"
+    "-filter_complex"
+    "color=c=0x5f6b78:s=720x1280:r=25:d=12,drawgrid=w=64:h=64:t=1:c=white@0.14[v]"
+    "-map"
+    "[v]"
+    "-c:v"
+    "mpeg4"
+    "-q:v"
+    "3"
+    "-pix_fmt"
+    "yuv420p"
+    "/p/sample.mp4"],
+   :decode
+   ["/bin/ffmpeg"
+    "-v"
+    "error"
+    "-nostdin"
+    "-i"
+    "/logos/l.png"
+    "-frames:v"
+    "1"
+    "-f"
+    "rawvideo"
+    "-pix_fmt"
+    "rgba"
+    "-"]},
+  :describe
+  {:version
+   {:major 6,
+    :minor 1,
+    :raw "ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023"},
+   :filters ["abench" "color" "drawtext" "overlay" "perspective"],
+   :encoders ["h264_nvenc" "libopenh264" "libx264"]},
+  :discover
+  {:bare
+   {:engine/version "7.1-full_build-www.gyan.dev",
+    :available? false,
+    :problems
+    ["This FFmpeg build lacks required filters: setpts, crop, scale, null, split, colorchannelmixer, perspective, fps, drawbox, format"],
+    :warnings
+    ["from the host"
+     "This FFmpeg lists encoders that fail on this machine, so wmark won't use them: libx264."],
+    :capabilities
+    {:animations [],
+     :audio [:aac :copy :none],
+     :codecs [:h264],
+     :containers ["mkv" "mov" "mp4"],
+     :extras [:cover :metadata],
+     :layers [],
+     :placement [:burst-scatter :fixed :per-window],
+     :preview [],
+     :sources [:file :url],
+     :spec-versions [],
+     :timing [:always :periodic :windows]},
+    :encoders ["h264_nvenc" "libopenh264" "mjpeg" "mpeg4"]},
+   :gpl
+   {:engine/version "7.1-full_build-www.gyan.dev",
+    :available? true,
+    :problems [],
+    :warnings
+    ["from the host"
+     "This FFmpeg lists encoders that fail on this machine, so wmark won't use them: libx264."],
+    :capabilities
+    {:animations [:flip-y],
+     :audio [:aac :copy :none],
+     :codecs [:h264],
+     :containers ["mkv" "mov" "mp4"],
+     :extras [:cover :metadata],
+     :layers [:bitmap :flipbook :image :text],
+     :placement [:burst-scatter :fixed :per-window],
+     :preview [:frame :sample],
+     :sources [:file :url],
+     :spec-versions [1 2],
+     :timing [:always :periodic :windows]},
+    :encoders ["h264_nvenc" "libopenh264" "mjpeg" "mpeg4"]},
+   :lgpl
+   {:engine/version "7.1-full_build-www.gyan.dev",
+    :available? true,
+    :problems [],
+    :warnings
+    ["from the host"
+     "This FFmpeg lists encoders that fail on this machine, so wmark won't use them: libx264."
+     "This FFmpeg build lacks perspective (an LGPL build?), so wmark draws the logo flip and the text itself and FFmpeg only composites them (render spec v2)."],
+    :capabilities
+    {:animations [],
+     :audio [:aac :copy :none],
+     :codecs [:h264],
+     :containers ["mkv" "mov" "mp4"],
+     :extras [:cover :metadata],
+     :layers [:bitmap :flipbook],
+     :placement [:burst-scatter :fixed :per-window],
+     :preview [:frame :sample],
+     :sources [:file :url],
+     :spec-versions [2],
+     :timing [:always :periodic :windows]},
+    :encoders ["h264_nvenc" "libopenh264" "mjpeg" "mpeg4"]},
+   :no-drawtext
+   {:engine/version "7.1-full_build-www.gyan.dev",
+    :available? true,
+    :problems [],
+    :warnings
+    ["from the host"
+     "This FFmpeg lists encoders that fail on this machine, so wmark won't use them: libx264."
+     "This FFmpeg build has no drawtext filter, so wmark draws text layers itself (render spec v2)."],
+    :capabilities
+    {:animations [:flip-y],
+     :audio [:aac :copy :none],
+     :codecs [:h264],
+     :containers ["mkv" "mov" "mp4"],
+     :extras [:cover :metadata],
+     :layers [:bitmap :flipbook :image],
+     :placement [:burst-scatter :fixed :per-window],
+     :preview [:frame :sample],
+     :sources [:file :url],
+     :spec-versions [1 2],
+     :timing [:always :periodic :windows]},
+    :encoders ["h264_nvenc" "libopenh264" "mjpeg" "mpeg4"]},
+   :not-found
+   {:engine/id :ffmpeg,
+    :available? false,
+    :binaries {:ffmpeg {:path nil}},
+    :problems
+    ["FFmpeg not found. Put ffmpeg and ffprobe next to wmark (or in its bin/ folder), on PATH, or pass --ffmpeg."],
+    :capabilities {}},
+   :split
+   "ffprobe was found in C:\\tools, not next to ffmpeg in C:\\wmark\\bin. Ship both together: a machine without the second copy can't probe media."},
+  :checks
+  [[:unavailable
+    {:error :unavailable,
+     :message
+     "This FFmpeg build lacks required filters: setpts, crop, scale, null, split, colorchannelmixer, perspective, fps, drawbox, format"}]
+   [:cover-in-mov
+    {:error :unsupported,
+     :message
+     "A cover picture needs an MP4 file: choose MP4 as the file format, or leave the cover out."}]
+   [:forced-encoder
+    {:error :unsupported,
+     :message "This FFmpeg build has no h264_qsv encoder."}]
+   [:unusable-codec
+    {:error :unsupported,
+     :message "The ffmpeg engine can't render this: codecs hevc."}]],
+  :progress
+  [{:out-us 400400,
+    :frame 12,
+    :fraction 0.4,
+    :speed nil,
+    :done? false,
+    :event :progress}
+   {:out-us 800800,
+    :frame 24,
+    :fraction 0.8,
+    :speed "1.5x",
+    :done? false,
+    :event :progress}
+   {:out-us 1001000,
+    :frame 30,
+    :fraction 1.0,
+    :speed nil,
+    :done? true,
+    :event :progress}],
+  :outcomes
+  [{:status :cancelled}
+   {:status :done}
+   {:status :failed,
+    :error
+    {:message "FFmpeg failed (exit 183):\nError while filtering",
+     :details {:log "/work/x/ffmpeg.log", :exit 183}}}],
+  :scratch ["/work/x/ffmpeg.log" "C:\\work\\x\\ffmpeg.log"],
+  :still
+  [{:width 2, :height 1, :px :pixels}
+   {:error :invalid,
+    :message
+    "FFmpeg couldn't decode the image /l.png: Invalid data"}]},
  :graph
  "[0:v]drawtext=fontfile=C\\\\:/f.ttf:x='w-tw-(24)':fontcolor=white@0.85,fps=fps=30000/1001[out]"}

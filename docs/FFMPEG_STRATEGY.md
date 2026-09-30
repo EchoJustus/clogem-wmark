@@ -10,14 +10,19 @@ strings by hand:
 - `watermark.ffmpeg.plan` turns a render request into an argv, the graph and
   the scratch files FFmpeg reads.
 - `watermark.ffmpeg.parse` reads what FFmpeg and ffprobe print.
+- `watermark.ffmpeg.engine` decides what the engine reports and does: the
+  capabilities a build offers (from its filters, encoders and trial
+  encodes), the checks before planning, the other command lines (probe,
+  sample clip, still, trials), progress and outcomes.
 - FFmpeg reads the graph from a script file.
 
-The first three are pure and part of the core library (`kernel/`,
-[ADR 0012](adr/0012-the-kernel-on-the-dart-vm.md) and ADR 0008): the JVM
-and the Dart VM compile the same plan, which `kernel/test/golden/ffmpeg.edn`
-pins argument by argument. The JVM's side (`watermark.engine.ffmpeg`,
-`.process`, `.probe`) finds the binaries, runs them, writes the files and
-decodes ffprobe's JSON.
+The first four are pure and part of the core library (`kernel/`,
+[ADR 0012](adr/0012-the-kernel-on-the-dart-vm.md),
+[ADR 0013](adr/0013-host-logic-into-the-core-library.md) and ADR 0008): the
+JVM and the Dart VM compile the same plan and decide the same way, which
+`kernel/test/golden/ffmpeg.edn` pins argument by argument. The JVM's side
+(`watermark.engine.ffmpeg`, `.process`, `.probe`) only finds the binaries,
+runs them, writes the files and decodes ffprobe's JSON.
 
 Everything below was checked against real renders; see "Verification".
 

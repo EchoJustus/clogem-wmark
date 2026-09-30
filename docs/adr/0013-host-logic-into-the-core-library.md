@@ -217,6 +217,47 @@ piece goes and what had to change to make it portable.
   (checked with a deliberately failing test). Such a failure also times out
   after package:test's 30 seconds; a passing test ends at once.
 
+### 4. The FFmpeg engine's decisions, without a process-runner port
+
+- **Where:** `watermark.ffmpeg.engine` holds what the FFmpeg engine decides
+  apart from running FFmpeg:
+  - the command lines besides a render (describe, trial encode, probe,
+    sample clip, still decoding);
+  - capabilities from what a build prints: filters, encoders, trial
+    results, and the warnings and problems that follow;
+  - the checks before planning, and the plan with its scratch folder;
+  - reading `-progress` output, and a run's outcome;
+  - checking a decoded still.
+
+  `watermark.engine.ffmpeg` on the JVM now only finds the binaries (with
+  `watermark.util.locate`), runs them and writes the scratch files.
+- **No process-runner port, although ADR 0008 names one.** The shared part
+  of running FFmpeg is the decisions above, and they are now the
+  library's. What's left is process I/O, and it has no common shape worth
+  a port:
+  - capability discovery needs "run this trial and kill it after 30
+    seconds", which the Dart VM can't do synchronously and the engine's
+    `info` needs synchronously;
+  - a render needs streamed output and cancellation on each host's own
+    terms (a thread per render on the JVM, `Process.start` and streams in
+    Dart).
+
+  Each host's engine adapter runs processes and hands their output to the
+  library. M3d writes the Dart one: `Process.run` for the short commands,
+  `Process.start` for renders, and the host's own way to time out a trial.
+- **Golden vectors:** `ffmpeg.edn` gains an `:engine` section: the command
+  lines; `describe` of recorded output; discovery for a full build, an
+  LGPL build, a build without `drawtext` and one without the required
+  filters, with a failing preferred encoder; FFmpeg not found; a split
+  build; the checks (unavailable, a cover in MOV, a forced encoder the
+  build lacks, a codec it can't encode); progress read from `-progress`
+  lines; outcomes; scratch paths; and a decoded still and a failed one.
+  Both runtimes reproduce it.
+- **Checked:** the FFmpeg conformance tests (render spec v1 and v2 on real
+  frames), previews and covers pass through the thinned JVM adapter, and
+  the native image (linux-x64) runs a batch with a cover through it. The
+  image grows by 65,536 bytes, to 64,227,592.
+
 ## Consequences
 
 - A Dart program can now build the exact FFmpeg command line the JVM
@@ -234,8 +275,9 @@ piece goes and what had to change to make it portable.
   for the two functions that render (`api/await`); the commercial
   repository's hosted worker does the same with `run-job!` when it next
   pins the core.
-- What a Dart program still lacks is adapters: an engine, media, files and
-  a store over `dart:io` (M3d).
+- What a Dart program still lacks is adapters, and M3d writes them over
+  `dart:io`: an FFmpeg engine that runs processes and hands their output to
+  `watermark.ffmpeg.engine`, media, files and a store.
 
 ## Sources (checked 2026-09-29 and 2026-09-30)
 

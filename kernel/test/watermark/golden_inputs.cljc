@@ -16,6 +16,7 @@
             [watermark.core.schema :as schema]
             [watermark.core.seeds :as seeds]
             [watermark.engine :as engine]
+            [watermark.ffmpeg.engine :as fengine]
             [watermark.ffmpeg.graph :as graph]
             [watermark.ffmpeg.parse :as parse]
             [watermark.ffmpeg.plan :as plan]
@@ -334,6 +335,76 @@
       (assoc request :spec v2spec :output {:path "/work/previews/p.png" :frame 45} :metadata tags)
       env]]))
 
+(defn- result
+  "What `f` returns, or the kind, message and reason of the error it throws."
+  [f]
+  (let [[v e] (host/attempt f)]
+    (if e
+      (cond-> {:error (:wmark/error (ex-data e)) :message (ex-message e)}
+        (:reason (ex-data e)) (assoc :reason (:reason (ex-data e))))
+      v)))
+
+(defn- engine-vectors
+  "What the FFmpeg engine decides (watermark.ffmpeg.engine), for ffmpeg.edn."
+  []
+  (let [version (parse/parse-version "ffmpeg version 7.1-full_build-www.gyan.dev Copyright (c) 2000-2024")
+        all     (into #{"drawtext"} (concat plan/required-filters plan/required-filters-v2 plan/preview-filters))
+        builds  {:gpl         all
+                 :lgpl        (disj all "perspective")
+                 :no-drawtext (disj all "drawtext")
+                 :bare        #{"overlay"}}
+        bins    {:ffmpeg  {:path "/opt/wmark/bin/ffmpeg" :source :app-bin}
+                 :ffprobe {:path "/opt/wmark/bin/ffprobe" :source :app-bin}}
+        ;; the preferred H.264 encoders fail here, so the next one is used
+        usable? (fn [_ enc] (not (#{"libx264" "h264_nvenc"} enc)))
+        encs    #{"libx264" "h264_nvenc" "libopenh264" "mjpeg" "mpeg4"}
+        info    (fn [filters] (fengine/discover {:binaries bins :warnings ["from the host"] :usable? usable?
+                                                 :described {:version version :filters filters :encoders encs}}))
+        gpl     (info all)
+        request (fn [more] (merge {:spec (basic-spec) :source "/in/a.mov" :media media
+                                   :output {:path "/out/a.part.mp4" :container "mp4"}
+                                   :encode {:codec :h264 :quality :high}}
+                                  more))
+        lines   ["frame=12" "out_time_us=400400" "progress=continue"
+                 "frame=24" "out_time_us=800800" "speed=1.5x" "progress=continue"
+                 "frame=30" "out_time_us=1001000" "progress=end"]
+        events  (let [seen (atom [])
+                      read (fengine/progress-reader 1001000 #(swap! seen conj %))]
+                  (doseq [l lines] (read l))
+                  @seen)]
+    {:argv     {:describe (fengine/describe-argv "/bin/ffmpeg")
+                :trial    (fengine/trial-argv "/bin/ffmpeg" (fengine/trial-video-args :h264 "libx264"))
+                :probe    (fengine/probe-argv "/bin/ffprobe" "/in/a b.mov")
+                :sample   (fengine/sample-argv "/bin/ffmpeg" {:width 720 :height 1280 :fps 25 :seconds 12} "/p/sample.mp4")
+                :decode   (fengine/decode-argv "/bin/ffmpeg" "/logos/l.png")}
+     :describe (let [d (fengine/describe {:version  "ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023\nbuilt with gcc"
+                                          :filters  (apply str (interpose "\n" (:ffmpeg-6-1 filters-text)))
+                                          :encoders (apply str (interpose "\n" encoders-text))})]
+                 (-> d (update :filters (comp vec sort)) (update :encoders (comp vec sort))))
+     :discover (into (sorted-map)
+                     (concat
+                      (for [[k filters] builds]
+                        [k (-> (info filters)
+                               (select-keys [:engine/version :available? :problems :warnings :capabilities :encoders])
+                               (update :encoders (comp vec sort))
+                               (update :capabilities #(into (sorted-map) (for [[ck v] %] [ck (vec (sort-by str v))]))))])
+                      [[:not-found (fengine/discover {:binaries {:ffmpeg {:path nil}} :described nil})]
+                       [:split (fengine/split-build-warning {:ffmpeg  {:path "C:\\wmark\\bin\\ffmpeg.exe"}
+                                                             :ffprobe {:path "C:\\tools\\ffprobe.exe"}})]]))
+     :checks   (vec (for [[k i r] [[:unavailable (info #{"overlay"}) (request {})]
+                                   [:cover-in-mov gpl (request {:cover {:path "/c.png"}
+                                                                :output {:path "/out/a.part.mov" :container "mov"}})]
+                                   [:forced-encoder gpl (request {:encode {:codec :h264 :ffmpeg {:video-codec "h264_qsv"}}})]
+                                   [:unusable-codec gpl (request {:encode {:codec :hevc}})]]]
+                        [k (result #(fengine/plan-render i r "/work/x"))]))
+     :progress events
+     :outcomes [(fengine/outcome {:cancelled? true :exit nil})
+                (fengine/outcome {:exit 0})
+                (fengine/outcome {:exit 183 :log "/work/x/ffmpeg.log" :log-tail "Error while filtering"})]
+     :scratch  [(fengine/log-path {:workdir "/work/x"}) (fengine/log-path {:workdir "C:\\work\\x"})]
+     :still    [(select-keys (fengine/still {:width 2 :height 1} "/l.png" {:exit 0 :px :pixels :err ""} 8) [:width :height :px])
+                (result #(fengine/still {:width 2 :height 1} "/l.png" {:exit 1 :px nil :err " Invalid data \n"} 0))]}))
+
 (defn ffmpeg-vectors
   "ffmpeg.edn."
   []
@@ -374,6 +445,7 @@
                                         plan/compile-request)
                                       request env)
                                      [:argv :graph :files :total-us :output :workdir])]))
+   :engine   (engine-vectors)
    :graph    (graph/render [(graph/chain ["0:v"]
                                          [(graph/f "drawtext" :fontfile "C:/f.ttf" :x (graph/expr "w-tw-(24)")
                                                    :fontcolor "white@0.85" :enable nil)
@@ -541,15 +613,6 @@
 
 ;; ---------------------------------------------------------------------------
 ;; profiles.edn: the profile rules on the memory store, with a fixed clock
-
-(defn- result
-  "What `f` returns, or the kind, message and reason of the error it throws."
-  [f]
-  (let [[v e] (host/attempt f)]
-    (if e
-      (cond-> {:error (:wmark/error (ex-data e)) :message (ex-message e)}
-        (:reason (ex-data e)) (assoc :reason (:reason (ex-data e))))
-      v)))
 
 (def ^:private profile-names
   "Names as people type them: punctuation a file system refuses, case,
