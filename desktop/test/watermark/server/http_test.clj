@@ -163,3 +163,31 @@
         (is (str/includes? (:body (call "GET" "/some/client/route" :auth nil)) "external") "SPA fallback")
         (is (= 401 (:status (call "GET" "/api/v1/profiles" :auth nil))) "its API calls aren't"))
       (finally (http/stop! sys srv)))))
+
+(deftest an-edition's-allowance-holds-over-http
+  ;; docs/adr/0017: an edition gives the system an allowance for some runs
+  ;; (`:allowance-fn`, with the command's options); the server reports it and
+  ;; refuses a job when no render is left
+  (let [home (Files/createTempDirectory "wmark-allowance-home" (make-array FileAttribute 0))
+        seen (atom nil)
+        none (reify features/RenderAllowance
+               (renders-left [_ _] 0)
+               (reserve-render! [_ _] false)
+               (settle-render! [_ _ _] nil))
+        sys  (app/with-jobs (app/system {:edition         :community
+                                         :entitlements-fn (fn [_] (features/community))
+                                         :allowance-fn    (fn [_home opts] (reset! seen opts) (when (:parent-pid opts) none))}
+                                        {:home (str home) :parent-pid 1}))
+        srv  (http/start! sys {})]
+    (try
+      (binding [*srv* srv]
+        (is (= 1 (:parent-pid @seen)) "the hook sees the command's options")
+        (is (= 0 (:renders-left (:body (call "GET" "/api/v1/features")))))
+        (let [r (call "POST" "/api/v1/jobs" :body {:inputs ["/nonexistent.mp4"] :settings {}})]
+          (is (= 402 (:status r)))
+          (is (= "render-limit" (get-in r [:body :error]))))
+        (is (empty? (get-in (call "GET" "/api/v1/jobs") [:body :jobs])) "nothing was queued"))
+      (finally (http/stop! sys srv))))
+  (is (nil? (:allowance (app/system {:edition :community :entitlements-fn (fn [_] (features/community))}
+                                    {:home (str (Files/createTempDirectory "wmark-plain-home" (make-array FileAttribute 0)))})))
+      "no hook: no allowance, every render may run"))

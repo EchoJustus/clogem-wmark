@@ -7,6 +7,9 @@
   `edition` map they pass to `run-cli`:
     {:edition :community|:pro
      :entitlements-fn (fn [home] entitlements)
+     :allowance-fn (optional) (fn [home opts] allowance-or-nil): a render
+                   allowance for this run (docs/adr/0017); `opts` are the
+                   command's, so an edition can limit only some runs
      :license-cmd (optional, Pro) (fn [home args] exit-code)}
 
   Modes: no arguments (double-click) = `ui`: serve on loopback + open the
@@ -74,6 +77,7 @@
      :home         home
      :profiles-for (constantly store)            ; SaaS: (fn [ctx] (tenant-store ctx))
      :entitlements ((:entitlements-fn edition) home)
+     :allowance    (when-let [f (:allowance-fn edition)] (f home opts))
      :engine       (make-engine opts home)
      :media        (local-media/local-media)
      :rasterizer   (raster-local/local-rasterizer {:work-root (str (.resolve home "work"))})
