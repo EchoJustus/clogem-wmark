@@ -4,7 +4,10 @@
   "Core API rules that hold for every client: jobs are per tenant."
   (:require [clojure.test :refer [deftest is]]
             [watermark.core.api :as api]
-            [watermark.core.jobs :as jobs]))
+            [watermark.core.features :as features]
+            [watermark.core.jobs :as jobs]
+            [watermark.core.rest :as rest]
+            [watermark.store.memory :as memory]))
 
 (set! *warn-on-reflection* true)
 
@@ -46,3 +49,33 @@
     (is (= ["a1"] @seen))
     (api/unsubscribe-jobs! s acme ::k)
     (is (empty? @(:listeners (:jobs s))))))
+
+(defn- limited [n]
+  (reify features/RenderAllowance
+    (renders-left [_ ctx] (when (= "acme" (:tenant ctx)) n))
+    (reserve-render! [_ _] (pos? n))
+    (settle-render! [_ _ _] nil)))
+
+(deftest the-features-report-says-how-many-renders-are-left
+  (let [s (assoc (sys) :entitlements (features/community))]
+    (is (not (contains? (api/features s acme) :renders-left)) "no allowance: no limit, no key")
+    (is (= 2 (:renders-left (api/features (assoc s :allowance (limited 2)) acme))))
+    (is (not (contains? (api/features (assoc s :allowance (limited 2)) other) :renders-left))
+        "an allowance that doesn't limit this caller")))
+
+(deftest a-used-up-allowance-is-a-402
+  (is (= 402 (rest/status-of :render-limit))))
+
+(deftest a-job-is-refused-before-it-is-queued-when-no-render-is-left
+  (let [submitted (atom [])
+        s {:profiles-for (constantly (memory/memory-store))
+           :entitlements (features/community)
+           :allowance    (limited 0)
+           :jobs         (reify jobs/JobQueue (submit! [_ job] (swap! submitted conj job) job))}
+        req {:profile :none :settings {:texts [{:mode :continuous :content "(c)"}]} :inputs ["a.mp4"]}]
+    (is (= :render-limit (try (api/submit-job! s acme req) nil
+                              (catch clojure.lang.ExceptionInfo e (:wmark/error (ex-data e))))))
+    (is (empty? @submitted))
+    (let [answer (rest/error-answer (try (api/submit-job! s acme req) nil (catch clojure.lang.ExceptionInfo e e)))]
+      (is (= 402 (:status answer)))
+      (is (= "render-limit" (get-in answer [:body "error"])) (pr-str answer)))))

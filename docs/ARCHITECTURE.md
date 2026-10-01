@@ -85,6 +85,7 @@ names or requires them.
 | Files (the preview folder) | `watermark.files/Files` (core library) | local files (`files.local`; `dartvm.fs` over `dart:io`) | object storage |
 | Queue | `watermark.core.jobs/JobQueue` | in-process: the core library's (`core.queue`), with jobs started on a thread pool (`jobs.local`, JVM) or from the event loop (the Dart host); all pass `queue-contract` ([ADR 0015](adr/0015-a-job-queue-on-every-host.md)) | SQS / Cloud Tasks / a Postgres table |
 | Entitlements | `watermark.core.features/Entitlements` | community, offline license, hosted plan | StoreKit, Play Billing |
+| Render allowance (optional) | `watermark.core.features/RenderAllowance`, as `:allowance` ([ADR 0017](adr/0017-a-render-allowance-beside-entitlements.md)) | none here: every render may run | an app's trial, a hosted plan's quota |
 | Text modes | `watermark.core.modes/register!` (a registry) | continuous, scheduled; Pro: canary (wire id `subliminal`), random | — |
 
 Text modes are a registry rather than a multimethod because ClojureDart has

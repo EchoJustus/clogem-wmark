@@ -18,6 +18,7 @@
     :media          local files                     object storage
     :jobs           in-process queue                durable queue + workers
     :entitlements   offline license                 account plan
+    :allowance      optional: an app's trial        a plan's render quota
     :secret-for     <home>/secret.key               per-tenant secret (KMS)
     :files          the preview folder (local)      (M4)
 
@@ -69,7 +70,13 @@
   [sys]
   (assoc (health sys) :binaries (:binaries (engine/info (:engine sys)))))
 
-(defn features [sys _ctx] (features/report (:entitlements sys)))
+(defn features
+  "The feature catalog with what the plan unlocks, and :renders-left when
+  the system has a render allowance that limits this caller."
+  [sys ctx]
+  (let [n (features/left (:allowance sys) ctx)]
+    (cond-> (features/report (:entitlements sys))
+      (some? n) (assoc :renders-left n))))
 
 (defn settings-schema [_sys]
   {:schema (schema/json-schema) :defaults schema/defaults})
@@ -344,6 +351,7 @@
   [sys ctx req opts]
   (let [r     (prepare! sys ctx req)
         cover (cover-of req)]
+    (features/check-renders! (:allowance sys) ctx)
     (config/record-latest! (store sys ctx) (:settings r) (derived-from r))
     (task/then (jobs/run-job! sys (cond-> {:ctx ctx :settings (:settings r) :inputs (:inputs req)}
                                     cover (assoc :cover cover))
@@ -356,6 +364,7 @@
   [sys ctx req]
   (let [r     (prepare! sys ctx req)
         cover (cover-of req)]
+    (features/check-renders! (:allowance sys) ctx)
     (config/record-latest! (store sys ctx) (:settings r) (derived-from r))
     (jobs/submit! (:jobs sys) (cond-> {:ctx ctx :inputs (mapv str (:inputs req)) :settings (:settings r)}
                                 cover (assoc :cover cover)))))

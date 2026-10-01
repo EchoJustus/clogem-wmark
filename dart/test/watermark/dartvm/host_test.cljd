@@ -240,6 +240,42 @@
                         (is (= 1 (count @seen)) "one render, one FFmpeg")
                         (is (every? pos? @seen)))))))))
 
+(deftest a-render-allowance-is-kept-on-the-dart-vm
+  ;; docs/adr/0017: a turn is taken as a render starts and kept only when
+  ;; it finishes; with none left, the render fails before FFmpeg runs
+  (when-ffmpeg
+   (fn []
+     (let [dir    (fs/temp-dir "wmark-media")
+           {:keys [clip]} (make-media! dir)
+           copy   (fs/join dir "copy.mp4")
+           _      (.copySync (io/File clip) copy)
+           used   (atom 0)
+           log    (atom [])
+           al     (reify features/RenderAllowance
+                    (renders-left [_ _] (- 1 @used))
+                    (reserve-render! [_ _] (swap! log conj :reserve) (when (< @used 1) (swap! used inc) true))
+                    (settle-render! [_ _ done?] (swap! log conj [:settle done?]) (when-not done? (swap! used dec))))]
+       (-> (main/system {:home (fs/temp-dir "wmark-home") :render-spec 2})
+           (task/then (fn [sys]
+                        (let [sys (assoc sys :allowance al)]
+                          (task/then (api/run-batch! sys {:tenant "local" :user "local"}
+                                                     {:profile  :none
+                                                      :settings {:texts [{:mode :continuous :content "(c) Dart"}]}
+                                                      :inputs   [clip copy]}
+                                                     {})
+                                     (fn [r] [sys r])))))
+           (task/then (fn [[sys r]]
+                        (is (= [:done :failed] (mapv :state (:results r))) (pr-str r))
+                        (is (= :render-limit (:kind (second (:results r)))))
+                        (is (= [:reserve [:settle true] :reserve] @log))
+                        (is (= 0 (:renders-left (api/features sys {:tenant "local" :user "local"}))))
+                        (is (= :render-limit
+                               (try (api/run-batch! sys {:tenant "local" :user "local"}
+                                                    {:profile :none :settings {} :inputs [clip]} {})
+                                    nil
+                                    (catch cljd.core/ExceptionInfo e (:wmark/error (ex-data e)))))
+                            "a batch is refused before it starts"))))))))
+
 ;; ---------------------------------------------------------------------------
 ;; Jobs through the queue, as an app submits them
 

@@ -7,6 +7,10 @@
   `edition` map they pass to `run-cli`:
     {:edition :community|:pro
      :entitlements-fn (fn [home] entitlements)
+     :allowance-fn (optional) (fn [home opts] allowance-or-nil): a render
+                   allowance (docs/adr/0017), asked with the global options
+                   when the system is built and again by `serve` and `ui`
+                   with their own, so an edition can limit only some runs
      :license-cmd (optional, Pro) (fn [home args] exit-code)}
 
   Modes: no arguments (double-click) = `ui`: serve on loopback + open the
@@ -63,13 +67,23 @@
     "native" (native/native-engine {:library (or native-lib (System/getenv "WMARK_ENGINE_LIB"))})
     (throw (ex-info (str "Unknown engine: " engine " (use ffmpeg or native)") {:wmark/error :invalid}))))
 
+(defn with-allowance
+  "`sys` with the edition's render allowance for options `opts`
+  (`:allowance-fn`, docs/adr/0017); without the hook, `sys` as it is."
+  [edition sys opts]
+  (if-let [f (:allowance-fn edition)]
+    (assoc sys :allowance (f (:home sys) opts))
+    sys))
+
 (defn system
   "Everything the Core API needs. Built at run time, never at build time."
   [edition opts]
   (let [^Path home (home/resolve-home opts)
         store      (home/file-store {:home (str home)})
         secret     (delay (fs/studio-secret! home))]
-    {:edition      (:edition edition)
+    (with-allowance
+     edition
+     {:edition      (:edition edition)
      :version      version
      :home         home
      :profiles-for (constantly store)            ; SaaS: (fn [ctx] (tenant-store ctx))
@@ -81,7 +95,8 @@
      :secret-for   (fn [_ctx] @secret)            ; SaaS: per-tenant secret
      :font         (delay (os/default-font (.resolve home "cache")))
      :preview-dir  (str (.resolve home "work/previews"))  ; SaaS: object storage (M4)
-     :files        (local-files/local-files)}))
+     :files        (local-files/local-files)}
+     opts)))
 
 (defn with-jobs [sys]
   (let [n (if (features/entitled? (:entitlements sys) :jobs/parallel)
@@ -175,11 +190,12 @@
       (throw (ex-info (str "No such text file: " path) {:wmark/error :invalid :path (str path)})))
     (slurp f :encoding "UTF-8")))
 
-(defn- serve-cmd [sys args open?]
+(defn- serve-cmd [edition sys args open?]
   (let [{o :options e :errors} (opts/parse-opts args serve-options)]
     (if e
       (do (binding [*out* *err*] (println (str/join "\n" e))) 2)
-      (cmd-serve sys o open?))))
+      ;; the edition asked again, now that serve's own options are known
+      (cmd-serve (with-allowance edition sys o) o open?))))
 
 (defn host
   "The JVM's host map for watermark.cli: this edition's system, the
@@ -190,8 +206,8 @@
    :edition         (:edition edition)
    :system          #(system edition %)
    :default-command "ui"
-   :commands        {"ui"      (fn [sys args] (serve-cmd sys args true))
-                     "serve"   (fn [sys args] (serve-cmd sys args false))
+   :commands        {"ui"      (fn [sys args] (serve-cmd edition sys args true))
+                     "serve"   (fn [sys args] (serve-cmd edition sys args false))
                      "license" (fn [sys args]
                                  (if-let [f (:license-cmd edition)]
                                    (f (:home sys) args)

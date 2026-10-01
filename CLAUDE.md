@@ -316,7 +316,9 @@ its own matrix.
   requires such a namespace. Commercial code plugs in from its own repository
   through registries (`modes/register!`) and ports (`Entitlements`).
 - Entitlements are checked in the core (`features/check!` at planning). Never
-  check them only in a UI.
+  check them only in a UI. So is a render allowance, the optional
+  `:allowance` port (a trial, a quota; ADR 0017): at submission, and as
+  each render starts.
 - Locked features stay visible, as upgrade prompts (`x-tier: pro` in the JSON
   Schema).
 - Every source file carries `SPDX-License-Identifier: EPL-2.0`, and none may

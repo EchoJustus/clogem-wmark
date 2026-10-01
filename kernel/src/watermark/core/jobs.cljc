@@ -13,6 +13,8 @@
     :engine        a watermark.engine/VideoEngine
     :media         a watermark.media/MediaIO
     :entitlements  a watermark.core.features/Entitlements
+    :allowance     optional, a watermark.core.features/RenderAllowance: a
+                   render takes a turn as it starts, kept if it finishes
     :secret-for    (fn [ctx] studio-secret-bytes) -- per tenant in the SaaS
     :font          default font path (or a delay of one)
     :rasterizer    a watermark.raster/Rasterizer, for render spec v2
@@ -29,7 +31,8 @@
   synchronous; rendering finishes later, so `render-input!` and `run-job!`
   return tasks (watermark.util.task): a CompletableFuture on the JVM, a
   Future on the Dart VM, which can't wait for one."
-  (:require [watermark.core.seeds :as seeds]
+  (:require [watermark.core.features :as features]
+            [watermark.core.seeds :as seeds]
             [watermark.engine :as engine]
             [watermark.media :as media]
             [watermark.raster :as raster]
@@ -220,14 +223,26 @@
   "Plan, render and publish one input. Returns a task that never fails: it
   resolves to {:state :done|:failed|:cancelled, :input, :output | :error}.
   `cover` ({:t seconds}) embeds the render's frame at t as the file's
-  cover."
-  [env ctx settings input {:keys [on-event cancelled? cover] :as opts}]
-  (let [opts (assoc opts
-                    :on-event   (or on-event (fn [_]))
-                    :cancelled? (or cancelled? (constantly false)))]
-    (-> (task/attempt #(plan-input env ctx settings input {:cover cover}))
+  cover. With an :allowance in `env`, the render takes a turn before it
+  plans (none left: it fails with :render-limit), and keeps it only when it
+  finishes; a failed or cancelled render gives it back."
+  [{:keys [allowance] :as env} ctx settings input {:keys [on-event cancelled? cover] :as opts}]
+  (let [opts     (assoc opts
+                        :on-event   (or on-event (fn [_]))
+                        :cancelled? (or cancelled? (constantly false)))
+        reserved (atom false)]
+    (-> (task/attempt (fn []
+                        (when allowance
+                          (if (features/reserve-render! allowance ctx)
+                            (reset! reserved true)
+                            (throw (features/render-limit))))
+                        (plan-input env ctx settings input {:cover cover})))
         (task/then #(render-planned env ctx settings input % opts))
-        (task/recover #(failure input %)))))
+        (task/recover #(failure input %))
+        (task/then (fn [result]
+                     (when @reserved
+                       (features/settle-render! allowance ctx (= :done (:state result))))
+                     result)))))
 
 (defn run-job!
   "Render every input of a job in order. One failure doesn't stop the batch;

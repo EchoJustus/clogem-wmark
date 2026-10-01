@@ -189,3 +189,51 @@
     (testing "without a rasterizer, a v2-only engine is refused up front"
       (let [[r] @(jobs/run-job! (dissoc env :rasterizer) {:ctx {} :settings s :inputs [(input! "b.mp4")]} {})]
         (is (= [:failed :unsupported] [(:state r) (:kind r)]))))))
+
+;; ---------------------------------------------------------------------------
+;; A render allowance (docs/adr/0017)
+
+(defn- allowance
+  "A test double: `n` renders, counted as the core asks, its calls logged."
+  [n]
+  (let [used (atom 0) running (atom 0) log (atom [])]
+    {:log log
+     :allowance (reify features/RenderAllowance
+                  (renders-left [_ _] (- n @used @running))
+                  (reserve-render! [_ ctx]
+                    (swap! log conj [:reserve (:tenant ctx)])
+                    (when (pos? (- n @used @running)) (swap! running inc) true))
+                  (settle-render! [_ _ done?]
+                    (swap! log conj [:settle done?])
+                    (swap! running dec)
+                    (when done? (swap! used inc))))}))
+
+(deftest an-allowance-keeps-a-turn-only-for-a-finished-render
+  (let [[a b c d] [(input! "a.mov") (input! "b.mov") (input! "c.mov") (input! "d.mov")]
+        {:keys [log] :as al} (allowance 2)
+        env     (assoc (fake-env :behaviour {a :fail}) :allowance (:allowance al))
+        results @(jobs/run-job! env {:ctx {:tenant "t"} :settings (settings) :inputs [a b c d]} {})]
+    (is (= [:failed :done :done :failed] (map :state results)))
+    (is (= :render-limit (:kind (nth results 3))) "no turn left for the fourth")
+    (is (= 0 (features/left (:allowance al) {})))
+    (is (not-any? #(and (= :execute (first %)) (= d (str (:source (second %))))) @(:calls env))
+        "refused before the engine is asked")
+    (is (= [[:reserve "t"] [:settle false] [:reserve "t"] [:settle true] [:reserve "t"] [:settle true] [:reserve "t"]]
+           @log)
+        "a failed render gives its turn back; a refused one never had one")))
+
+(deftest a-cancelled-render-gives-its-turn-back
+  (let [a   (input! "a.mov")
+        al  (allowance 1)
+        env (assoc (fake-env :behaviour {a :slow}) :allowance (:allowance al))
+        r   @(jobs/render-input! env {} (settings) a {:cancelled? (constantly true)})]
+    (is (= :cancelled (:state r)))
+    (is (= [[:reserve nil] [:settle false]] @(:log al)) "planned with a turn, cancelled before rendering")
+    (is (= 1 (features/left (:allowance al) {})))))
+
+(deftest no-allowance-means-no-limit
+  (is (nil? (features/left nil {})))
+  (is (nil? (features/check-renders! nil {})))
+  (let [al (allowance 0)]
+    (is (= :render-limit (try (features/check-renders! (:allowance al) {}) nil
+                              (catch clojure.lang.ExceptionInfo e (:wmark/error (ex-data e))))))))
