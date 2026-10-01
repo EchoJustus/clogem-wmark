@@ -99,7 +99,11 @@ and derives what it can render:
   themselves. They don't need to: render spec v2 draws it on the host.
   Release downloads carry pinned **LGPL** builds: BtbN's for Linux and
   Windows, and on macOS FFmpeg's signed source built with a fixed recipe
-  ([ADR 0001](adr/0001-ffmpeg-in-release-bundles.md)).
+  ([ADR 0001](adr/0001-ffmpeg-in-release-bundles.md)). A recipe can also
+  cross-compile a trimmed Windows build on Linux (llvm-mingw, zlib linked
+  in statically; RUNBOOK, "FFmpeg for the download"). Every Windows build
+  is checked from its headers for its processor and for DLLs that don't
+  ship with Windows.
 - **Render spec v2 needs only `overlay`** (plus `fps` and `null`:
   `required-filters-v2`, tested like the v1 list), and neither
   `perspective` nor `drawtext`. A build without `perspective` is a complete

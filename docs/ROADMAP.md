@@ -189,7 +189,7 @@ short status report.
 | P3 | The settings form, generated from the schema, with titles and descriptions added to it. The form model is written in the core library and also served as JSON, so the GUI apps render the same rows (first cut built) | ADR 0011, section 3; ADR 0008, section 1 |
 | P4 | Logo upload, the video picker and live preview (the engine's preview capability), the preview being a Core API function with a REST route (the preview is built and passes its conformance test) | ADR 0011, sections 4–5 |
 | P5 | The desktop window: a spike, then the build | ADR 0008, section 2 |
-| P6 | The size diet: `-Os`, then shared FFmpeg, then trimmed FFmpeg, then a size budget in CI | ADR 0008, section 4 |
+| P6 | The size diet: `-Os`, then shared FFmpeg, then trimmed FFmpeg (the build tool can cross-compile a trimmed Windows build on Linux), then a size budget in CI | ADR 0008, section 4 |
 | P7 | Package managers, Tier 1 | ADR 0009 |
 
 **Track B: M3 restarted, the core library on the Dart VM.**
