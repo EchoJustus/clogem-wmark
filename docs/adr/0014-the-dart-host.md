@@ -107,6 +107,13 @@ each host's adapter keeps only its I/O.
       the library's progress reader, and stderr streams into the render's
       log file. A cancel sends SIGTERM (TerminateProcess on Windows) and
       SIGKILL five seconds later.
+    - A host that can itself be killed sees each render's process through
+      `:on-process` (2026-10-01): FFmpeg outlives a killed parent. With
+      the pinned LGPL FFmpeg 9.0.1 on Linux, a render whose parent was
+      killed with SIGKILL was still running a minute later, its
+      `-progress` pipe broken. An app rendering in its own process
+      registers each FFmpeg with a watchdog of its own, so it ends with
+      the app. A failing hook never stops a render.
   - `home`: the JVM's rules, so both hosts share a home: `--home`,
     `WMARK_HOME`, `./wmark-data`, then the platform's folder. The studio
     secret is the same file (base64 of 32 bytes from `Random.secure`),
@@ -138,7 +145,8 @@ each host's adapter keeps only its I/O.
   - fingerprints of files equal `adapters.edn`'s;
   - with the machine's FFmpeg: discovery, probing, a decoded still, the
     sample clip, a batch through the Core API with render spec 1 and with
-    2 (`latest` recorded, no scratch left), and a cancelled render.
+    2 (`latest` recorded, no scratch left), a cancelled render, and
+    `:on-process` seeing a batch's one FFmpeg.
 
 ### 3. `wmark-dart`: the command line on the Dart VM
 

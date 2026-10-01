@@ -219,6 +219,27 @@
                               (fn [_] (task/then (engine/outcome h)
                                                  (fn [o] (is (= :cancelled (:status o)) (pr-str o)))))))))))
 
+(deftest the-host-sees-each-render's-ffmpeg
+  ;; an app rendering in its own process ends FFmpeg with itself; it is
+  ;; handed each render's process through :on-process
+  (when-ffmpeg
+   (fn []
+     (let [dir  (fs/temp-dir "wmark-media")
+           {:keys [clip]} (make-media! dir)
+           seen (atom [])]
+       (-> (main/system {:home (fs/temp-dir "wmark-home") :render-spec 2
+                         :on-process (fn [^io/Process p] (swap! seen conj (.-pid p)))})
+           (task/then (fn [sys]
+                        (api/run-batch! sys {:tenant "local" :user "local"}
+                                        {:profile  :none
+                                         :settings {:texts [{:mode :continuous :content "(c) Dart"}]}
+                                         :inputs   [clip]}
+                                        {})))
+           (task/then (fn [r]
+                        (is (= [:done] (mapv :state (:results r))) (pr-str r))
+                        (is (= 1 (count @seen)) "one render, one FFmpeg")
+                        (is (every? pos? @seen)))))))))
+
 ;; ---------------------------------------------------------------------------
 ;; Jobs through the queue, as an app submits them
 
