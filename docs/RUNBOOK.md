@@ -287,15 +287,39 @@ builds (LGPL-3.0-or-later):
   tool, not shipped). The recipe links nothing outside FFmpeg and macOS, and
   needs macOS 11 or later.
 
+A recipe can also **cross-compile**, which is how a trimmed Windows build
+(ROADMAP, P6) is made from FFmpeg's source on Linux. Such a `:build` adds:
+- `:on :linux-x64`: the platform it builds on;
+- `:toolchain`: a compiler archive, pinned by URL and SHA-256, whose `bin/`
+  goes first on `PATH` (llvm-mingw, for instance);
+- `:libraries`: source archives built first, each with its `:steps` and an
+  optional `:env`, into a prefix folder that `${PREFIX}` names in the
+  steps, the environment and FFmpeg's `:configure` flags (zlib, for
+  instance, linked in statically).
+
+Run `bb ffmpeg :platform :windows-x64` on Linux to build such a pin. On
+Windows the same command builds nothing: it checks the folder made on Linux
+and copied to `target/ffmpeg/windows-x64` (CI passes it on as an
+artifact), whose `licenses/SOURCE.txt` must be this recipe's, word for
+word. A different recipe fails with the command to run.
+
 A changed or missing file fails the task. It writes
 `target/ffmpeg/<platform>/bin/{ffmpeg,ffprobe}` and
 `licenses/{COPYING.LGPLv3,COPYING.GPLv3,SOURCE.txt}` (the LGPLv3 adds
-permissions to the GPLv3, so both texts ship). On this machine's platform it
-then checks the binary against its pin: the license `ffmpeg -L` states, no
-`--enable-gpl` or `--enable-nonfree` in an LGPL build, and on macOS no
-library outside the OS. Downloads and builds are cached in
-`target/downloads/`. To move a pin, change the URL and SHA-256 together, run
-`bb lint` (it rejects unpinned or plain-http archives) and the smoke test.
+permissions to the GPLv3, so both texts ship). It then checks the binary
+against its pin:
+- on any OS, for Windows, from the programs' headers: built for the pin's
+  processor (x64 or Arm64), and loading only DLLs that ship with Windows
+  (the Universal CRT counts; MinGW's and the Visual C++ runtime's DLLs
+  don't);
+- on this machine's platform, where it runs: the license `ffmpeg -L`
+  states, no `--enable-gpl` or `--enable-nonfree` in an LGPL build, and on
+  macOS no library outside the OS.
+
+Downloads and builds are cached in `target/downloads/`. To move a pin,
+change the URL and SHA-256 together, then run `bb lint` and the smoke test.
+`bb lint` rejects unpinned or plain-http archives, and an LGPL recipe that
+configures GPL or nonfree parts.
 
 `bb ffmpeg :variant :gpl` fetches the pinned GPL builds instead (BtbN for
 Linux and Windows, martin-riedl.de for macOS) into

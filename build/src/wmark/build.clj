@@ -32,6 +32,7 @@
            (java.net URI)
            (java.net.http HttpClient HttpClient$Redirect HttpRequest HttpResponse
                           HttpResponse$BodyHandlers)
+           (java.nio ByteBuffer ByteOrder)
            (java.nio.file CopyOption Files StandardCopyOption)
            (java.security MessageDigest)
            (java.util HexFormat)
@@ -136,30 +137,48 @@
   [{:keys [text texts]}]
   (or texts (when text [(assoc text :file "COPYING.GPLv3")])))
 
+(def gpl-flags
+  "configure flags that take an FFmpeg build out of the LGPL."
+  #{"--enable-gpl" "--enable-nonfree"})
+
 (defn ffmpeg-pin-problems
   "What's wrong with the matrix's :ffmpeg pins (and each :variants entry):
   every platform needs a version, source notes, and either archives of a
   build (:archives, each an https :url with a SHA-256) or a recipe to build
   one (:build, a pinned :source archive and its :configure flags); the
-  license texts are pinned the same way. Bundles that ship sidecars need
-  pins."
+  license texts are pinned the same way. A recipe's :toolchain and each of
+  its :libraries are pinned archives too, each library with its :steps
+  (argument vectors) and an optional :env of strings; :on, when given, is
+  the platform it builds on. An LGPL recipe configures no GPL or nonfree
+  parts. Bundles that ship sidecars need pins."
   [{:keys [ffmpeg bundles]}]
   (let [sha?     #(and (string? %) (re-matches #"[0-9a-f]{64}" %))
         https?   #(and (string? %) (str/starts-with? % "https://"))
         pinned?  (fn [{:keys [url sha256]}] (and (https? url) (sha? sha256)))
+        strings? #(and (seq %) (every? string? %))
+        library? (fn [{:keys [source steps env]}]
+                   (and (pinned? source) (seq steps) (every? strings? steps)
+                        (every? (fn [[k v]] (and (string? k) (string? v))) env)))
         pins     (fn [label {:keys [license platforms]}]
                    (concat
                     (when-not (and (seq (license-texts license)) (every? pinned? (license-texts license)))
                       [(str label " :license needs its texts with an https :url and a :sha256 each")])
                     (for [[p {:keys [version archives build source]}] platforms
+                          :let [{:keys [toolchain libraries configure on]} build]
                           problem [(when-not (string? version) (str label " for " p " has no :version"))
                                    (when-not (= 1 (count (remove nil? [(seq archives) build])))
                                      (str label " for " p " needs either :archives or a :build recipe"))
                                    (when-not (every? pinned? archives) (str label " for " p ": every archive needs an https :url and a 64-hex :sha256"))
-                                   (when (and build (not (and (pinned? (:source build))
-                                                              (seq (:configure build))
-                                                              (every? string? (:configure build)))))
+                                   (when (and build (not (and (pinned? (:source build)) (strings? configure))))
                                      (str label " for " p ": :build needs a :source with an https :url and a 64-hex :sha256, and :configure flags"))
+                                   (when (and toolchain (not (pinned? toolchain)))
+                                     (str label " for " p ": the :toolchain needs an https :url and a 64-hex :sha256"))
+                                   (when-not (every? library? libraries)
+                                     (str label " for " p ": each of :libraries needs a :source with an https :url and a 64-hex :sha256, and :steps"))
+                                   (when (and on (not (keyword? on))) (str label " for " p ": :on names a platform, like :linux-x64"))
+                                   (when (and (str/starts-with? (str (:spdx license)) "LGPL") (some gpl-flags configure))
+                                     (str label " for " p " is pinned as " (:spdx license) " but its recipe configures "
+                                          (str/join " " (filter gpl-flags configure))))
                                    (when (empty? source) (str label " for " p " doesn't say where its source is (:source)"))]
                           :when problem]
                       problem)))]
@@ -412,33 +431,60 @@
 
       :else (fail! (str "Unknown archive type: " n)))))
 
+(defn- pinned-line [{:keys [url sha256]}] (str "  " url "\n    sha256 " sha256))
+
+(defn- shell-words
+  "`args` as a shell reads them back: an argument with a space is quoted."
+  [args]
+  (str/join " " (for [a args] (if (re-find #"\s" (str a)) (str "'" a "'") (str a)))))
+
 (defn- source-note [platform {:keys [version archives build source]} {:keys [spdx] :as license}]
-  (str/join "\n"
-            (concat [(str "FFmpeg " version " for " (name platform) ": bin/ffmpeg and bin/ffprobe in this download.")
-                     ""
-                     "wmark runs FFmpeg as a separate program. FFmpeg is not part of wmark; it is"
-                     (str "licensed under " spdx " (" (str/join ", " (map :file (license-texts license))) ", next to this file).")
-                     ""]
-                    (if build
-                      (concat ["The binaries were built from this source archive (SHA-256 verified):"
-                               (str "  " (get-in build [:source :url]) "\n    sha256 " (get-in build [:source :sha256]))
-                               ""
-                               "with nothing changed, by:"
-                               (str "  ./configure " (str/join " " (:configure build)))
-                               "  make"])
-                      (cons "The binaries come unmodified from these archives (SHA-256 verified):"
-                            (for [{:keys [url sha256]} archives] (str "  " url "\n    sha256 " sha256))))
-                    ["" "Source code of this build:"]
-                    (map #(str "  " %) source)
-                    [""])))
+  (let [{:keys [toolchain libraries on]} build]
+    (str/join "\n"
+              (concat [(str "FFmpeg " version " for " (name platform) ": bin/ffmpeg and bin/ffprobe in this download.")
+                       ""
+                       "wmark runs FFmpeg as a separate program. FFmpeg is not part of wmark; it is"
+                       (str "licensed under " spdx " (" (str/join ", " (map :file (license-texts license))) ", next to this file).")
+                       ""]
+                      (if build
+                        (concat ["The binaries were built from this source archive (SHA-256 verified):"
+                                 (pinned-line (:source build))
+                                 ""
+                                 "with nothing changed, by:"
+                                 (str "  ./configure " (shell-words (:configure build)))
+                                 "  make"]
+                                (when (or on toolchain)
+                                  ["" (str "on " (name (or on platform))
+                                           (if toolchain ", with this compiler (SHA-256 verified) first on PATH:" "."))])
+                                (when toolchain [(pinned-line toolchain)])
+                                (when (seq libraries)
+                                  (into [""
+                                         "These libraries were built first from their source archives (SHA-256"
+                                         "verified), with nothing changed, into the folder ${PREFIX} stands for"
+                                         "above, and linked in statically:"]
+                                        (for [{lib :source :keys [env steps]} libraries]
+                                          (apply str (pinned-line lib)
+                                                 (for [step steps]
+                                                   (str "\n    " (shell-words (concat (for [[k v] (sort env)] (str k "=" v))
+                                                                                       step)))))))))
+                        (cons "The binaries come unmodified from these archives (SHA-256 verified):"
+                              (map pinned-line archives)))
+                      ["" "Source code of this build:"]
+                      (map #(str "  " %) source)
+                      [""]))))
 
 (defn- run-in!
-  "Run `argv` in `dir`, its output on this console; fail unless it exits 0."
-  [^File dir argv]
-  (let [^java.util.List argv (mapv str argv)
-        p (-> (ProcessBuilder. argv) (.directory dir) (.inheritIO) (.start))]
-    (when-not (zero? (.waitFor p))
-      (fail! (str (str/join " " (take 2 argv)) " failed in " dir)))))
+  "Run `argv` in `dir`, its output on this console, with `env` set in its
+  environment; fail unless it exits 0. The program itself is found on this
+  process's PATH; what it runs sees `env`'s."
+  ([dir argv] (run-in! dir argv {}))
+  ([^File dir argv env]
+   (let [^java.util.List argv (mapv str argv)
+         pb (-> (ProcessBuilder. argv) (.directory dir) (.inheritIO))
+         ^java.util.Map vars (.environment pb)]
+     (doseq [[k v] env] (.put vars (str k) (str v)))
+     (when-not (zero? (.waitFor (.start pb)))
+       (fail! (str (str/join " " (take 2 argv)) " failed in " dir))))))
 
 (defn- output-of
   "Everything `argv` prints (stdout and stderr); fails when it can't run."
@@ -454,30 +500,68 @@
 (defn- delete-tree! [^File dir]
   (doseq [^File f (reverse (file-seq dir))] (.delete f)))
 
+(defn builds-on
+  "The platform a pin's :build recipe runs on: its :on, or the platform it is
+  for. Archives need no build: nil."
+  [p {:keys [build]}]
+  (when build (or (:on build) p)))
+
+(defn- expand
+  "`s` with ${PREFIX} replaced by `prefix`, the folder a recipe's libraries
+  are installed into."
+  [s ^File prefix]
+  (str/replace (str s) "${PREFIX}" (.getAbsolutePath prefix)))
+
+(defn- unpack!
+  "Unpack `archive` (a tar archive, compressed any way tar reads) into
+  `dir`, without its top folder."
+  [^File archive ^File dir]
+  (.mkdirs dir)
+  (run-in! dir ["tar" "-xf" (.getAbsolutePath archive) "--strip-components=1"]))
+
 (defn- build-from-source!
-  "Build ffmpeg and ffprobe from a pin's :build recipe (its source archive,
-  SHA-256 verified, then ./configure with its flags and make) into `bin`;
-  returns the names built. Only for this machine's platform, and once per
-  recipe: the result is cached next to the download."
-  [p {:keys [build]} ^File cache ^File bin]
-  (when (not= p (platform))
-    (fail! (str "FFmpeg for " (name p) " is built from source, which only works on " (name p) " itself.")))
-  (let [{:keys [source configure]} build
-        ^File archive (download! (:url source) (:sha256 source) (io/file cache (last (str/split (:url source) #"/"))))
+  "Build ffmpeg and ffprobe from a pin's :build recipe into `bin`; returns
+  the names built. The recipe's :toolchain (a compiler archive) is unpacked
+  and its bin/ put first on PATH, each of its :libraries is unpacked and
+  built with its :steps (and :env) into a prefix folder, then FFmpeg's
+  source is configured with its flags and made. Every archive is SHA-256
+  verified, and ${PREFIX} in flags, steps and env stands for the prefix
+  folder. Only on the platform the recipe builds on (`builds-on`), and once
+  per recipe: the result is cached next to the downloads."
+  [p pin ^File cache ^File bin]
+  (let [{:keys [source configure toolchain libraries] :as build} (:build pin)
+        on      (builds-on p pin)
+        _       (when (not= on (platform))
+                  (fail! (str "FFmpeg for " (name p) " is built from source on " (name on)
+                              (when (not= on p) " (cross-compiled)") ", not on " (name (platform)) ".")))
+        fetch   (fn [{:keys [url sha256]}] (download! url sha256 (io/file cache (last (str/split url #"/")))))
         md      (MessageDigest/getInstance "SHA-256")
         recipe  (subs (.formatHex (HexFormat/of) (.digest md (.getBytes (pr-str build) "UTF-8"))) 0 16)
         work    (io/file cache (str "build-" recipe))
         out     (io/file cache (str "built-" recipe))
-        names   ["ffmpeg" "ffprobe"]]
+        names   [(exe-on p "ffmpeg") (exe-on p "ffprobe")]]
     (when-not (every? #(.isFile (io/file out %)) names)
       (delete-tree! work)
-      (.mkdirs work)
-      (println "Building FFmpeg" (:url source) "for" (name p))
-      (run-in! work ["tar" "-xJf" (.getAbsolutePath archive) "--strip-components=1"])
-      (run-in! work (into ["./configure"] configure))
-      (run-in! work ["make" (str "-j" (.availableProcessors (Runtime/getRuntime)))])
-      (.mkdirs out)
-      (doseq [n names] (io/copy (io/file work n) (io/file out n)))
+      (let [prefix (io/file work "prefix")
+            tools  (io/file work "toolchain")
+            env    (if toolchain
+                     {"PATH" (str (.getAbsolutePath (io/file tools "bin")) File/pathSeparator (System/getenv "PATH"))}
+                     {})
+            src    (io/file work "ffmpeg")]
+        (.mkdirs prefix)
+        (println "Building FFmpeg" (:url source) "for" (name p) (if (= on p) "" (str "on " (name on))))
+        (when toolchain (unpack! (fetch toolchain) tools))
+        (doseq [[i lib] (map-indexed vector libraries)
+                :let [dir (io/file work (str "lib-" i))
+                      env (merge env (update-vals (:env lib) #(expand % prefix)))]]
+          (println "Building" (get-in lib [:source :url]))
+          (unpack! (fetch (:source lib)) dir)
+          (doseq [step (:steps lib)] (run-in! dir (map #(expand % prefix) step) env)))
+        (unpack! (fetch source) src)
+        (run-in! src (into ["./configure"] (map #(expand % prefix)) configure) env)
+        (run-in! src ["make" (str "-j" (.availableProcessors (Runtime/getRuntime)))] env)
+        (.mkdirs out)
+        (doseq [n names] (io/copy (io/file src n) (io/file out n))))
       (delete-tree! work))
     (.mkdirs bin)
     (doseq [n names]
@@ -485,12 +569,82 @@
       (.setExecutable (io/file bin n) true))
     (set names)))
 
+(def ^:private pe-machines {0x8664 :x64, 0xaa64 :arm64, 0x14c :x86})
+
+(defn pe-info
+  "What a Windows program `f` (a PE file) is built for and what it loads,
+  read from its headers, so any OS can check it:
+  {:machine :x64 | :arm64 | :x86, :imports [\"KERNEL32.dll\" ...]}."
+  [f]
+  (let [^bytes bs (Files/readAllBytes (.toPath (io/file f)))
+        b     (.order (ByteBuffer/wrap bs) ByteOrder/LITTLE_ENDIAN)
+        u16   (fn [at] (bit-and 0xffff (.getShort b (int at))))
+        u32   (fn [at] (bit-and 0xffffffff (.getInt b (int at))))
+        _     (when-not (and (> (alength bs) 0x40) (= 0x5a4d (u16 0)) (= 0x4550 (u32 (u32 0x3c))))
+                (fail! (str f " is not a Windows program")))
+        coff  (+ 4 (u32 0x3c))
+        opt   (+ coff 20)
+        dirs  (condp = (u16 opt) 0x20b (+ opt 112) 0x10b (+ opt 96) (fail! (str f ": unknown PE optional header")))
+        secs  (for [i (range (u16 (+ coff 2)))
+                    :let [s (+ opt (u16 (+ coff 16)) (* 40 i))]]
+                {:va (u32 (+ s 12)) :size (max (u32 (+ s 8)) (u32 (+ s 16))) :raw (u32 (+ s 20))})
+        at    (fn [rva] (or (some (fn [{:keys [va size raw]}] (when (<= va rva (dec (+ va size))) (+ raw (- rva va)))) secs)
+                            (fail! (str f ": an import points outside its sections"))))
+        cstr  (fn [off] (let [end (loop [i off] (if (zero? (aget bs i)) i (recur (inc i))))]
+                          (String. bs (int off) (int (- end off)) "US-ASCII")))
+        table (u32 (+ dirs 8))]
+    {:machine (get pe-machines (u16 coff) (u16 coff))
+     :imports (if (zero? table)
+                []
+                (loop [d (at table) found []]
+                  (let [named (u32 (+ d 12))]
+                    (if (zero? named) found (recur (+ d 20) (conj found (cstr (at named))))))))}))
+
+(def windows-dlls
+  "DLLs that ship with Windows 10 and later, which a program in a download
+  may load: the Universal CRT's api-ms-win-crt-* forwarders count too (see
+  `windows-dll?`). The Visual C++ runtime and MinGW's own DLLs
+  (libwinpthread-1.dll, libc++.dll) don't."
+  #{"advapi32" "avicap32" "avrt" "bcrypt" "cfgmgr32" "comctl32" "comdlg32" "crypt32"
+    "d2d1" "d3d11" "d3d12" "d3d9" "dbghelp" "dwrite" "dxgi" "dxva2" "evr" "gdi32"
+    "imm32" "iphlpapi" "kernel32" "mf" "mfplat" "mfreadwrite" "msvcrt" "ncrypt" "ntdll"
+    "ole32" "oleaut32" "opengl32" "psapi" "rpcrt4" "secur32" "setupapi" "shell32"
+    "shlwapi" "ucrtbase" "user32" "userenv" "usp10" "version" "winmm" "ws2_32"})
+
+(defn windows-dll?
+  "True when `dll` (a name as a program imports it) ships with Windows."
+  [dll]
+  (let [n (str/replace (str/lower-case (str dll)) #"\.dll$" "")]
+    (or (contains? windows-dlls n) (str/starts-with? n "api-ms-win-") (str/starts-with? n "ext-ms-win-"))))
+
+(defn windows-program-problems
+  "Why ffmpeg.exe and ffprobe.exe in `bin` don't belong in platform `p`'s
+  download: built for another processor, or loading DLLs that don't ship
+  with Windows (the download would lack them). Reads their headers, so it
+  works on any OS."
+  [p bin]
+  (let [want ({:windows-x64 :x64 :windows-arm64 :arm64} p)]
+    (for [n ["ffmpeg" "ffprobe"]
+          :let [f (io/file bin (exe-on p n))
+                {:keys [machine imports]} (pe-info f)
+                foreign (remove windows-dll? imports)]
+          problem [(when (and want (not= want machine))
+                     (str f " is built for " (name machine) ", not " (name want) " (" (name p) ")"))
+                   (when (seq foreign)
+                     (str f " loads DLLs that don't ship with Windows, so the download would be incomplete: "
+                          (str/join ", " foreign)))]
+          :when problem]
+      problem)))
+
 (defn- check-build!
-  "Fail unless the ffmpeg in `bin` is what its pin says: it states the pinned
-  license (`ffmpeg -L`), an LGPL build has no GPL or nonfree parts configured
-  in, and on macOS it links nothing but the OS. Only on this machine's
-  platform, where the binary runs."
+  "Fail unless the ffmpeg in `bin` is what its pin says. On any OS: a
+  Windows build is for the pin's processor and loads only what ships with
+  Windows. On this machine's platform, where the binary runs: it states the
+  pinned license (`ffmpeg -L`), an LGPL build has no GPL or nonfree parts
+  configured in, and on macOS it links nothing but the OS."
   [p ^File bin {:keys [spdx]}]
+  (when-let [problems (and (str/starts-with? (name p) "windows") (seq (windows-program-problems p bin)))]
+    (fail! (str/join "\n" problems)))
   (when (= p (platform))
     (let [ff      (str (io/file bin (exe-on p "ffmpeg")))
           license (output-of [ff "-hide_banner" "-L"])
@@ -501,7 +655,7 @@
                     (and (str/includes? license "GNU General Public License") (not (str/includes? license "Lesser"))))]
       (when-not says
         (fail! (str ff " doesn't state the pinned license " spdx " (ffmpeg -L): " (str/trim license))))
-      (when-let [flags (and lgpl? (seq (filter #(str/includes? config %) ["--enable-gpl" "--enable-nonfree"])))]
+      (when-let [flags (and lgpl? (seq (filter #(str/includes? config %) gpl-flags)))]
         (fail! (str ff " is pinned as " spdx " but was configured with " (str/join " " flags))))
       (when (str/starts-with? (name p) "macos")
         (let [libs    (for [line (rest (str/split-lines (output-of ["otool" "-L" ff])))
@@ -513,20 +667,39 @@
             (fail! (str ff " links libraries that aren't part of macOS, so the download would be incomplete "
                         "and its license unclear: " (str/join ", " foreign)))))))))
 
+(defn- copied-build
+  "The names in `dir`'s bin/ when `dir` holds what `pin`'s recipe made on
+  the machine it builds on, copied here: its SOURCE.txt is this recipe's,
+  word for word. Else fail, saying how to make it."
+  [p pin license ^File dir]
+  (let [names #{(exe-on p "ffmpeg") (exe-on p "ffprobe")}
+        note  (io/file dir "licenses" "SOURCE.txt")]
+    (when-not (and (every? #(.isFile (io/file dir "bin" %)) names)
+                   (.isFile note)
+                   (= (slurp note) (source-note p pin license)))
+      (fail! (str "FFmpeg for " (name p) " is cross-compiled on " (name (builds-on p pin))
+                  ". Run  clojure -T:build ffmpeg :platform " (name p) "  there, then copy its "
+                  (.getName dir) " folder to " dir " here, and run this again to check it.")))
+    names))
+
 (defn ffmpeg
   "Fetch the pinned FFmpeg build for this platform (or :platform) and verify
   it against its SHA-256, or build it from its pinned source recipe
-  (:build, only on the platform itself):
+  (:build, on the platform the recipe builds on: its :on, else the platform
+  itself):
 
     <out>/<platform>/bin/ffmpeg(.exe), bin/ffprobe(.exe)
     <out>/<platform>/licenses/<license texts>, SOURCE.txt
 
-  On this machine's platform it then checks the binary against its pin
-  (check-build!: the license it states, no GPL parts in an LGPL build, no
-  libraries outside macOS). :variant :gpl fetches that pin instead, into
-  <out>/<platform>-gpl. :out defaults to target/ffmpeg; downloads and builds
-  are cached in target/downloads. Pass the platform folder to `bundle` as
-  :ffmpeg-dir."
+  It then checks the binary against its pin (check-build!): a Windows
+  build's processor and DLLs anywhere; on this machine's platform, the
+  license it states, no GPL parts in an LGPL build, no libraries outside
+  macOS. On the platform a cross-compiled recipe is for, it builds nothing:
+  it checks the folder made on the other machine and copied here, which
+  must carry this recipe's SOURCE.txt. :variant :gpl fetches that pin
+  instead, into <out>/<platform>-gpl. :out defaults to target/ffmpeg;
+  downloads and builds are cached in target/downloads. Pass the platform
+  folder to `bundle` as :ffmpeg-dir."
   [{:keys [out variant] :as opts :or {out "target/ffmpeg"}}]
   (let [pins  (or (:ffmpeg (matrix*)) (fail! "deps.edn has no :ffmpeg pins in its build matrix"))
         {:keys [license platforms]} (if variant
@@ -538,8 +711,14 @@
         dir   (io/file (str out) (str (name p) (when variant (str "-" (name (kw variant))))))
         cache (io/file "target/downloads" (name p))
         want  #{(exe-on p "ffmpeg") (exe-on p "ffprobe")}
-        found (if (:build pin)
-                (build-from-source! p pin cache (io/file dir "bin"))
+        on    (builds-on p pin)
+        found (cond
+                (and on (not= on (platform)) (= p (platform)))
+                (copied-build p pin license dir)
+
+                on (build-from-source! p pin cache (io/file dir "bin"))
+
+                :else
                 (reduce (fn [found {:keys [url sha256]}]
                           (into found (extract! (download! url sha256 (io/file cache (last (str/split url #"/"))))
                                                 want (io/file dir "bin"))))

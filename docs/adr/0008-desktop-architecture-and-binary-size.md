@@ -189,7 +189,7 @@ For the GraalVM host, each step measured before and after:
 | Remove `wmark-tui` (ADR 0010) | 57 MB | **Done** |
 | Build the engine with `-Os` ("optimize for size", GraalVM 25) | 9.6 MB of 63.0 (−15%); gzip 16.5 → 13.8 MB | Planned, after a check that host-side drawing isn't slower in a way users notice |
 | FFmpeg's shared-library build on Windows and Linux (`ffmpeg` and `ffprobe` share the DLLs) | Windows 229 → 134 MB, measured on BtbN's `lgpl-shared` build of the pinned commit | Planned: a pin change (ADR 0001) |
-| A trimmed LGPL FFmpeg we build from the signed source, with only the components the engine uses | 232 → **13 MB** for `ffmpeg`, `ffprobe` and all libraries (measured on Linux) | Planned, after the shared build. The component list comes from the engine and is proven by the conformance and smoke tests. |
+| A trimmed LGPL FFmpeg we build from the signed source, with only the components the engine uses | 232 → **13 MB** for `ffmpeg`, `ffprobe` and all libraries (measured on Linux). Windows, cross-compiled on Linux: x64 228.6 → **22.8 MB**, Arm64 129.3 → **15.9 MB** for `ffmpeg.exe` and `ffprobe.exe`, static, loading only DLLs that ship with Windows (measured 2026-10-01, FFmpeg 9.0.2, against BtbN's LGPL builds) | The build tool can make it: a `:build` recipe cross-compiles with a pinned compiler and statically linked libraries (RUNBOOK, "FFmpeg for the download"). The open core's pins move after the shared build. The component list comes from the engine and is proven by the conformance and smoke tests. |
 | A size budget in CI | keeps the result | Planned: the native job fails when a bundle outgrows it |
 
 **Expected result for the open-core download:** about 70 MB unpacked
