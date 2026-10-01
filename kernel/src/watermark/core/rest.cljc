@@ -232,7 +232,7 @@
 
 (def status-of
   "The HTTP status of each kind of error (:wmark/error)."
-  {:invalid 422 :unsupported 422 :not-found 404 :conflict 409 :feature-locked 402
+  {:invalid 422 :unsupported 422 :not-found 404 :conflict 409 :feature-locked 402 :render-limit 402
    :feature-unavailable 402 :unavailable 503})
 
 (defn error-answer

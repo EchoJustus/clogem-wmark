@@ -123,6 +123,39 @@
                          " is not included in the current plan.")
                     {:wmark/error :feature-locked :features [feature-id]}))))
 
+;; ---------------------------------------------------------------------------
+;; Render allowance: how many renders may still run
+
+(defprotocol RenderAllowance
+  "An optional port beside Entitlements, in the system map as :allowance:
+  how many renders may still run (a trial, a plan's quota). Entitlements
+  say which features a render may use; an allowance says whether it may
+  run at all. Without one, every render may run. The core checks it when a
+  job is submitted, and again as each render starts, so no client can go
+  around it (docs/adr/0017)."
+  (renders-left    [this ctx]       "Renders still allowed for ctx, the running ones taken off; nil when unlimited.")
+  (reserve-render! [this ctx]       "Take one render's turn as it starts: truthy when one was left.")
+  (settle-render!  [this ctx done?] "A reserved render ended: done? uses its turn up, else it comes back."))
+
+(defn left
+  "Renders `allowance` still allows for ctx; nil when there is no limit."
+  [allowance ctx]
+  (when allowance (renders-left allowance ctx)))
+
+(defn render-limit
+  "The error for a render the allowance has no turn left for (HTTP 402)."
+  []
+  (ex-info "No renders left: every render this plan allows is used."
+           {:wmark/error :render-limit :renders-left 0}))
+
+(defn check-renders!
+  "Throw :render-limit when `allowance` has no render left for ctx: what
+  submitting a job checks, before anything is queued."
+  [allowance ctx]
+  (let [n (left allowance ctx)]
+    (when (and (some? n) (not (pos? n)))
+      (throw (render-limit)))))
+
 (defn report
   "Catalog annotated with the current entitlement, for UIs to render locks."
   [ent]
