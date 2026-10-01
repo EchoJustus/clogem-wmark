@@ -57,10 +57,13 @@
    lifts a limit all belong to the adapter. The core only asks and reports.
 5. **The JVM's desktop host** takes an optional `:allowance-fn` in its
    edition map (`watermark.app`), beside `:entitlements-fn`:
-   `(fn [home opts] allowance-or-nil)`. It sees the command's options, so an
-   edition can limit some runs and not others: for example only a server
-   started for a GUI (`serve --parent-pid`), never a script's `run`. A host
-   on the Dart VM puts `:allowance` in its system map itself.
+   `(fn [home opts] allowance-or-nil)`. It is asked twice: with the
+   global options when the system is built, and again by `serve` and `ui`
+   with their own (`with-allowance`), since the command line builds the
+   system before a command's options are read. So an edition can limit
+   some runs and not others: for example only a server started for a GUI
+   (`serve --parent-pid`), never a script's `run`. A host on the Dart VM
+   puts `:allowance` in its system map itself.
 
 ## Consequences
 
@@ -91,8 +94,9 @@
 - JVM, the Core API (`api_test`): `:renders-left` in the features report
   only for a limited caller, and `submit-job!` refused with a 402 before
   anything is queued.
-- JVM, the local server (`http_test`): an edition's `:allowance-fn` sees
-  the command's options, `GET /api/v1/features` reports 0 renders left,
+- JVM, the local server (`http_test`): an edition's `:allowance-fn` is
+  asked with the global options (no allowance), then with serve's
+  (`--parent-pid`). `GET /api/v1/features` then reports 0 renders left,
   and `POST /api/v1/jobs` answers 402 `render-limit` with nothing queued.
   Without the hook, the system has no allowance.
 - Dart VM, real FFmpeg (`dart/test`, `host_test`): a one-render allowance
