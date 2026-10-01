@@ -14,7 +14,10 @@
   out only asynchronously, so discovery is a task: `ffmpeg-engine` returns
   a task of the engine, whose `info` is then at hand. Renders run with
   Process.start: -progress lines on stdout feed the progress reader, stderr
-  goes to the render's log file."
+  goes to the render's log file. A host that can itself be killed (an app
+  rendering in its own process) sees each render's process through
+  `:on-process`, to end it with itself: a killed process's children live
+  on."
   (:require ["dart:async" :as async]
             ["dart:convert" :as convert]
             ["dart:io" :as io]
@@ -143,8 +146,10 @@
       (throw (ex-info (str "Can't read " input ": " err) {:wmark/error :invalid :path (str input)})))))
 
 (defn- execute
-  "Start the render of `plan`: a RenderHandle whose outcome is a task."
-  [plan listener]
+  "Start the render of `plan`: a RenderHandle whose outcome is a task.
+  `on-process`, when given, is called with the FFmpeg process once it
+  runs."
+  [plan listener on-process]
   (let [result    (task/deferred)
         cancelled (atom false)
         proc      (atom nil)
@@ -166,6 +171,8 @@
         (task/then
          (fn [^io/Process p]
            (reset! proc p)
+           ;; the host's business: its failure never stops a render
+           (when on-process (try (on-process p) (catch Object _ nil)))
            (when @cancelled (stop p))
            (let [sink     (.openWrite (io/File log))
                  err-done (.then (.addStream sink (.-stderr p)) (fn [_] (.close sink)))
@@ -229,13 +236,13 @@
 
 (defn engine-of
   "The engine for discovery result `info`."
-  [info {:keys [work-root]}]
+  [info {:keys [work-root on-process]}]
   (reify
     engine/VideoEngine
     (info [_] info)
     (probe [_ source] (probe (fe/binary! info :ffprobe) source))
     (prepare [_ request] (fe/plan-render info request (fe/scratch-dir (str work-root))))
-    (execute! [_ plan listener] (execute plan listener))
+    (execute! [_ plan listener] (execute plan listener on-process))
 
     engine/StillDecoder
     (decode-still [this source] (decode-still this source))
@@ -247,6 +254,9 @@
   "A task of the FFmpeg engine.
     :ffmpeg    explicit ffmpeg path or folder (--ffmpeg / WMARK_FFMPEG)
     :search    locate order (default watermark.util.locate/default-search)
-    :work-root folder for per-render scratch folders (graph, text files, log)"
+    :work-root folder for per-render scratch folders (graph, text files, log)
+    :on-process called with each render's FFmpeg process (a dart:io
+               Process) once it runs, e.g. by an app that ends FFmpeg when
+               it is killed itself"
   [opts]
   (task/then (discover opts) #(engine-of % opts)))

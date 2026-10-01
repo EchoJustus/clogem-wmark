@@ -37,8 +37,9 @@
   its encoders tried first. `:jobs` is the core library's in-process queue
   (watermark.core.queue, docs/adr/0015), running `:concurrency` jobs at
   once (default 1), for an app that submits jobs rather than running a
-  batch."
-  [{:keys [engine ffmpeg ffmpeg-search render-spec concurrency] :as opts}]
+  batch. `:on-process` goes to the FFmpeg engine
+  (watermark.dartvm.ffmpeg/ffmpeg-engine): it sees each render's process."
+  [{:keys [engine ffmpeg ffmpeg-search render-spec concurrency on-process] :as opts}]
   (when (and engine (not= engine "ffmpeg"))
     (throw (ex-info (str "Unknown engine: " engine " (wmark-dart renders with ffmpeg)") {:wmark/error :invalid})))
   (let [h      (home/resolve-home opts)
@@ -47,7 +48,8 @@
         store  (home/file-store h)]
     (task/then (ffmpeg/ffmpeg-engine {:ffmpeg    (or ffmpeg (env "WMARK_FFMPEG"))
                                       :search    (cli/search-order (or ffmpeg-search (env "WMARK_FFMPEG_SEARCH")))
-                                      :work-root work})
+                                      :work-root work
+                                      :on-process on-process})
                (fn [eng]
                  (let [sys {:edition      :community
                             :version      version
