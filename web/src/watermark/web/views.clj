@@ -84,7 +84,7 @@
   (let [{:keys [text bad? title]} (engine-status health)]
     [:header {:class "topbar"}
      [:div {:class "brand"}
-      [:div {:class "mark" :aria-hidden "true"} [:div {:class "mark-card"} "wm"]]
+      [:div {:class "mark" :aria-hidden "true"} [:img {:src "/wmark.svg" :alt "" :width "30" :height "30"}]]
       [:h1 "wmark"]]
      [:span {:class "badge" :id "edition"}
       (str (if (= :pro (:edition health)) "Pro" "Community") " " (:version health))]
@@ -270,6 +270,7 @@
       [:meta {:name "viewport" :content "width=device-width, initial-scale=1"}]
       [:meta {:name "color-scheme" :content "light dark"}]
       [:title "wmark"]
+      [:link {:rel "icon" :type "image/svg+xml" :href "/wmark.svg"}]
       [:link {:rel "stylesheet" :href "/app.css"}]
       [:script {:type "module" :src "/datastar.js"}]]
      ;; only numbers go into data-signals; text signals are created by

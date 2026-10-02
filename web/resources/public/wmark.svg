@@ -1,0 +1,28 @@
+<!-- SPDX-FileCopyrightText: 2026 The clogem-wmark authors -->
+<!-- SPDX-License-Identifier: EPL-2.0 -->
+<!-- wmark icon, 48 master (v2) -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" fill="none">
+<defs>
+<filter id="wm-sh" x="-30%" y="-30%" width="160%" height="170%" color-interpolation-filters="sRGB">
+<feDropShadow dx="0" dy="1.2" stdDeviation="1.1" flood-color="#0A1F55" flood-opacity="0.32"/>
+<feDropShadow dx="0" dy="0.3" stdDeviation="0.3" flood-color="#0A1F55" flood-opacity="0.25"/>
+</filter>
+<linearGradient id="wm-b" x1="12" y1="5" x2="40" y2="28" gradientUnits="userSpaceOnUse"><stop stop-color="#8DB4F7"/><stop offset="1" stop-color="#4F80E3"/></linearGradient>
+<linearGradient id="wm-m" x1="8" y1="10" x2="38" y2="34" gradientUnits="userSpaceOnUse"><stop stop-color="#3D7BFF"/><stop offset="1" stop-color="#1A4FD6"/></linearGradient>
+<linearGradient id="wm-f" x1="5" y1="16" x2="38" y2="42" gradientUnits="userSpaceOnUse"><stop stop-color="#F7FAFF"/><stop offset="1" stop-color="#C3D7FF"/></linearGradient>
+<radialGradient id="wm-fg" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(9 18) rotate(35) scale(22 12)"><stop stop-color="#FFFFFF" stop-opacity="0.9"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/></radialGradient>
+<linearGradient id="wm-c" x1="27" y1="26" x2="41" y2="42" gradientUnits="userSpaceOnUse"><stop stop-color="#3F8CFF"/><stop offset="0.55" stop-color="#0756E0"/><stop offset="1" stop-color="#03319A"/></linearGradient>
+<linearGradient id="wm-ce" x1="0" y1="26" x2="0" y2="31" gradientUnits="userSpaceOnUse"><stop stop-color="#9CC3FF" stop-opacity="0.8"/><stop offset="1" stop-color="#9CC3FF" stop-opacity="0"/></linearGradient>
+<linearGradient id="wm-p" x1="15" y1="21" x2="22" y2="31" gradientUnits="userSpaceOnUse"><stop stop-color="#7FA8FF"/><stop offset="1" stop-color="#3D6FE6"/></linearGradient>
+<linearGradient id="wm-top" x1="0" y1="5" x2="0" y2="9" gradientUnits="userSpaceOnUse"><stop stop-color="#FFFFFF" stop-opacity="0.35"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/></linearGradient>
+</defs>
+<rect x="13" y="5" width="31" height="20" rx="4.5" fill="url(#wm-b)" filter="url(#wm-sh)"/>
+<rect x="13" y="5" width="31" height="20" rx="4.5" fill="url(#wm-top)"/>
+<rect x="8.5" y="10.5" width="31" height="20" rx="4.5" fill="url(#wm-m)" filter="url(#wm-sh)"/>
+<rect x="8.5" y="10.5" width="31" height="20" rx="4.5" fill="url(#wm-top)" transform="translate(0 5.5)" opacity="0.8"/>
+<rect x="4" y="16" width="32" height="21" rx="4.5" fill="url(#wm-f)" filter="url(#wm-sh)"/>
+<rect x="4" y="16" width="32" height="21" rx="4.5" fill="url(#wm-fg)"/>
+<path d="M15 22.6C15 21.4 16.3 20.6 17.4 21.3L24.4 25.6C25.4 26.2 25.4 27.6 24.4 28.2L17.4 32.5C16.3 33.2 15 32.4 15 31.2Z" fill="url(#wm-p)" opacity="0.85"/>
+<path d="M28.5 28.2C28.5 27.1 29.4 26.3 30.5 26.4L40.2 27.6C41.2 27.7 42 28.6 42 29.6V38.4C42 39.4 41.2 40.3 40.2 40.4L30.5 41.6C29.4 41.7 28.5 40.9 28.5 39.8Z" fill="url(#wm-c)" filter="url(#wm-sh)"/>
+<path d="M28.5 28.2C28.5 27.1 29.4 26.3 30.5 26.4L40.2 27.6C41.2 27.7 42 28.6 42 29.6V31H28.5Z" fill="url(#wm-ce)"/>
+</svg>

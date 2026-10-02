@@ -25,3 +25,13 @@
 (deftest no-javascript-of-our-own
   (is (nil? (io/resource "public/app.js")) "the UI is server-rendered: the only script is datastar.js")
   (is (some? (io/resource "public/app.css"))))
+
+(deftest the-icon-is-a-plain-drawing
+  ;; wmark's icon (the clogem icon set's v2.1 master), served as the top
+  ;; bar's mark and the favicon: an image, so it may run nothing and reach
+  ;; nothing outside itself (docs/adr/0011, "The look, refreshed")
+  (let [svg (slurp (io/resource "public/wmark.svg"))]
+    (is (str/includes? svg "SPDX-License-Identifier: EPL-2.0"))
+    (is (re-find #"<svg\b" svg))
+    (is (not (re-find #"(?i)<script|<foreignObject|<image\b|\son[a-z]+\s*=" svg)))
+    (is (not (re-find #"(?i)href\s*=\s*[\"'](?!#)|url\(\s*[\"']?(?!#)" svg)) "nothing outside itself")))

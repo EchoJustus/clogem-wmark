@@ -1,7 +1,8 @@
 # 0011. The web UI as a product: design system, a settings form, live preview
 
 - **Status:** Accepted (owner, 2026-09-28), with the amendments below. The
-  first cut is built (see "Implementation").
+  first cut is built (see "Implementation"). Restyled 2026-10-02 (owner):
+  "The look, refreshed" at the end.
 - **Date:** 2026-09-28
 
 ## Context
@@ -55,6 +56,10 @@
   card aesthetics of RedotPay and TaskForge.
 - **The accent is blue** (`#0866FF` in light, `#4C9AFF` in dark), replacing
   wmark's earlier yellow.
+- **Refreshed 2026-10-02** (owner): the grey canvas read as dull, so the
+  look now follows the wmark Pro app's: a cool, lightly lit canvas,
+  outlined controls and tinted states. See "The look, refreshed" at the
+  end; the tokens and the shapes below are as amended there.
 
 **Principles we take from them:**
 - **Tokens, not one-off values.** `web/resources/public/app.css` defines
@@ -324,3 +329,44 @@ Datastar UI shows. Steps 1 and 2 are pure and live in the core library.
   makes it visible before a render; the fix (wrapping, or shrinking to a
   maximum share of the frame's width) belongs in the kernel's text layout,
   with golden vectors and the conformance harness, as a rendering change.
+
+## The look, refreshed (owner, 2026-10-02)
+
+**Why.** The owner found the built-in UI, and the README's screenshot of
+it, dull and greyish next to the wmark Pro app, and asked for its look to
+follow the app's while its architecture stays as it is.
+
+**What changed**, in `web/resources/public/app.css` alone, plus the icon:
+- **Canvas:** a cool off-white (`#F5F7FB`; dark `#0E1116`) lit at the top by
+  two soft glows, the accent's blue and the icon family's violet, as on
+  the clogem support pages. Surfaces stay white (dark `#161A21`), insets
+  and values take a faint blue tint (`#F2F5FB`; dark `#1D222B`), and lines
+  are cooler (`#E3E8F0`).
+- **Controls, as in the app:** buttons are outlined (a hairline border and
+  a light shadow) and take the accent's tint on hover; the one primary
+  action stays filled blue, with a soft glow. Chosen states are tonal, a
+  soft tint of the accent with its ink: the selected profile (with an
+  accent bar), the theme and shape switches, the table of contents on
+  hover, "Set here". Where a value comes from is an outlined chip
+  ("Built-in default") or a tinted one ("Set here", "From your last
+  run").
+- **Shape:** 10 px corners on controls, 16 px on cards; cards keep a soft
+  two-layer shadow. Section titles carry a short blue-to-violet bar, and
+  the progress bar the same gradient.
+- **The top bar** is translucent over the page, and shows **wmark's own
+  icon** (`web/resources/public/wmark.svg`, the clogem icon set's v2.1
+  48-unit master, EPL-2.0, 3,166 bytes) in place of the "wm" box, with the
+  same one-time flip; the page uses it as its favicon too. The engine's
+  status is a tinted chip with a dot.
+- **Type:** the Segoe UI Variable faces first where Windows has them, then
+  the same system stack; sizes and weights are unchanged.
+- **Unchanged:** every selector the views and tests use, the layout, the
+  accent and semantic colours, both themes and the switcher, and the
+  contrast: body and secondary text meet WCAG AA in both themes
+  (`--ink-2` is 6.1:1 on white).
+
+**Checked:** `bb e2e` (every check, no CSP violation or console error),
+and new screenshots, `docs/img/ui-light.png` and `docs/img/ui-dark.png`
+(1440x1000, a 9:16 profile with two text layers on the sample clip). The
+README shows them in place of `docs/img/ui-datastar.png`, which stays as
+the record of the UI before this ADR.

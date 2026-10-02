@@ -171,7 +171,8 @@ paused M3 and opened a **productization and UX phase**.
    owner's amendments): a design system with light and dark themes (both
    required), a clean look in the manner of Facebook with a blue accent and
    FeverStudio as a partial reference, a settings form generated from the
-   schema, and live preview.
+   schema, and live preview. Restyled after the wmark Pro app on
+   2026-10-02 (owner): a cool canvas, outlined controls, tinted states.
 5. **Proposed, for the owner's review:** the community edition goes through
    package managers
    ([ADR 0009](adr/0009-community-distribution-through-package-managers.md)).
