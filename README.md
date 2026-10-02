@@ -12,7 +12,9 @@ This repository is the **open core** of wmark, licensed under the
 frames, randomised text, offline licenses, the hosted service and the apps)
 are built on top of it separately; nothing here depends on them.
 
-![The built-in web UI: profiles, the settings editor with where each value comes from, and the render queue](docs/img/ui-datastar.png)
+![The built-in web UI: profiles, the settings form with where each value comes from, and the live preview of a 9:16 profile](docs/img/ui-light.png)
+
+<sub>The same UI in dark: [docs/img/ui-dark.png](docs/img/ui-dark.png).</sub>
 
 ## How it's built
 
@@ -96,7 +98,7 @@ kernel/     portable .cljc: settings schema and resolution, render spec and refe
 src/        JVM host core: profile rules, store/media/queue ports, job pipeline,
             Core API, FFmpeg and native engines, REST routes
 web/        built-in UI: escaping hiccup, Datastar SSE events, views, handler;
-            vendored datastar.js (MIT) and app.css
+            vendored datastar.js (MIT), app.css and the wmark icon
 desktop/    CLI, http-kit server, loopback security, sidecar mode, native-image metadata
 native/     wmark_engine.h (C ABI), a mock engine, exported JSON Schemas
 testkit/    conformance harness, store and queue contracts, golden vectors, architecture checks

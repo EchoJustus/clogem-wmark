@@ -219,7 +219,10 @@ shape) and the components built from them. Light and dark themes come from
 the same tokens: the operating system's choice by default, or one the person
 pins with the switcher (remembered in a cookie). The layout is an app shell:
 profiles on the left, the settings form in the middle, the preview on the
-right, the render queue below.
+right, the render queue below. Since 2026-10-02 the look follows the wmark
+Pro app's (ADR 0011, "The look, refreshed"): a cool, lightly lit canvas,
+outlined controls, tinted states, and wmark's own icon (`wmark.svg`) in the
+top bar and as the favicon.
 
 **How a page behaves:**
 - **Every interaction is a request** under `/ui/`. The response carries
@@ -450,7 +453,7 @@ EPL-2.0`.
 - **Charset.** An image keeps the build machine's `sun.jnu.encoding`; Linux
   builds run in `C.UTF-8` (RUNBOOK, "Native binaries").
 - **Resources** are declared in the same metadata file: `public/**` (the web
-  UI's `datastar.js`, its license and `app.css`) and `fonts/**`, plus `wmark/**`
+  UI's `datastar.js`, its license, `app.css` and `wmark.svg`) and `fonts/**`, plus `wmark/**`
   for Pro.
 - **Build flags** (from the build matrix in `deps.edn`):
   - `-march=compatibility`, because the default targets x86-64-v3 and would
