@@ -33,6 +33,12 @@
    :center-left :center :center-right
    :bottom-left :bottom-center :bottom-right])
 
+(def Anchors
+  "The spots a moving text layer (canary, random) may show at, each
+  showing at one of them, chosen by the keyed schedule. Only without an
+  :anchor, which keeps a layer in one place; neither: anywhere."
+  [:vector {:min 1 :max 9} Anchor])
+
 (def Offset
   [:map {:closed true}
    [:x {:optional true} [:int {:min -10000 :max 10000}]]
@@ -91,13 +97,15 @@
    ;; and type "canary"; the wire id stays :subliminal (it seeds schedules).
    [:subliminal (text-layer :subliminal :pro
                             [[:every-s {:optional true} [:double {:min 1.0 :max 600.0}]]
-                             [:frames  {:optional true} [:int {:min 1 :max 3}]]])]
+                             [:frames  {:optional true} [:int {:min 1 :max 3}]]
+                             [:anchors {:optional true} Anchors]])]
    ;; PRO: visible text at unpredictable (keyed) times and places
    [:random     (text-layer :random :pro
                             [[:min-duration-s {:optional true} [:double {:min 0.04 :max 60.0}]]
                              [:max-duration-s {:optional true} [:double {:min 0.04 :max 60.0}]]
                              [:min-gap-s      {:optional true} [:double {:min 0.5 :max 3600.0}]]
-                             [:max-gap-s      {:optional true} [:double {:min 0.5 :max 3600.0}]]])]])
+                             [:max-gap-s      {:optional true} [:double {:min 0.5 :max 3600.0}]]
+                             [:anchors        {:optional true} Anchors]])]])
 
 (def Metadata
   "Information written into each copy: who made it and who owns it. Written

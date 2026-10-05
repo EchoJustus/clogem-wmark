@@ -91,7 +91,8 @@ layer, timing and placement type.
   likewise y. `fx` is one of:
   - constant (`:fixed`),
   - keyed per burst (`:burst-scatter`),
-  - per window (`:per-window`).
+  - per window (`:per-window`): a random layer's keyed places, or a
+    moving layer's chosen spots, one per showing (ADR 0018).
 - **Scheduled times are converted to frames with half-open intervals.**
   `[at, at + duration)` covers exactly `duration × fps` frames: 2 s at 30 fps
   is frames 30–89. A tiny epsilon keeps exact boundaries exact, so at NTSC

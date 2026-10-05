@@ -97,7 +97,11 @@
 
       [:input (merge common {:type "text" :maxlength (when (= :text kind) (if multiline 500 80))
                              :spellcheck "false"
-                             :placeholder (case kind :file "Full path to the file" :folder "Full path to the folder" nil)
+                             :placeholder (case kind
+                                            :file "Full path to the file"
+                                            :folder "Full path to the folder"
+                                            :anchor-set "Spots, such as top-left, bottom-right"
+                                            nil)
                              "data-on:keydown" (keys-expr slug id)})])))
 
 (defn row-edit
