@@ -357,7 +357,7 @@
        :path [:mode],
        :value :continuous,
        :source :set-here,
-       :title "Kind",
+       :title "Timing",
        :id "texts.0.mode",
        :kind :enum,
        :options
@@ -499,7 +499,7 @@
        :path [:mode],
        :value :scheduled,
        :source :set-here,
-       :title "Kind",
+       :title "Timing",
        :id "texts.1.mode",
        :kind :enum,
        :options
@@ -664,7 +664,7 @@
        :path [:mode],
        :value :subliminal,
        :source :set-here,
-       :title "Kind",
+       :title "Timing",
        :id "texts.2.mode",
        :kind :enum,
        :options
@@ -734,8 +734,28 @@
         {:value "bottom-left", :label "Bottom left"}
         {:value "bottom-center", :label "Bottom center"}
         {:value "bottom-right", :label "Bottom right"}],
-       :input "bottom-left",
-       :text "Bottom left (default)"}
+       :input "",
+       :text "Random"}
+      {:description
+       "Where a layer without a fixed position may show: one of these spots each time. None chosen: anywhere.",
+       :path [:anchors],
+       :value nil,
+       :source :set-here,
+       :title "Random positions",
+       :id "texts.2.anchors",
+       :kind :anchor-set,
+       :options
+       [{:value "top-left", :label "Top left"}
+        {:value "top-center", :label "Top center"}
+        {:value "top-right", :label "Top right"}
+        {:value "center-left", :label "Center left"}
+        {:value "center", :label "Center"}
+        {:value "center-right", :label "Center right"}
+        {:value "bottom-left", :label "Bottom left"}
+        {:value "bottom-center", :label "Bottom center"}
+        {:value "bottom-right", :label "Bottom right"}],
+       :input "",
+       :text ""}
       {:description
        "Pixels between the text and the side it keeps to.",
        :path [:offset :x],
@@ -1195,7 +1215,7 @@
        :path [:mode],
        :value :continuous,
        :source :set-here,
-       :title "Kind",
+       :title "Timing",
        :id "texts.0.mode",
        :kind :enum,
        :options
@@ -1334,7 +1354,7 @@
        :path [:mode],
        :value :scheduled,
        :source :set-here,
-       :title "Kind",
+       :title "Timing",
        :id "texts.1.mode",
        :kind :enum,
        :options
@@ -1496,7 +1516,7 @@
        :path [:mode],
        :value :subliminal,
        :source :set-here,
-       :title "Kind",
+       :title "Timing",
        :id "texts.2.mode",
        :kind :enum,
        :options
@@ -1563,8 +1583,28 @@
         {:value "bottom-left", :label "Bottom left"}
         {:value "bottom-center", :label "Bottom center"}
         {:value "bottom-right", :label "Bottom right"}],
-       :input "bottom-left",
-       :text "Bottom left (default)"}
+       :input "",
+       :text "Random"}
+      {:description
+       "Where a layer without a fixed position may show: one of these spots each time. None chosen: anywhere.",
+       :path [:anchors],
+       :value nil,
+       :source :set-here,
+       :title "Random positions",
+       :id "texts.2.anchors",
+       :kind :anchor-set,
+       :options
+       [{:value "top-left", :label "Top left"}
+        {:value "top-center", :label "Top center"}
+        {:value "top-right", :label "Top right"}
+        {:value "center-left", :label "Center left"}
+        {:value "center", :label "Center"}
+        {:value "center-right", :label "Center right"}
+        {:value "bottom-left", :label "Bottom left"}
+        {:value "bottom-center", :label "Bottom center"}
+        {:value "bottom-right", :label "Bottom right"}],
+       :input "",
+       :text ""}
       {:description
        "Pixels between the text and the side it keeps to.",
        :path [:offset :x],

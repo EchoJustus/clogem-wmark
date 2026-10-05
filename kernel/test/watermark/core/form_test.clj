@@ -29,7 +29,10 @@
       :enum    {:kind #{:enum} :options (vec (if p (drop 2 s) (rest s)))}
       :re      {:kind #{:color}}
       :=       {:kind #{:enum}}
-      :vector  {:kind #{:seconds-list} :min (:min (props (last s))) :max (:max (props (last s)))})))
+      :vector  (let [el (last s)]
+                 (if (and (vector? el) (= :enum (first el)))
+                   {:kind #{:anchor-set} :options (vec (rest el))}
+                   {:kind #{:seconds-list} :min (:min (props el)) :max (:max (props el))})))))
 
 (defn- entries [m] (drop (if (props m) 2 1) m))
 
@@ -76,6 +79,31 @@
     (doseq [f form/layer-fields :when (:modes f)
             m (:modes f)]
       (is (contains? (get by-mode m) (:path f)) (str (:path f) " isn't part of " m)))))
+
+(deftest moving-layers-choose-their-spots
+  ;; owner, 2026-10-05: "Timing" says when a layer shows; a canary or
+  ;; random layer without a fixed position jumps among chosen spots
+  (let [field (form/field-of [:texts 0 :anchors])]
+    (is (= :anchor-set (:kind field)))
+    (is (= [:top-left :top-right] (form/parse-input field "top-right, top-left, top-right"))
+        "each spot once, in the grid's order")
+    (is (= [:center :bottom-left] (form/parse-input field ["bottom-left" "center"])) "a JSON list too")
+    (is (nil? (form/parse-input field " ")) "none: anywhere")
+    (is (thrown? clojure.lang.ExceptionInfo (form/parse-input field "middle")))
+    (is (= "Top left, Bottom right" (form/value-text field [:top-left :bottom-right])))
+    (is (= "top-left, bottom-right" (form/input-text field [:top-left :bottom-right]))))
+  (is (= "Timing" (:title (first form/layer-fields))))
+  (let [r {:settings {:texts [{:mode :continuous :content "a"}
+                              {:mode :subliminal :content "b"}
+                              {:mode :random :content "c" :anchors [:top-left :center]}]}
+           :provenance {} :base {:kind :none}}
+        rows (fn [i] (into {} (for [row (get-in (form/model r) [:texts :layers i :rows])]
+                                [(:path row) row])))]
+    (is (= "Bottom left (default)" (:text (get (rows 0) [:anchor]))) "a still layer keeps its corner")
+    (is (nil? (get (rows 0) [:anchors])) "and has no spots")
+    (is (= "Random" (:text (get (rows 1) [:anchor]))) "a canary without a position moves")
+    (is (= "" (:text (get (rows 1) [:anchors]))) "anywhere, while no spot is chosen")
+    (is (= [:top-left :center] (:value (get (rows 2) [:anchors]))))))
 
 (deftest new-layers-are-valid
   (doseq [m form/layer-modes]

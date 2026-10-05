@@ -24,6 +24,7 @@ owner first (CLAUDE.md, "Decisions").
 | [0015](0015-a-job-queue-on-every-host.md) | One in-process job queue in the core library, for every host, with a contract | Accepted |
 | [0016](0016-the-rest-contract-in-the-core-library.md) | The REST contract (`/api/v1`) in the core library, answered over HTTP by the JVM and in-process by an app, with golden vectors on both runtimes | Accepted |
 | [0017](0017-a-render-allowance-beside-entitlements.md) | A render allowance beside entitlements: an optional `:allowance` port (a trial, a quota), checked by the core when a job is submitted and as each render starts, reported in `/api/v1/features` | Accepted |
+| [0018](0018-timing-and-random-positions.md) | "Timing" for when a text layer shows, and an optional `anchors` set on the canary and random shapes: the spots a layer without a fixed position jumps among, drawn as a `:per-window` placement, no render spec change | Accepted |
 
 New records copy this shape: **Status**, **Context**, **Decision**,
 **Consequences**, **Alternatives**, **Sources** (with the date facts were

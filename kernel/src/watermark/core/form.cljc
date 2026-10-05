@@ -59,6 +59,8 @@
   "Every setting outside the text layers, in form order. Keys:
     :path         where it lives in the settings
     :kind         :boolean :integer :number :enum :text :file :folder
+                  (and in a text layer :seconds-list, :color, and :anchor-set, a
+                  set of :options kept in their order)
     :min :max     bounds (the schema's); :step for numeric controls
     :scale        shown and typed multiplied by this (100 for percentages)
     :unit         shown after the value
@@ -134,7 +136,7 @@
   "Fields of a text layer, by path inside the layer. :modes limits a field
   to some layer kinds; the rest belong to every kind."
   [{:path [:mode] :kind :enum :options layer-modes
-    :title "Kind" :description "When the text shows."}
+    :title "Timing" :description "When the text shows."}
    {:path [:content] :kind :text :max 500 :multiline true
     :title "Text" :description "What the layer says."}
    {:path [:at] :kind :seconds-list :modes #{:scheduled} :min 0.0
@@ -155,6 +157,8 @@
     :title "Longest gap" :description "Seconds between showings, at most."}
    {:path [:anchor] :kind :enum :options anchors :default :bottom-left
     :title "Position" :description "The corner or edge the text keeps to."}
+   {:path [:anchors] :kind :anchor-set :options anchors :modes #{:subliminal :random}
+    :title "Random positions" :description "Where a layer without a fixed position may show: one of these spots each time. None chosen: anywhere."}
    {:path [:offset :x] :kind :integer :min -10000 :max 10000 :unit "px" :default 24
     :title "Horizontal margin" :description "Pixels between the text and the side it keeps to."}
    {:path [:offset :y] :kind :integer :min -10000 :max 10000 :unit "px" :default 24
@@ -250,6 +254,7 @@
     (= :boolean (:kind field))  (if v "On" "Off")
     (= :enum (:kind field))     (option-label field v)
     (= :seconds-list (:kind field)) (str/join ", " (map number-text v))
+    (= :anchor-set (:kind field))   (str/join ", " (map #(option-label field %) v))
     (number? v)                 (str (number-text (* v (:scale field 1)))
                                      (when-let [u (:unit field)] (str (when-not (= "%" u) " ") u)))
     :else                       (str v)))
@@ -261,6 +266,7 @@
     (nil? v)                        ""
     (= :enum (:kind field))         (option-value-text v)
     (= :seconds-list (:kind field)) (str/join ", " (map number-text v))
+    (= :anchor-set (:kind field))   (str/join ", " (map option-value-text v))
     (number? v)                     (number-text (* v (:scale field 1)))
     :else                           v))
 
@@ -313,6 +319,17 @@
                         (cond (empty? xs) nil
                               (> (count xs) 500) (invalid field "at most 500 times")
                               :else (mapv #(* 1.0 %) xs))))
+      :anchor-set (let [names (if (sequential? raw)
+                                (map #(str/trim (str (if (keyword? %) (name %) %))) raw)
+                                (remove str/blank? (str/split (str raw) #"[,;\s]+")))
+                        known (into {} (map (fn [o] [(option-value-text o) o])) (:options field))
+                        bad   (remove known names)]
+                    (cond
+                      (seq bad) (invalid field (str "spots among " (str/join ", " (map option-value-text (:options field)))))
+                      (empty? names) nil
+                      ;; each spot once, in the grid's order
+                      :else (let [chosen (set (map known names))]
+                              (filterv chosen (:options field)))))
       :color   (when-not blank?
                  (let [s (str/trim (str raw))]
                    (if (re-matches #"(#[0-9A-Fa-f]{6}|[a-zA-Z]+)" s) s (invalid field "a colour name or #RRGGBB"))))
@@ -355,6 +372,8 @@
     (and (nil? value) (some? (:default field)))
     (assoc :text (str (value-text field (:default field)) " (default)")
            :input (input-text field (:default field)))
+    (and (nil? value) (:unset-text field))
+    (assoc :text (:unset-text field))
     (:min field)       (assoc :min (* (:min field) (:scale field 1)))
     (:max field)       (assoc :max (* (:max field) (:scale field 1)))
     (:step field)      (assoc :step (* (:step field) (:scale field 1)))
@@ -363,6 +382,19 @@
     (:multiline field) (assoc :multiline true)
     (:advanced field)  (assoc :advanced true)
     (:options field)   (assoc :options (options-of field entitled?))))
+
+(def moving-modes
+  "Layer kinds that show in separate showings and, without a fixed
+  :anchor, move from one to the next: among their :anchors, or anywhere."
+  #{:subliminal :random})
+
+(defn- for-mode
+  "Field `f` as a layer of kind `mode` shows it: a moving kind's position
+  has no default (unset, it moves)."
+  [f mode]
+  (if (and (= [:anchor] (:path f)) (contains? moving-modes mode))
+    (-> f (dissoc :default) (assoc :unset-text "Random"))
+    f))
 
 (defn- layer-model [r i layer entitled?]
   (let [mode    (features/canonical-mode (:mode layer))
@@ -376,7 +408,7 @@
              :rows     (vec (for [f layer-fields
                                   :when (or (nil? (:modes f)) (contains? (:modes f) mode))
                                   :let [path (into [:texts i] (:path f))]]
-                              (row f (path-id path) (get-in layer (:path f)) source entitled?)))}
+                              (row (for-mode f mode) (path-id path) (get-in layer (:path f)) source entitled?)))}
       (= :pro (features/tier feature))
       (assoc :tier "pro" :locked (not (entitled? feature))))))
 
