@@ -182,7 +182,7 @@ jobs:
           codesign --force --options runtime --sign - "$RUNNER_TEMP/hardened/wmark"
           codesign --display --verbose=2 "$RUNNER_TEMP/hardened/wmark" 2>&1 | grep -i flags || true
           bb test/smoke/native.clj --bin "$RUNNER_TEMP/hardened" --ffmpeg "$RUNNER_TEMP/hardened/bin" --bundled true --mock "${{ matrix.lib }}"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: wmark-desktop-server-${{ matrix.platform }}
           path: dist/desktop-server/
