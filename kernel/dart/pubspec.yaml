@@ -14,7 +14,7 @@ environment:
 dependencies:
   # HMAC-SHA256 for keyed seeds and SHA-256 for bitmap ids (BSD-3-Clause,
   # the Dart team); the only package the kernel uses on the Dart VM
-  crypto: 3.0.7
+  crypto: 3.0.8
 
 dev_dependencies:
   test: ^1.29.0
